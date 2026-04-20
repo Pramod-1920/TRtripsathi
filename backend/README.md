@@ -1,50 +1,188 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# TRtripsathi Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A robust NestJS backend application for the TRtripsathi travel platform with integrated MongoDB database, Cloudinary media management, and comprehensive API documentation.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Overview
 
-## Description
+This is a production-ready NestJS backend featuring:
+- Strict environment-based configuration
+- MongoDB integration for data persistence
+- Cloudinary integration for media uploads
+- User authentication with signup
+- Comprehensive Swagger/OpenAPI documentation
+- Clean architecture with dedicated config modules
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Technology Stack
 
-## Project setup
+- **Framework**: NestJS 11.0.1
+- **Database**: MongoDB 9.4.1 (Mongoose ODM)
+- **Media Storage**: Cloudinary v2 SDK
+- **Authentication**: bcrypt 6.0.0 for password hashing
+- **Validation**: class-validator 0.15.1 with global ValidationPipe
+- **API Documentation**: @nestjs/swagger for OpenAPI/Swagger support
+- **Language**: TypeScript
+
+## Environment Setup
+
+Create a `.env` file in the `backend/` directory with the following variables:
+
+```env
+# Server
+PORT=5000
+
+# MongoDB
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?appName=<app>
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# JWT (for future implementation)
+JWT_SECRET=your_jwt_secret_key
+```
+
+### Configuration Notes:
+- `PORT`: Must be a valid numeric port (no fallback to random ports on conflict)
+- `MONGODB_URI`: Full connection string to MongoDB Atlas cluster
+- Cloudinary credentials: Obtain from your Cloudinary dashboard
+
+## Installation
 
 ```bash
 $ npm install
 ```
 
-## Compile and run the project
+## Running the Application
 
+### Development
 ```bash
-# development
-$ npm run start
-
-# watch mode
 $ npm run start:dev
+```
+Starts the application in watch mode. NestJS will recompile on file changes.
 
-# production mode
+### Production
+```bash
 $ npm run start:prod
 ```
+Builds and runs the optimized production version.
 
-## Run tests
+### Standard Start
+```bash
+$ npm run start
+```
+
+## API Documentation
+
+Once the server is running, access the interactive Swagger/OpenAPI documentation at:
+
+```
+http://localhost:5000/api/docs
+```
+
+The API documentation includes:
+- All available endpoints (GET, POST, etc.)
+- Request parameters and body schemas
+- Response schemas with examples
+- Field validation rules and examples
+
+### Available Endpoints
+
+#### Health Check
+- **GET** `/` - Returns a greeting message
+
+#### Authentication
+- **POST** `/auth/signup` - Register a new user
+  - Request body: `SignupDto` (name, email, phoneNumber, password)
+  - Validation: Email must be unique, phone number (10 digits), password must contain uppercase, lowercase, number, special character
+
+#### Cloudinary
+- **POST** `/cloudinary/signature` - Get upload signature for direct Cloudinary uploads
+  - Request body: `CloudinarySignatureDto` (optional folder)
+  - Response: Signature data for frontend direct upload implementation
+
+## Project Structure
+
+```
+backend/src/
+├── main.ts                           # Application entry point with MongoDB connection logging
+├── app.module.ts                     # Root module with all service imports
+├── app.controller.ts                 # Health check endpoint
+├── app.service.ts                    # Health check service
+│
+├── auth/                             # Authentication module
+│   ├── auth.controller.ts            # Signup endpoint
+│   ├── auth.service.ts               # Auth business logic
+│   ├── auth.module.ts                # Auth module configuration
+│   └── dto/
+│       └── signup.dto.ts             # Signup validation schema
+│
+└── config/                           # External service configuration
+    ├── database/
+    │   ├── database.config.ts        # MongoDB connection factory
+    │   └── database.module.ts        # Mongoose module setup
+    │
+    └── cloudinary/
+        ├── cloudinary.config.ts      # Cloudinary SDK initialization
+        ├── cloudinary.module.ts      # Cloudinary module with service/controller
+        ├── cloudinary.service.ts     # Upload signature generation
+        ├── cloudinary.controller.ts  # Cloudinary API endpoints
+        └── dto/
+            └── cloudinary-signature.dto.ts  # Signature request schema
+```
+
+## Key Features Implemented
+
+### 1. Strict Configuration Management
+- Environment variables validated at startup
+- Errors thrown immediately if required config is missing
+- No fallback behavior to prevent hidden issues
+
+### 2. Database Integration
+- MongoDB connection via Mongoose ODM
+- Clean config factory pattern in dedicated module
+- Connection event logging: "Connected to database: test"
+- Startup verification: "=== MONGODB CONNECTED SUCCESSFULLY: test ===" banner
+
+### 3. Media Management
+- Cloudinary integration for scalable image storage
+- Signature endpoint for secure frontend direct uploads
+- Optional folder parameter for organizing uploads
+- Credentials validated at module initialization
+
+### 4. Authentication (Partial)
+- Signup endpoint with email/phone uniqueness validation
+- Password hashing with bcrypt (10 rounds)
+- SignupDto with comprehensive field validation
+- TODO: Login endpoint, refresh token, JWT implementation
+
+### 5. Input Validation
+- Global ValidationPipe with strict whitelist mode
+- Prevents accidental field injection
+- Class-validator decorators on all DTOs
+- Detailed error messages for validation failures
+
+### 6. API Documentation
+- Swagger/OpenAPI integration with @nestjs/swagger
+- All controllers tagged with `@ApiTags()`
+- All endpoints documented with `@ApiOperation()` and responses
+- All DTO fields documented with `@ApiProperty()` including examples
+
+## Database Schema
+
+### Auth Collection
+```typescript
+{
+  name: string,           // User full name
+  email: string,          // Unique email address
+  phoneNumber: string,    // 10-digit phone number
+  password: string,       // Hashed with bcrypt
+  createdAt: Date,        // Auto-generated
+  updatedAt: Date         // Auto-generated
+}
+```
+
+## Testing
 
 ```bash
 # unit tests
@@ -57,42 +195,48 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Cloudinary Direct Upload Flow
+
+The backend implements **Option 2** - Frontend direct uploads with backend signature endpoint:
+
+1. **Frontend**: Requests upload signature from `POST /cloudinary/signature`
+2. **Backend**: Validates request, generates signed signature using Cloudinary API
+3. **Frontend**: Uses signature to upload directly to Cloudinary
+4. **Cloudinary**: Delivers media and notifies backend via webhook (if configured)
+
+Benefits:
+- Reduced server load (no file upload processing)
+- Faster uploads (direct to CDN)
+- Scalability (handles unlimited concurrent uploads)
+- Security (signed requests prevent unauthorized uploads)
+
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+When deploying to production:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+1. Ensure all `.env` variables are properly set in production environment
+2. Build with: `npm run build`
+3. Start with: `npm run start:prod`
+4. Verify startup logs show MongoDB connection and Swagger endpoint active
+5. Test API endpoints via Swagger UI at `/api/docs`
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+## Troubleshooting
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### MongoDB Connection Failed
+- Check `MONGODB_URI` in `.env`
+- Ensure IP address is whitelisted in MongoDB Atlas
+- Verify network connectivity to the cluster
 
-## Resources
+### Cloudinary Upload Issues
+- Verify `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` are correct
+- Check Cloudinary dashboard for API key status
+- Ensure folder name (if specified) is valid
 
-Check out a few resources that may come in handy when working with NestJS:
+### Port Already in Use
+- Change `PORT` in `.env` to an available port
+- Or kill existing process on the port
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+### Validation Errors
+- Check request body matches DTO requirements
+- Refer to Swagger documentation for field specifications
+- Verify email format and phone number is exactly 10 digits
