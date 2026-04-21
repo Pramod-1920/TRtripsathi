@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common/pipes/validation.pipe';
 import { Connection } from 'mongoose';
@@ -21,6 +23,16 @@ function getPortFromEnv(): number {
   return port;
 }
 
+function getFrontendUrlFromEnv(): string {
+  const frontendUrl = process.env.FRONTEND_URL?.trim();
+
+  if (!frontendUrl) {
+    throw new Error('FRONTEND_URL is required in .env file');
+  }
+
+  return frontendUrl;
+}
+
 function logMongoConnectionStatus(app: INestApplication): void {
   const mongooseConnection = app.get<Connection>(getConnectionToken());
 
@@ -34,6 +46,15 @@ function logMongoConnectionStatus(app: INestApplication): void {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const frontendUrl = getFrontendUrlFromEnv();
+
+  app.use(helmet());
+  app.use(cookieParser());
+
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -47,6 +68,17 @@ async function bootstrap() {
     .setTitle('TRtripsathi API')
     .setDescription('API documentation for TRtripsathi backend')
     .setVersion('1.0')
+    .addCookieAuth('access_token', undefined, 'access_token')
+    .addCookieAuth('refresh_token', undefined, 'refresh_token')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Provide JWT access token',
+      },
+      'access-token',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './config/database/database.module';
 import { CloudinaryModule } from './config/cloudinary/cloudinary.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { CloudinaryModule } from './config/cloudinary/cloudinary.module';
     }),
     DatabaseModule,
     CloudinaryModule,
+    UserModule,
     AuthModule,
   ],
   controllers: [AppController],

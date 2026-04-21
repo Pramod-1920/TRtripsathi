@@ -1,20 +1,27 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { Role } from '../constants/roles.enum';
 
-@Schema()
+@Schema({ timestamps: true })
 
 export class Auth extends Document {
-    @Prop({ required: true })
-    name!:string;
+    @Prop({ type: String, required: true, unique: true })
+    phoneNumber!: string;
 
-    @Prop({ required: true, unique: true })
-    phoneNumber!:string;
+    @Prop({ type: String, required: true })
+    password!: string;
 
-    @Prop({ required: true, unique: true })
-    email!:string;
+    @Prop({ type: String, enum: Role, default: Role.User, required: true })
+    role!: Role;
 
-    @Prop({ required: true })
-    password!:string;
+    @Prop({ type: String, default: null })
+    refreshTokenHash?: string | null;
+
+    @Prop({ type: Number, default: 0 })
+    failedLoginAttempts!: number;
+
+    @Prop({ type: Date, default: null })
+    lockUntil?: Date | null;
 }
 
 

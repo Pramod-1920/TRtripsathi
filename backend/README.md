@@ -1,242 +1,258 @@
 # TRtripsathi Backend
 
-A robust NestJS backend application for the TRtripsathi travel platform with integrated MongoDB database, Cloudinary media management, and comprehensive API documentation.
+NestJS 11 backend for TRtripsathi. The repository now has MongoDB, Cloudinary, and a complete phone-based authentication flow with JWT, RBAC, rate limiting, and account lockout.
 
-## Overview
+## What Is Implemented
 
-This is a production-ready NestJS backend featuring:
-- Strict environment-based configuration
-- MongoDB integration for data persistence
-- Cloudinary integration for media uploads
-- User authentication with signup
-- Comprehensive Swagger/OpenAPI documentation
-- Clean architecture with dedicated config modules
+- Database connection and startup validation through `@nestjs/config` and Mongoose
+- Cloudinary signature generation for frontend direct uploads
+- Phone-number signup and signin
+- JWT access and refresh token flow with httpOnly cookies
+- Protected profile completion after signin
+- Role-based authorization for `admin` and `user`
+- Login throttling and account lockout after repeated failures
+- Swagger documentation for all public endpoints
 
 ## Technology Stack
 
-- **Framework**: NestJS 11.0.1
-- **Database**: MongoDB 9.4.1 (Mongoose ODM)
-- **Media Storage**: Cloudinary v2 SDK
-- **Authentication**: bcrypt 6.0.0 for password hashing
-- **Validation**: class-validator 0.15.1 with global ValidationPipe
-- **API Documentation**: @nestjs/swagger for OpenAPI/Swagger support
-- **Language**: TypeScript
+- NestJS 11.0.1
+- TypeScript
+- MongoDB with Mongoose ODM
+- JWT via `@nestjs/jwt` and `passport-jwt`
+- bcrypt for password hashing
+- class-validator and global ValidationPipe
+- Swagger/OpenAPI via `@nestjs/swagger`
+- Helmet and cookie-parser for security and cookie support
 
-## Environment Setup
+## Environment Variables
 
-Create a `.env` file in the `backend/` directory with the following variables:
+Create `backend/.env` with these values:
 
 ```env
-# Server
 PORT=5000
 
-# MongoDB
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?appName=<app>
 
-# Cloudinary
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 
-# JWT (for future implementation)
-JWT_SECRET=your_jwt_secret_key
+JWT_ACCESS_SECRET=your_access_token_secret
+JWT_REFRESH_SECRET=your_refresh_token_secret
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+FRONTEND_URL=http://localhost:3000
 ```
 
-### Configuration Notes:
-- `PORT`: Must be a valid numeric port (no fallback to random ports on conflict)
-- `MONGODB_URI`: Full connection string to MongoDB Atlas cluster
-- Cloudinary credentials: Obtain from your Cloudinary dashboard
+Notes:
+- `FRONTEND_URL` is required for CORS and cookie-based auth.
+- Cookie security is environment-aware and uses secure cookies in production.
 
-## Installation
+## Install
 
 ```bash
-$ npm install
+npm install
 ```
 
-## Running the Application
+## Run
 
-### Development
 ```bash
-$ npm run start:dev
+npm run start:dev
 ```
-Starts the application in watch mode. NestJS will recompile on file changes.
 
-### Production
+Other scripts:
+
 ```bash
-$ npm run start:prod
-```
-Builds and runs the optimized production version.
-
-### Standard Start
-```bash
-$ npm run start
+npm run build
+npm run start:prod
+npm run test
+npm run test:e2e
 ```
 
-## API Documentation
+## Authentication Design
 
-Once the server is running, access the interactive Swagger/OpenAPI documentation at:
+Authentication credentials are stored in the auth schema, while profile fields are stored in a separate user schema linked by `authId`.
 
-```
-http://localhost:5000/api/docs
-```
+### Signup Flow
 
-The API documentation includes:
-- All available endpoints (GET, POST, etc.)
-- Request parameters and body schemas
-- Response schemas with examples
-- Field validation rules and examples
+`POST /auth/signup`
 
-### Available Endpoints
+Request body:
 
-#### Health Check
-- **GET** `/` - Returns a greeting message
-
-#### Authentication
-- **POST** `/auth/signup` - Register a new user
-  - Request body: `SignupDto` (name, email, phoneNumber, password)
-  - Validation: Email must be unique, phone number (10 digits), password must contain uppercase, lowercase, number, special character
-
-#### Cloudinary
-- **POST** `/cloudinary/signature` - Get upload signature for direct Cloudinary uploads
-  - Request body: `CloudinarySignatureDto` (optional folder)
-  - Response: Signature data for frontend direct upload implementation
-
-## Project Structure
-
-```
-backend/src/
-├── main.ts                           # Application entry point with MongoDB connection logging
-├── app.module.ts                     # Root module with all service imports
-├── app.controller.ts                 # Health check endpoint
-├── app.service.ts                    # Health check service
-│
-├── auth/                             # Authentication module
-│   ├── auth.controller.ts            # Signup endpoint
-│   ├── auth.service.ts               # Auth business logic
-│   ├── auth.module.ts                # Auth module configuration
-│   └── dto/
-│       └── signup.dto.ts             # Signup validation schema
-│
-└── config/                           # External service configuration
-    ├── database/
-    │   ├── database.config.ts        # MongoDB connection factory
-    │   └── database.module.ts        # Mongoose module setup
-    │
-    └── cloudinary/
-        ├── cloudinary.config.ts      # Cloudinary SDK initialization
-        ├── cloudinary.module.ts      # Cloudinary module with service/controller
-        ├── cloudinary.service.ts     # Upload signature generation
-        ├── cloudinary.controller.ts  # Cloudinary API endpoints
-        └── dto/
-            └── cloudinary-signature.dto.ts  # Signature request schema
-```
-
-## Key Features Implemented
-
-### 1. Strict Configuration Management
-- Environment variables validated at startup
-- Errors thrown immediately if required config is missing
-- No fallback behavior to prevent hidden issues
-
-### 2. Database Integration
-- MongoDB connection via Mongoose ODM
-- Clean config factory pattern in dedicated module
-- Connection event logging: "Connected to database: test"
-- Startup verification: "=== MONGODB CONNECTED SUCCESSFULLY: test ===" banner
-
-### 3. Media Management
-- Cloudinary integration for scalable image storage
-- Signature endpoint for secure frontend direct uploads
-- Optional folder parameter for organizing uploads
-- Credentials validated at module initialization
-
-### 4. Authentication (Partial)
-- Signup endpoint with email/phone uniqueness validation
-- Password hashing with bcrypt (10 rounds)
-- SignupDto with comprehensive field validation
-- TODO: Login endpoint, refresh token, JWT implementation
-
-### 5. Input Validation
-- Global ValidationPipe with strict whitelist mode
-- Prevents accidental field injection
-- Class-validator decorators on all DTOs
-- Detailed error messages for validation failures
-
-### 6. API Documentation
-- Swagger/OpenAPI integration with @nestjs/swagger
-- All controllers tagged with `@ApiTags()`
-- All endpoints documented with `@ApiOperation()` and responses
-- All DTO fields documented with `@ApiProperty()` including examples
-
-## Database Schema
-
-### Auth Collection
-```typescript
+```json
 {
-  name: string,           // User full name
-  email: string,          // Unique email address
-  phoneNumber: string,    // 10-digit phone number
-  password: string,       // Hashed with bcrypt
-  createdAt: Date,        // Auto-generated
-  updatedAt: Date         // Auto-generated
+  "phoneNumber": "9876543210",
+  "password": "Password@123"
 }
 ```
 
-## Testing
+Behavior:
+- Creates the account with hashed password
+- Defaults the role to `user`
+- Issues access and refresh tokens
+- Stores refresh token only as a bcrypt hash
+- Sets `access_token` and `refresh_token` cookies
 
-```bash
-# unit tests
-$ npm run test
+### Signin Flow
 
-# e2e tests
-$ npm run test:e2e
+`POST /auth/login`
 
-# test coverage
-$ npm run test:cov
+Request body:
+
+```json
+{
+  "phoneNumber": "9876543210",
+  "password": "Password@123"
+}
 ```
 
-## Cloudinary Direct Upload Flow
+Behavior:
+- Validates password against bcrypt hash
+- Returns generic invalid-credentials errors
+- Locks the account for 15 minutes after 5 failed attempts
+- Resets failed attempt counters on success
+- Issues and stores fresh JWT cookies
 
-The backend implements **Option 2** - Frontend direct uploads with backend signature endpoint:
+### Profile Completion
 
-1. **Frontend**: Requests upload signature from `POST /cloudinary/signature`
-2. **Backend**: Validates request, generates signed signature using Cloudinary API
-3. **Frontend**: Uses signature to upload directly to Cloudinary
-4. **Cloudinary**: Delivers media and notifies backend via webhook (if configured)
+`PATCH /auth/profile`
 
-Benefits:
-- Reduced server load (no file upload processing)
-- Faster uploads (direct to CDN)
-- Scalability (handles unlimited concurrent uploads)
-- Security (signed requests prevent unauthorized uploads)
+Required fields:
+- `firstName`
+- `lastName`
+- `age` greater than 8
+- `profilePhoto`
+- `bio`
+- `location`
+- `province`
+- `district`
+- `landmark`
+- `experienceLevel`
 
-## Deployment
+Optional field:
+- `middleName`
 
-When deploying to production:
+This endpoint updates the user profile document and marks the profile as complete.
 
-1. Ensure all `.env` variables are properly set in production environment
-2. Build with: `npm run build`
-3. Start with: `npm run start:prod`
-4. Verify startup logs show MongoDB connection and Swagger endpoint active
-5. Test API endpoints via Swagger UI at `/api/docs`
+### Token Flow
 
-## Troubleshooting
+- Access token expires in 15 minutes by default
+- Refresh token expires in 7 days by default
+- Access token can be read from the Bearer header or `access_token` cookie
+- Refresh token is read from the `refresh_token` cookie
+- Logout clears cookies and revokes the stored refresh token hash
 
-### MongoDB Connection Failed
-- Check `MONGODB_URI` in `.env`
-- Ensure IP address is whitelisted in MongoDB Atlas
-- Verify network connectivity to the cluster
+## Security Controls
 
-### Cloudinary Upload Issues
-- Verify `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` are correct
-- Check Cloudinary dashboard for API key status
-- Ensure folder name (if specified) is valid
+- Helmet enabled in `main.ts`
+- CORS restricted to `FRONTEND_URL`
+- Login and signup are throttled to 5 requests per minute per IP
+- Refresh token is stored as a hash only
+- Account lockout prevents brute-force login attempts
+- Admin-only endpoints use role guards
 
-### Port Already in Use
-- Change `PORT` in `.env` to an available port
-- Or kill existing process on the port
+## API Endpoints
 
-### Validation Errors
-- Check request body matches DTO requirements
-- Refer to Swagger documentation for field specifications
-- Verify email format and phone number is exactly 10 digits
+### Authentication
+
+- `POST /auth/signup` - Create account
+- `POST /auth/login` - Sign in
+- `PATCH /auth/profile` - Complete profile after signin
+- `POST /auth/refresh` - Refresh tokens using cookie
+- `POST /auth/logout` - Logout and revoke refresh token
+- `GET /auth/me` - Get current authenticated user
+- `GET /auth/admin-only` - Admin-only sample protected route
+
+### Cloudinary
+
+- `POST /cloudinary/signature` - Generate upload signature
+
+## Project Structure
+
+```text
+backend/src/
+├── main.ts
+├── app.module.ts
+├── auth/
+│   ├── auth.controller.ts
+│   ├── auth.service.ts
+│   ├── auth.module.ts
+│   ├── AUTH_README.md
+│   ├── constants/
+│   ├── decorators/
+│   ├── dto/
+│   ├── guards/
+│   ├── schemas/
+│   └── strategies/
+├── user/
+│   ├── user.module.ts
+│   ├── user.service.ts
+│   └── schemas/
+│       └── user.schema.ts
+├── config/
+│   ├── database/
+│   ├── cloudinary/
+```
+
+## Data Model
+
+Auth collection stores:
+
+```typescript
+{
+  phoneNumber: string,
+  password: string,
+  role: 'user' | 'admin',
+  refreshTokenHash: string | null,
+  failedLoginAttempts: number,
+  lockUntil: Date | null,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+User collection stores:
+
+```typescript
+{
+  authId: ObjectId,
+  profileCompleted: boolean,
+  firstName: string | null,
+  middleName: string | null,
+  lastName: string | null,
+  age: number | null,
+  profilePhoto: string | null,
+  bio: string | null,
+  location: string | null,
+  province: string | null,
+  district: string | null,
+  landmark: string | null,
+  experienceLevel: 'beginner' | 'intermediate' | 'advanced' | 'expert' | null,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## Swagger
+
+Swagger is available at:
+
+```text
+http://localhost:5000/api/docs
+```
+
+It includes request/response examples for auth and Cloudinary endpoints.
+
+## Build Verification
+
+The backend currently builds successfully with:
+
+```bash
+npm run build
+```
+
+## Notes
+
+- The auth module has a dedicated [AUTH_README.md](src/auth/AUTH_README.md) for endpoint-level details.
+- Profile data is now separated into the user module to keep auth focused on credentials and token flows.
