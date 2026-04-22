@@ -1,9 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CloudinaryService } from './cloudinary.service';
 import { CloudinarySignatureDto } from './dto/cloudinary-signature.dto';
 
 @ApiTags('Cloudinary')
+@ApiBearerAuth('access-token')
+@ApiCookieAuth('access_token')
+@UseGuards(JwtAuthGuard)
 @Controller('cloudinary')
 export class CloudinaryController {
   constructor(private readonly cloudinaryService: CloudinaryService) {}

@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [profiles, setProfiles] = useState<DashboardProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [referenceNow, setReferenceNow] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,6 +31,7 @@ export default function DashboardPage() {
         });
 
         if (active) {
+          setReferenceNow(Date.now());
           setProfiles(response.data?.items ?? []);
         }
       } catch {
@@ -52,8 +54,7 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const completed = profiles.filter((profile) => profile.profileCompleted).length;
-    const now = Date.now();
-    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = referenceNow - 7 * 24 * 60 * 60 * 1000;
 
     return {
       totalUsers: profiles.length,
@@ -67,7 +68,7 @@ export default function DashboardPage() {
       }).length,
       inactiveUsers: Math.max(profiles.length - completed, 0),
     };
-  }, [profiles]);
+  }, [profiles, referenceNow]);
 
   const recentProfiles = [...profiles]
     .sort((left, right) => {

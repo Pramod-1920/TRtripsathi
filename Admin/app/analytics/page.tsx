@@ -15,6 +15,7 @@ export default function AnalyticsPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [referenceNow, setReferenceNow] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -26,6 +27,7 @@ export default function AnalyticsPage() {
         });
 
         if (active) {
+          setReferenceNow(Date.now());
           setProfiles(response.data?.items ?? []);
         }
       } catch {
@@ -47,7 +49,7 @@ export default function AnalyticsPage() {
   }, []);
 
   const analyticsData = useMemo(() => {
-    const now = Date.now();
+    const now = referenceNow;
     const oneDay = 24 * 60 * 60 * 1000;
     const sevenDays = 7 * oneDay;
 
@@ -80,14 +82,14 @@ export default function AnalyticsPage() {
       experienceCounts,
       createdAtValues,
     };
-  }, [profiles]);
+  }, [profiles, referenceNow]);
 
   const signupBars = useMemo(() => {
     const buckets = [0, 0, 0, 0, 0, 0, 0];
     const day = 24 * 60 * 60 * 1000;
 
     analyticsData.createdAtValues.forEach((createdAt) => {
-      const diff = Math.floor((Date.now() - createdAt) / day);
+      const diff = Math.floor((referenceNow - createdAt) / day);
 
       if (diff >= 0 && diff < 7) {
         buckets[6 - diff] += 1;
@@ -95,9 +97,10 @@ export default function AnalyticsPage() {
     });
 
     return buckets;
-  }, [analyticsData.createdAtValues]);
+  }, [analyticsData.createdAtValues, referenceNow]);
 
   const experienceEntries = Object.entries(analyticsData.experienceCounts);
+  const activeUserVisits = [96, 84, 73, 61];
 
   return (
     <div className="p-8">
@@ -216,7 +219,7 @@ export default function AnalyticsPage() {
             {['Alice Johnson', 'Bob Smith', 'Carol White', 'David Brown'].map((name, i) => (
               <div key={i} className="flex items-center justify-between">
                 <span className="text-sm text-slate-700">{i + 1}. {name}</span>
-                <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded">{Math.random() * 100 | 0} visits</span>
+                <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded">{activeUserVisits[i]} visits</span>
               </div>
             ))}
           </div>

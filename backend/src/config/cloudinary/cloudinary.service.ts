@@ -53,4 +53,26 @@ export class CloudinaryService {
       folder: folder ?? undefined,
     };
   }
+
+  async deleteImage(publicId: string) {
+    const normalizedPublicId = publicId.trim();
+
+    if (!normalizedPublicId) {
+      return;
+    }
+
+    const { cloudName, apiKey, apiSecret } = this.getConfig();
+
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+      secure: true,
+    });
+
+    await cloudinary.uploader.destroy(normalizedPublicId, {
+      invalidate: true,
+      resource_type: 'image',
+    });
+  }
 }

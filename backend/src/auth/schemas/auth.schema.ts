@@ -3,10 +3,12 @@ import { Document } from 'mongoose';
 import { Role } from '../constants/roles.enum';
 
 @Schema({ timestamps: true })
-
 export class Auth extends Document {
     @Prop({ type: String, required: true, unique: true })
     phoneNumber!: string;
+
+    @Prop({ type: String, default: null, unique: true, sparse: true })
+    email?: string | null;
 
     @Prop({ type: String, required: true })
     password!: string;

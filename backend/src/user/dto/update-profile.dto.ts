@@ -1,16 +1,28 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
+  IsDateString,
+  IsEmail,
   IsEnum,
-  IsInt,
   IsOptional,
   IsString,
-  Min,
+  Matches,
 } from 'class-validator';
 import { ExperienceLevel } from '../../auth/constants/experience-level.enum';
+import { Gender } from '../constants/gender.enum';
 
 export class UpdateProfileDto {
+  @ApiPropertyOptional({ example: '9876543210', description: 'User phone number (10 digits)' })
+  @IsOptional()
+  @Matches(/^\d{10}$/, { message: 'Phone number must be exactly 10 digits' })
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({ example: 'admin@example.com', description: 'User email address' })
+  @IsOptional()
+  @IsEmail({}, { message: 'Invalid email address' })
+  email?: string;
+
   @ApiPropertyOptional({ example: 'John', description: 'User first name' })
   @IsOptional()
   @IsString()
@@ -26,12 +38,13 @@ export class UpdateProfileDto {
   @IsString()
   lastName?: string;
 
-  @ApiPropertyOptional({ example: 25, description: 'User age, must be greater than 8' })
+  @ApiPropertyOptional({
+    example: '1995-07-12',
+    description: 'Date of birth in YYYY-MM-DD format. Age is calculated automatically.',
+  })
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(9, { message: 'Age must be greater than 8' })
-  age?: number;
+  @IsDateString()
+  dateOfBirth?: string;
 
   @ApiPropertyOptional({
     example: 'https://res.cloudinary.com/demo/image/upload/profile.jpg',
@@ -40,6 +53,14 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   profilePhoto?: string;
+
+  @ApiPropertyOptional({
+    example: 'admin_profiles/profile_abc123',
+    description: 'Cloudinary public ID for profile image management',
+  })
+  @IsOptional()
+  @IsString()
+  profilePhotoPublicId?: string;
 
   @ApiPropertyOptional({ example: 'I enjoy trekking and travel planning.', description: 'Short bio' })
   @IsOptional()
@@ -74,6 +95,25 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsEnum(ExperienceLevel)
   experienceLevel?: ExperienceLevel;
+
+  @ApiPropertyOptional({
+    enum: Gender,
+    example: Gender.PreferNotToSay,
+    description: 'User gender',
+  })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['English', 'Nepali'],
+    description: 'Languages the user knows',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  languagesKnown?: string[];
 
   @ApiPropertyOptional({
     example: true,

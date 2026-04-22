@@ -20,6 +20,7 @@ import { UserService } from '../user/user.service';
 export type SafeUser = {
   id: string;
   phoneNumber: string;
+  email?: string | null;
   role: Role;
   profileCompleted: boolean;
   firstName?: string | null;
@@ -46,7 +47,13 @@ export class AuthService {
 
   async signup(signupData: SignupDto) {
     const phoneNumber = signupData.phoneNumber.trim();
-    const role = signupData.role ?? Role.User;
+    const requestedRole = signupData.role ?? Role.User;
+
+    if (requestedRole === Role.Admin) {
+      throw new ForbiddenException('Admin account creation is disabled');
+    }
+
+    const role = Role.User;
 
     const userInUse = await this.authModel.findOne({ phoneNumber });
     if (userInUse) {
@@ -88,7 +95,18 @@ export class AuthService {
       throw new ForbiddenException('Account temporarily locked. Try again later.');
     }
 
-    const passwordMatches = await bcrypt.compare(loginDto.password, user.password);
+    const isBcryptHash = /^\$2[aby]\$\d{2}\$/.test(user.password);
+    const passwordMatches = isBcryptHash
+      ? await bcrypt.compare(loginDto.password, user.password)
+      : loginDto.password === user.password;
+
+    if (passwordMatches && !isBcryptHash) {
+      const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+      await this.authModel.findByIdAndUpdate(user._id.toString(), {
+        password: hashedPassword,
+      });
+    }
+
     if (!passwordMatches) {
       await this.handleFailedLogin(user);
       throw new UnauthorizedException('Invalid phone number or password');
@@ -284,6 +302,7 @@ export class AuthService {
     return {
       id: user._id.toString(),
       phoneNumber: user.phoneNumber,
+      email: user.email ?? null,
       role: user.role,
       profileCompleted: profile?.profileCompleted ?? false,
       firstName: profile?.firstName ?? null,
