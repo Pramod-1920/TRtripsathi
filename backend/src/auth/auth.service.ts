@@ -46,6 +46,7 @@ export class AuthService {
 
   async signup(signupData: SignupDto) {
     const phoneNumber = signupData.phoneNumber.trim();
+    const role = signupData.role ?? Role.User;
 
     const userInUse = await this.authModel.findOne({ phoneNumber });
     if (userInUse) {
@@ -56,7 +57,7 @@ export class AuthService {
     const createdUser = await this.authModel.create({
       phoneNumber,
       password: hashedPassword,
-      role: Role.User,
+      role,
     });
 
     await this.userService.createProfile(createdUser._id.toString());
