@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
@@ -25,7 +29,10 @@ export class UserService {
     let age = today.getFullYear() - dateOfBirth.getFullYear();
     const monthDiff = today.getMonth() - dateOfBirth.getMonth();
 
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())
+    ) {
       age -= 1;
     }
 
@@ -69,7 +76,9 @@ export class UserService {
       const calculatedAge = this.calculateAge(parsedDate);
 
       if (calculatedAge < 9 || calculatedAge > 120) {
-        throw new BadRequestException('Date of birth must result in age between 9 and 120');
+        throw new BadRequestException(
+          'Date of birth must result in age between 9 and 120',
+        );
       }
 
       sanitized.dateOfBirth = parsedDate;
@@ -79,7 +88,11 @@ export class UserService {
     if (Object.prototype.hasOwnProperty.call(sanitized, 'gender')) {
       const gender = sanitized.gender;
 
-      if (gender !== null && gender !== undefined && !Object.values(Gender).includes(gender as Gender)) {
+      if (
+        gender !== null &&
+        gender !== undefined &&
+        !Object.values(Gender).includes(gender as Gender)
+      ) {
         throw new BadRequestException('Invalid gender');
       }
     }
@@ -109,9 +122,18 @@ export class UserService {
     }
   }
 
-  private async applyAuthContactUpdates(authId: string, updates: Record<string, unknown>) {
-    const hasPhoneUpdate = Object.prototype.hasOwnProperty.call(updates, 'phoneNumber');
-    const hasEmailUpdate = Object.prototype.hasOwnProperty.call(updates, 'email');
+  private async applyAuthContactUpdates(
+    authId: string,
+    updates: Record<string, unknown>,
+  ) {
+    const hasPhoneUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      'phoneNumber',
+    );
+    const hasEmailUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      'email',
+    );
 
     if (!hasPhoneUpdate && !hasEmailUpdate) {
       return;
@@ -146,7 +168,9 @@ export class UserService {
     if (hasEmailUpdate) {
       const rawEmail = updates.email;
       const normalizedEmail =
-        rawEmail === null || rawEmail === undefined || String(rawEmail).trim() === ''
+        rawEmail === null ||
+        rawEmail === undefined ||
+        String(rawEmail).trim() === ''
           ? null
           : String(rawEmail).trim().toLowerCase();
 
@@ -209,7 +233,9 @@ export class UserService {
   }
 
   async getProfileByAuthId(authId: string) {
-    const profile = await this.userModel.findOne({ authId: this.toObjectId(authId) });
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -235,16 +261,25 @@ export class UserService {
   }
 
   async updateOwnProfile(authId: string, updates: UpdateProfileDto) {
-    const profile = await this.userModel.findOne({ authId: this.toObjectId(authId) });
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
 
-    await this.applyAuthContactUpdates(authId, updates as Record<string, unknown>);
+    await this.applyAuthContactUpdates(
+      authId,
+      updates as Record<string, unknown>,
+    );
 
-    const sanitizedUpdates = this.sanitizeProfileUpdates(updates as Record<string, unknown>);
-    const nextPublicId = (sanitizedUpdates.profilePhotoPublicId as string | undefined) ?? undefined;
+    const sanitizedUpdates = this.sanitizeProfileUpdates(
+      updates as Record<string, unknown>,
+    );
+    const nextPublicId =
+      (sanitizedUpdates.profilePhotoPublicId as string | undefined) ??
+      undefined;
 
     await this.removePreviousImageIfChanged(profile, nextPublicId);
 
@@ -269,7 +304,9 @@ export class UserService {
 
   async deleteOwnProfile(authId: string) {
     const authObjectId = this.toObjectId(authId);
-    const profile = await this.userModel.findOneAndDelete({ authId: authObjectId });
+    const profile = await this.userModel.findOneAndDelete({
+      authId: authObjectId,
+    });
 
     if (profile?.profilePhotoPublicId) {
       await this.cloudinaryService.deleteImage(profile.profilePhotoPublicId);
@@ -368,7 +405,10 @@ export class UserService {
     return this.attachAuthContactInfo(profile);
   }
 
-  async adminUpdateProfile(profileId: string, updates: Record<string, unknown>) {
+  async adminUpdateProfile(
+    profileId: string,
+    updates: Record<string, unknown>,
+  ) {
     const profile = await this.userModel.findById(this.toObjectId(profileId));
 
     if (!profile) {
@@ -378,7 +418,9 @@ export class UserService {
     await this.applyAuthContactUpdates(profile.authId.toString(), updates);
 
     const sanitizedUpdates = this.sanitizeProfileUpdates(updates);
-    const nextPublicId = (sanitizedUpdates.profilePhotoPublicId as string | undefined) ?? undefined;
+    const nextPublicId =
+      (sanitizedUpdates.profilePhotoPublicId as string | undefined) ??
+      undefined;
 
     await this.removePreviousImageIfChanged(profile, nextPublicId);
 
@@ -396,7 +438,9 @@ export class UserService {
   }
 
   async adminDeleteProfile(profileId: string) {
-    const profile = await this.userModel.findByIdAndDelete(this.toObjectId(profileId));
+    const profile = await this.userModel.findByIdAndDelete(
+      this.toObjectId(profileId),
+    );
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -412,7 +456,9 @@ export class UserService {
   }
 
   private async attachAuthContactInfo(profile: User) {
-    const auth = await this.authModel.findById(profile.authId).select('phoneNumber email');
+    const auth = await this.authModel
+      .findById(profile.authId)
+      .select('phoneNumber email');
 
     return {
       ...profile.toObject(),

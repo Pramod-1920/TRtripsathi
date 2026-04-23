@@ -1,5 +1,11 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCookieAuth,
+  ApiOperation,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CloudinaryService } from './cloudinary.service';
 import { CloudinarySignatureDto } from './dto/cloudinary-signature.dto';
@@ -16,6 +22,8 @@ export class CloudinaryController {
   @ApiOperation({ summary: 'Get Cloudinary upload signature' })
   @ApiOkResponse({ description: 'Upload signature generated successfully' })
   getSignature(@Body() body: CloudinarySignatureDto) {
-    return this.cloudinaryService.createUploadSignature({ folder: body.folder });
+    return this.cloudinaryService.createUploadSignature({
+      folder: body.folder,
+    });
   }
 }

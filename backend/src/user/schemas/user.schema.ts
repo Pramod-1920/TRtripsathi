@@ -64,6 +64,18 @@ export class User extends Document {
 
   @Prop({ type: [String], default: [] })
   languagesKnown?: string[];
+
+  // Admin-imposed flags (not editable by the user directly)
+  @Prop({
+    type: [{ type: String, campaignId: String, reason: String, date: Date }],
+    default: [],
+  })
+  adminFlags?: Array<{
+    type: string;
+    campaignId?: string;
+    reason?: string;
+    date: Date;
+  }>;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

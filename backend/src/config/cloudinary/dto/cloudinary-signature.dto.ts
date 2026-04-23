@@ -2,10 +2,10 @@ import { IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CloudinarySignatureDto {
-  @ApiProperty({ 
-    example: 'profile_images', 
+  @ApiProperty({
+    example: 'profile_images',
     description: 'Optional folder path in Cloudinary',
-    required: false 
+    required: false,
   })
   @IsOptional()
   @IsString()

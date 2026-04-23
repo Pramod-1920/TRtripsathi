@@ -16,6 +16,8 @@ import { Role } from './constants/roles.enum';
 import { Auth } from './schemas/auth.schema';
 import { User } from '../user/schemas/user.schema';
 import { UserService } from '../user/user.service';
+import { TokenRevocationService } from '../security/token-revocation.service';
+import { AuditService } from '../audit/audit.service';
 
 export type SafeUser = {
   id: string;
@@ -43,6 +45,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly userService: UserService,
+    private readonly revocation: TokenRevocationService,
+    private readonly audit: AuditService,
   ) {}
 
   async signup(signupData: SignupDto) {
@@ -75,7 +79,18 @@ export class AuthService {
       createdUser.role,
     );
 
-    await this.storeRefreshToken(createdUser._id.toString(), tokens.refreshToken);
+    await this.storeRefreshToken(
+      createdUser._id.toString(),
+      tokens.refreshToken,
+    );
+
+    // Audit: successful signup/login
+    await this.audit.logEvent({
+      type: 'auth.signup',
+      userId: createdUser._id.toString(),
+      phoneNumber: createdUser.phoneNumber,
+      role: createdUser.role,
+    });
 
     return {
       user: this.toSafeUser(createdUser),
@@ -92,7 +107,9 @@ export class AuthService {
     }
 
     if (user.lockUntil && user.lockUntil > new Date()) {
-      throw new ForbiddenException('Account temporarily locked. Try again later.');
+      throw new ForbiddenException(
+        'Account temporarily locked. Try again later.',
+      );
     }
 
     const isBcryptHash = /^\$2[aby]\$\d{2}\$/.test(user.password);
@@ -108,7 +125,21 @@ export class AuthService {
     }
 
     if (!passwordMatches) {
+      // progressive delay based on next failed attempt count: 1s, 2s, 4s (capped at 4s)
+      const nextAttempts = (user.failedLoginAttempts ?? 0) + 1;
+      const delayMs = Math.min(
+        4000,
+        1000 * Math.pow(2, Math.max(0, nextAttempts - 1)),
+      );
       await this.handleFailedLogin(user);
+      // sleep to slow down brute force
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      // audit failed attempt
+      await this.audit.logEvent({
+        type: 'auth.failed_login',
+        userId: user._id.toString(),
+        phoneNumber: user.phoneNumber,
+      });
       throw new UnauthorizedException('Invalid phone number or password');
     }
 
@@ -124,6 +155,13 @@ export class AuthService {
 
     await this.storeRefreshToken(user._id.toString(), tokens.refreshToken);
 
+    // Audit: successful login
+    await this.audit.logEvent({
+      type: 'auth.login',
+      userId: user._id.toString(),
+      phoneNumber: user.phoneNumber,
+    });
+
     return {
       user: this.toSafeUser(user, profile),
       ...tokens,
@@ -133,12 +171,30 @@ export class AuthService {
   async refreshTokens(userId: string, refreshToken: string) {
     const user = await this.authModel.findById(userId);
 
-    if (!user || !user.refreshTokenHash) {
+    if (!user || !user.refreshTokens || user.refreshTokens.length === 0) {
       throw new UnauthorizedException('Access denied');
     }
 
-    const refreshMatches = await bcrypt.compare(refreshToken, user.refreshTokenHash);
-    if (!refreshMatches) {
+    // Check blacklist first
+    const isRevoked = await this.revocation.isRevoked(refreshToken);
+    if (isRevoked) {
+      await this.revokeSessions(userId);
+      throw new UnauthorizedException('Access denied');
+    }
+
+    // Find which stored hash matches the provided refresh token
+    let matchedIndex = -1;
+    for (let i = 0; i < user.refreshTokens.length; i++) {
+      const entry = user.refreshTokens[i] as any;
+      const matches = await bcrypt.compare(refreshToken, entry.hash);
+      if (matches) {
+        matchedIndex = i;
+        break;
+      }
+    }
+
+    if (matchedIndex === -1) {
+      // Token not found among stored tokens
       await this.revokeSessions(userId);
       throw new UnauthorizedException('Access denied');
     }
@@ -149,6 +205,18 @@ export class AuthService {
       user.role,
     );
 
+    // Revoke the previous refresh token (rotation) and store the new one
+    try {
+      await this.revocation.revokeToken(refreshToken);
+    } catch (err) {
+      // best-effort
+    }
+
+    // Remove the matched stored hash and add the new one (storeRefreshToken handles trimming)
+    const matchedHash = (user.refreshTokens[matchedIndex] as any).hash;
+    await this.authModel.findByIdAndUpdate(userId, {
+      $pull: { refreshTokens: { hash: matchedHash } },
+    });
     await this.storeRefreshToken(user._id.toString(), tokens.refreshToken);
 
     const profile = await this.getOrCreateProfile(user._id.toString());
@@ -161,6 +229,7 @@ export class AuthService {
 
   async logout(userId: string) {
     await this.revokeSessions(userId);
+    await this.audit.logEvent({ type: 'auth.logout', userId });
 
     return {
       message: 'Logged out successfully',
@@ -168,8 +237,12 @@ export class AuthService {
   }
 
   private async issueTokens(userId: string, phoneNumber: string, role: Role) {
-    const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
+    const accessSecret = this.configService
+      .get<string>('JWT_ACCESS_SECRET')
+      ?.trim();
+    const refreshSecret = this.configService
+      .get<string>('JWT_REFRESH_SECRET')
+      ?.trim();
 
     if (!accessSecret) {
       throw new Error('JWT_ACCESS_SECRET is required in .env file');
@@ -197,7 +270,8 @@ export class AuthService {
     providedSecret?: string,
   ) {
     const accessSecret =
-      providedSecret ?? this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
+      providedSecret ??
+      this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
 
     if (!accessSecret) {
       throw new Error('JWT_ACCESS_SECRET is required in .env file');
@@ -226,7 +300,8 @@ export class AuthService {
     providedSecret?: string,
   ) {
     const refreshSecret =
-      providedSecret ?? this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
+      providedSecret ??
+      this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
 
     if (!refreshSecret) {
       throw new Error('JWT_REFRESH_SECRET is required in .env file');
@@ -250,15 +325,26 @@ export class AuthService {
 
   private async storeRefreshToken(userId: string, refreshToken: string) {
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const maxSessions = Number(
+      this.configService.get<number>('MAX_CONCURRENT_SESSIONS') ?? 3,
+    );
 
+    // Push new token hash to the front and trim to maxSessions
     await this.authModel.findByIdAndUpdate(userId, {
-      refreshTokenHash,
+      $push: {
+        refreshTokens: {
+          $each: [{ hash: refreshTokenHash, createdAt: new Date() }],
+          $position: 0,
+          $slice: maxSessions,
+        },
+      },
     });
   }
 
   private async revokeSessions(userId: string) {
+    // Clear stored refresh token hashes for this user (effectively logging out all sessions)
     await this.authModel.findByIdAndUpdate(userId, {
-      refreshTokenHash: null,
+      refreshTokens: [],
     });
   }
 

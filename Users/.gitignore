@@ -1,0 +1,34 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub/
+.buildlog
+.flutter-plugins
+.flutter-plugins-dependencies
+generated_plugin_registrant.dart
+
+# IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+
+# build
+build/
+
+# Android
+**/local.properties
+**/gradle-wrapper.jar
+
+# iOS
+ios/Pods/
+ios/Runner.xcworkspace
+
+# Local environment variables (do not commit .env with secrets)
+.env

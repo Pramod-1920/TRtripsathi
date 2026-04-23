@@ -13,12 +13,18 @@ import { ExperienceLevel } from '../../auth/constants/experience-level.enum';
 import { Gender } from '../constants/gender.enum';
 
 export class UpdateProfileDto {
-  @ApiPropertyOptional({ example: '9876543210', description: 'User phone number (10 digits)' })
+  @ApiPropertyOptional({
+    example: '9876543210',
+    description: 'User phone number (10 digits)',
+  })
   @IsOptional()
   @Matches(/^\d{10}$/, { message: 'Phone number must be exactly 10 digits' })
   phoneNumber?: string;
 
-  @ApiPropertyOptional({ example: 'admin@example.com', description: 'User email address' })
+  @ApiPropertyOptional({
+    example: 'admin@example.com',
+    description: 'User email address',
+  })
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email address' })
   email?: string;
@@ -40,7 +46,8 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     example: '1995-07-12',
-    description: 'Date of birth in YYYY-MM-DD format. Age is calculated automatically.',
+    description:
+      'Date of birth in YYYY-MM-DD format. Age is calculated automatically.',
   })
   @IsOptional()
   @IsDateString()
@@ -62,12 +69,18 @@ export class UpdateProfileDto {
   @IsString()
   profilePhotoPublicId?: string;
 
-  @ApiPropertyOptional({ example: 'I enjoy trekking and travel planning.', description: 'Short bio' })
+  @ApiPropertyOptional({
+    example: 'I enjoy trekking and travel planning.',
+    description: 'Short bio',
+  })
   @IsOptional()
   @IsString()
   bio?: string;
 
-  @ApiPropertyOptional({ example: 'Kathmandu', description: 'Current location' })
+  @ApiPropertyOptional({
+    example: 'Kathmandu',
+    description: 'Current location',
+  })
   @IsOptional()
   @IsString()
   location?: string;
@@ -77,7 +90,10 @@ export class UpdateProfileDto {
   @IsString()
   province?: string;
 
-  @ApiPropertyOptional({ example: 'Kathmandu District', description: 'District' })
+  @ApiPropertyOptional({
+    example: 'Kathmandu District',
+    description: 'District',
+  })
   @IsOptional()
   @IsString()
   district?: string;
@@ -117,7 +133,8 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Whether profile can be viewed in public search and profile listing',
+    description:
+      'Whether profile can be viewed in public search and profile listing',
   })
   @IsOptional()
   @IsBoolean()

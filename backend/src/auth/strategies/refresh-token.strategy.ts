@@ -12,7 +12,10 @@ export interface RefreshTokenPayload {
 }
 
 @Injectable()
-export class RefreshTokenStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
+export class RefreshTokenStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-refresh',
+) {
   constructor(configService: ConfigService) {
     const secret = configService.get<string>('JWT_REFRESH_SECRET')?.trim();
 
@@ -33,7 +36,12 @@ export class RefreshTokenStrategy extends PassportStrategy(Strategy, 'jwt-refres
   validate(request: Request, payload: RefreshTokenPayload) {
     const refreshToken = request.cookies?.refresh_token as string | undefined;
 
-    if (!refreshToken || !payload.sub || !payload.phoneNumber || !payload.role) {
+    if (
+      !refreshToken ||
+      !payload.sub ||
+      !payload.phoneNumber ||
+      !payload.role
+    ) {
       throw new UnauthorizedException('Invalid refresh token payload');
     }
 

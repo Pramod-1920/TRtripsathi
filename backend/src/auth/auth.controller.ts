@@ -6,6 +6,7 @@ import {
   Patch,
   Post,
   Res,
+  Req,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -23,7 +24,10 @@ import {
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { Role } from './constants/roles.enum';
+import { generateCsrfToken } from '../security/csrf.middleware';
 import { AuthService } from './auth.service';
+import { AuditService } from '../audit/audit.service';
+import type { Request } from 'express';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { GetCurrentUser } from './decorators/get-current-user.decorator';
@@ -35,7 +39,10 @@ import { RolesGuard } from './guards/roles.guard';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly audit: AuditService,
+  ) {}
 
   private getCookieOptions() {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -48,7 +55,11 @@ export class AuthController {
     };
   }
 
-  private setAuthCookies(response: Response, accessToken: string, refreshToken?: string) {
+  private setAuthCookies(
+    response: Response,
+    accessToken: string,
+    refreshToken?: string,
+  ) {
     const cookieOptions = this.getCookieOptions();
 
     response.cookie('access_token', accessToken, {
@@ -62,12 +73,24 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
     }
+
+    // Double-submit CSRF token (non-httpOnly so client JS can read and send in header)
+    try {
+      const csrf = generateCsrfToken();
+      response.cookie('csrf_token', csrf, {
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    } catch (err) {
+      // best-effort, do not block auth if CSRF token generation fails
+    }
   }
 
   private clearAuthCookies(response: Response) {
     const cookieOptions = this.getCookieOptions();
     response.clearCookie('access_token', cookieOptions);
     response.clearCookie('refresh_token', cookieOptions);
+    response.clearCookie('csrf_token', { path: '/' });
   }
 
   @Post('signup')
@@ -78,10 +101,22 @@ export class AuthController {
   @ApiCreatedResponse({
     description: 'User created successfully and JWT cookies were set',
   })
-  @ApiTooManyRequestsResponse({ description: 'Too many requests. Try again later.' })
-  async signup(@Body() signupData: SignupDto, @Res({ passthrough: true }) response: Response) {
+  @ApiTooManyRequestsResponse({
+    description: 'Too many requests. Try again later.',
+  })
+  async signup(
+    @Body() signupData: SignupDto,
+    @Res({ passthrough: true }) response: Response,
+    @Req() req: Request,
+  ) {
     const result = await this.authService.signup(signupData);
     this.setAuthCookies(response, result.accessToken, result.refreshToken);
+    await this.audit.logEvent({
+      type: 'auth.signup',
+      userId: result.user.id,
+      ip: req.ip,
+      ua: req.get('user-agent'),
+    });
     return result;
   }
 
@@ -99,13 +134,27 @@ export class AuthController {
       error: 'Unauthorized',
     },
   })
-  @ApiOkResponse({ description: 'Signin successful. Tokens are also set in httpOnly cookies.' })
-  @ApiTooManyRequestsResponse({ description: 'Too many requests. Try again later.' })
+  @ApiOkResponse({
+    description: 'Signin successful. Tokens are also set in httpOnly cookies.',
+  })
+  @ApiTooManyRequestsResponse({
+    description: 'Too many requests. Try again later.',
+  })
   @ApiCookieAuth('access_token')
   @ApiCookieAuth('refresh_token')
-  async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) response: Response) {
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+    @Req() req: Request,
+  ) {
     const result = await this.authService.login(loginDto);
     this.setAuthCookies(response, result.accessToken, result.refreshToken);
+    await this.audit.logEvent({
+      type: 'auth.login',
+      userId: result.user.id,
+      ip: req.ip,
+      ua: req.get('user-agent'),
+    });
     return result;
   }
 
@@ -117,14 +166,21 @@ export class AuthController {
     summary: 'Deprecated: profile update moved to PATCH /user/profile',
     deprecated: true,
   })
-  @ApiResponse({ status: 410, description: 'Deprecated. Use PATCH /user/profile instead.' })
+  @ApiResponse({
+    status: 410,
+    description: 'Deprecated. Use PATCH /user/profile instead.',
+  })
   updateProfileDeprecated() {
-    throw new GoneException('This endpoint is deprecated. Use PATCH /user/profile');
+    throw new GoneException(
+      'This endpoint is deprecated. Use PATCH /user/profile',
+    );
   }
 
   @Post('refresh')
   @UseGuards(JwtRefreshGuard)
-  @ApiOperation({ summary: 'Refresh access and refresh tokens using refresh_token cookie' })
+  @ApiOperation({
+    summary: 'Refresh access and refresh tokens using refresh_token cookie',
+  })
   @ApiOkResponse({ description: 'Tokens refreshed successfully' })
   @ApiCookieAuth('refresh_token')
   @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
@@ -155,17 +211,31 @@ export class AuthController {
   async logout(
     @GetCurrentUser('userId') userId: string,
     @Res({ passthrough: true }) response: Response,
+    @Req() req: Request,
   ) {
     this.clearAuthCookies(response);
-    return this.authService.logout(userId);
+    const result = await this.authService.logout(userId);
+    await this.audit.logEvent({
+      type: 'auth.logout',
+      userId,
+      ip: req.ip,
+      ua: req.get('user-agent'),
+    });
+    return result;
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: 'Get current authenticated user profile from access token' })
-  @ApiOkResponse({ description: 'Current user profile from token and profile data' })
-  getMe(@GetCurrentUser() user: { userId: string; phoneNumber: string; role: Role }) {
+  @ApiOperation({
+    summary: 'Get current authenticated user profile from access token',
+  })
+  @ApiOkResponse({
+    description: 'Current user profile from token and profile data',
+  })
+  getMe(
+    @GetCurrentUser() user: { userId: string; phoneNumber: string; role: Role },
+  ) {
     return user;
   }
 
@@ -175,7 +245,9 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Admin only sample protected route' })
   @ApiOkResponse({ description: 'Accessible only by admin users' })
-  adminOnly(@GetCurrentUser() user: { userId: string; phoneNumber: string; role: Role }) {
+  adminOnly(
+    @GetCurrentUser() user: { userId: string; phoneNumber: string; role: Role },
+  ) {
     return {
       message: 'Admin access granted',
       user,

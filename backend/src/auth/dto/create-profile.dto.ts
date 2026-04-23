@@ -40,7 +40,10 @@ export class CreateProfileDto {
   @IsNotEmpty()
   profilePhoto: string;
 
-  @ApiProperty({ example: 'I enjoy trekking and travel planning.', description: 'Short bio' })
+  @ApiProperty({
+    example: 'I enjoy trekking and travel planning.',
+    description: 'Short bio',
+  })
   @IsString()
   @IsNotEmpty()
   bio: string;

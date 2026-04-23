@@ -18,7 +18,8 @@ export function Sidebar() {
       await apiClient.post('/auth/logout');
     } finally {
       logout();
-      router.replace('/login');
+      // Use location.replace to force a full navigation (avoids cached SPA flash on back)
+      window.location.replace('/login');
     }
   };
 

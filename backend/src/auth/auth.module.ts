@@ -11,6 +11,7 @@ import { AccessTokenStrategy } from './strategies/access-token.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { RolesGuard } from './guards/roles.guard';
 import { UserModule } from '../user/user.module';
+import { SecurityModule } from '../security/security.module';
 
 @Module({
   imports: [
@@ -26,8 +27,16 @@ import { UserModule } from '../user/user.module';
     JwtModule.register({}),
     MongooseModule.forFeature([{ name: Auth.name, schema: AuthSchema }]),
     UserModule,
+    // security helpers (token revocation, audit)
+    // exports TokenRevocationService, AuditService
+    SecurityModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, AccessTokenStrategy, RefreshTokenStrategy, RolesGuard],
+  providers: [
+    AuthService,
+    AccessTokenStrategy,
+    RefreshTokenStrategy,
+    RolesGuard,
+  ],
 })
 export class AuthModule {}

@@ -12,7 +12,8 @@ import { CloudinaryService } from './cloudinary.service';
     {
       provide: 'CLOUDINARY_CONFIG',
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => getCloudinaryConfig(configService),
+      useFactory: (configService: ConfigService) =>
+        getCloudinaryConfig(configService),
     },
   ],
   exports: ['CLOUDINARY_CONFIG', CloudinaryService],

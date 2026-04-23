@@ -67,6 +67,97 @@ export default function LayoutWrapper({
     };
   }, [isLoginPage, logout, router, setLoading, setSession]);
 
+  // Inactivity logout: if admin page is inactive for 5 minutes, sign out
+  useEffect(() => {
+    if (isLoginPage) return;
+
+    let timeoutId: number | undefined;
+
+    const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
+
+    const resetTimeout = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(async () => {
+        try {
+          // attempt server logout
+          await apiClient.post('/auth/logout');
+        } catch (_) {}
+        logout();
+        // force full navigation to login to avoid cached dashboard flashes
+        window.location.replace('/login');
+      }, INACTIVITY_MS);
+    };
+
+    const events = ['mousemove', 'keydown', 'touchstart', 'click'];
+    events.forEach((e) => window.addEventListener(e, resetTimeout));
+
+    // start timer
+    resetTimeout();
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+      events.forEach((e) => window.removeEventListener(e, resetTimeout));
+    };
+  }, [isLoginPage, logout]);
+
+  // On tab close/unload, attempt to clear server session using sendBeacon so cookies are removed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        const url = `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000')}/auth/logout`;
+        const blob = new Blob([], { type: 'application/json' });
+        // sendBeacon will do a POST; server should accept and clear cookies
+        navigator.sendBeacon(url, blob);
+      } catch (_) {
+        // ignore
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // Handle pages restored from Back-Forward Cache (BFCache) and popstate navigation.
+  // Some browsers restore the page instantly from cache after navigating back which can show protected UI
+  // before client-side auth checks run. Detect BFCache and force a fresh check/navigation.
+  useEffect(() => {
+    // pageshow handler must be synchronous to match EventListener type; use promises inside
+    const handlePageShow = (event: Event) => {
+      const p = event as PageTransitionEvent;
+      if (p && 'persisted' in p && (p as PageTransitionEvent).persisted) {
+        apiClient
+          .get('/auth/me')
+          .then(() => {
+            // session still valid - reload to get fresh state
+            window.location.reload();
+          })
+          .catch(() => {
+            logout();
+            window.location.replace('/login');
+          });
+      }
+    };
+
+    const handlePopState = () => {
+      apiClient
+        .get('/auth/me')
+        .catch(() => {
+          logout();
+          window.location.replace('/login');
+        });
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [logout]);
+
   if (isLoginPage) {
     return <>{children}</>;
   }

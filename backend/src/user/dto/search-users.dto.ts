@@ -1,13 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ExperienceLevel } from '../../auth/constants/experience-level.enum';
 
 export class SearchUsersDto {
@@ -19,7 +12,10 @@ export class SearchUsersDto {
   @IsString()
   q?: string;
 
-  @ApiPropertyOptional({ enum: ExperienceLevel, example: ExperienceLevel.Beginner })
+  @ApiPropertyOptional({
+    enum: ExperienceLevel,
+    example: ExperienceLevel.Beginner,
+  })
   @IsOptional()
   @IsEnum(ExperienceLevel)
   experienceLevel?: ExperienceLevel;

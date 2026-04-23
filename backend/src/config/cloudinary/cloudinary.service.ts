@@ -7,9 +7,13 @@ export class CloudinaryService {
   constructor(private readonly configService: ConfigService) {}
 
   getConfig() {
-    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME')?.trim();
+    const cloudName = this.configService
+      .get<string>('CLOUDINARY_CLOUD_NAME')
+      ?.trim();
     const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY')?.trim();
-    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET')?.trim();
+    const apiSecret = this.configService
+      .get<string>('CLOUDINARY_API_SECRET')
+      ?.trim();
 
     if (!cloudName) {
       throw new Error('CLOUDINARY_CLOUD_NAME is required in .env file');
@@ -43,7 +47,10 @@ export class CloudinaryService {
       signatureParams.folder = folder;
     }
 
-    const signature = cloudinary.utils.api_sign_request(signatureParams, apiSecret);
+    const signature = cloudinary.utils.api_sign_request(
+      signatureParams,
+      apiSecret,
+    );
 
     return {
       cloudName,

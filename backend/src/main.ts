@@ -4,6 +4,10 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import bodyParser from 'body-parser';
+import rateLimit from 'express-rate-limit';
+import { csrfMiddleware } from './security/csrf.middleware';
+import { adminHeadersMiddleware } from './security/headers.middleware';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common/pipes/validation.pipe';
 import { Connection } from 'mongoose';
@@ -37,11 +41,15 @@ function logMongoConnectionStatus(app: INestApplication): void {
   const mongooseConnection = app.get<Connection>(getConnectionToken());
 
   if (mongooseConnection.readyState === 1) {
-    console.log(`=== MONGODB CONNECTED SUCCESSFULLY: ${mongooseConnection.name} ===`);
+    console.log(
+      `=== MONGODB CONNECTED SUCCESSFULLY: ${mongooseConnection.name} ===`,
+    );
     return;
   }
 
-  console.log(`=== MONGODB CONNECTION STATUS: readyState=${mongooseConnection.readyState} ===`);
+  console.log(
+    `=== MONGODB CONNECTION STATUS: readyState=${mongooseConnection.readyState} ===`,
+  );
 }
 
 async function bootstrap() {
@@ -50,6 +58,48 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
+  // ensure body parsing for sendBeacon JSON payloads (small bodies)
+  app.use(bodyParser.json({ limit: '16kb' }));
+
+  // Apply admin security headers globally (safe conservative policy)
+  app.use(adminHeadersMiddleware);
+
+  // Rate-limit auth endpoints (in-memory fallback using express-rate-limit)
+  // In production consider replacing with a Redis-backed limiter for cross-process limits.
+  const minuteLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.setHeader('Retry-After', String(60));
+      res
+        .status(429)
+        .json({ message: 'Too many requests (per-minute). Try again later.' });
+    },
+  });
+
+  const hourLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.setHeader('Retry-After', String(60 * 60));
+      res
+        .status(429)
+        .json({ message: 'Too many requests (per-hour). Try again later.' });
+    },
+  });
+
+  // apply both limiters in sequence to auth endpoints
+  app.use('/auth/login', minuteLimiter, hourLimiter);
+  app.use('/auth/signup', minuteLimiter, hourLimiter);
+  app.use('/auth/refresh', minuteLimiter, hourLimiter);
+  app.use('/auth/logout', minuteLimiter, hourLimiter);
+
+  // CSRF middleware for state-changing endpoints (double-submit cookie)
+  app.use(csrfMiddleware);
 
   app.enableCors({
     origin: frontendUrl,
@@ -87,7 +137,9 @@ async function bootstrap() {
   const port = getPortFromEnv();
   await app.listen(port);
   console.log(`Server is running on port http://localhost:${port}`);
-  console.log(`Swagger documentation available at http://localhost:${port}/api/docs`);
+  console.log(
+    `Swagger documentation available at http://localhost:${port}/api/docs`,
+  );
 
   logMongoConnectionStatus(app);
 }

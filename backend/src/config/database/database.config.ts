@@ -2,7 +2,9 @@ import { ConfigService } from '@nestjs/config';
 import { MongooseModuleOptions } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 
-export function getDatabaseConfig(configService: ConfigService): MongooseModuleOptions {
+export function getDatabaseConfig(
+  configService: ConfigService,
+): MongooseModuleOptions {
   const mongoUri = configService.get<string>('MONGODB_URI')?.trim();
 
   if (!mongoUri) {

@@ -27,13 +27,17 @@ import { Role } from '../auth/constants/roles.enum';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserService } from './user.service';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('User')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
 @Controller('user')
 export class UserController {
-  constructor(private readonly userService: UserService) {}
+  constructor(
+    private readonly userService: UserService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Get('profile')
   @ApiOperation({ summary: 'Get own profile' })
@@ -65,7 +69,11 @@ export class UserController {
   @ApiQuery({ name: 'q', required: false, example: 'john' })
   @ApiQuery({ name: 'experienceLevel', required: false, example: 'beginner' })
   @ApiQuery({ name: 'province', required: false, example: 'Bagmati' })
-  @ApiQuery({ name: 'district', required: false, example: 'Kathmandu District' })
+  @ApiQuery({
+    name: 'district',
+    required: false,
+    example: 'Kathmandu District',
+  })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 10 })
   @ApiOkResponse({
@@ -76,7 +84,8 @@ export class UserController {
           _id: '6805f4a8b7a4f7d6e0f2d0d3',
           firstName: 'John',
           lastName: 'Doe',
-          profilePhoto: 'https://res.cloudinary.com/demo/image/upload/profile.jpg',
+          profilePhoto:
+            'https://res.cloudinary.com/demo/image/upload/profile.jpg',
           location: 'Kathmandu',
           province: 'Bagmati',
           district: 'Kathmandu District',
@@ -106,7 +115,12 @@ export class UserController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
-    return this.userService.getAllProfiles({ page, limit: Math.min(limit, 50) });
+    const result = await this.userService.getAllProfiles({
+      page,
+      limit: Math.min(limit, 50),
+    });
+    await this.audit.logEvent({ type: 'admin.list_profiles', page, limit });
+    return result;
   }
 
   @Get('admin/profiles/:id')
@@ -116,7 +130,9 @@ export class UserController {
   @ApiParam({ name: 'id', description: 'Profile ID' })
   @ApiOkResponse({ description: 'Admin profile fetched successfully' })
   async getProfileById(@Param('id') profileId: string) {
-    return this.userService.getProfileById(profileId);
+    const profile = await this.userService.getProfileById(profileId);
+    await this.audit.logEvent({ type: 'admin.view_profile', profileId });
+    return profile;
   }
 
   @Patch('admin/profiles/:id')
@@ -130,17 +146,37 @@ export class UserController {
     @Param('id') profileId: string,
     @Body() updates: Record<string, unknown>,
   ) {
-    return this.userService.adminUpdateProfile(profileId, updates);
+    const before = await this.userService.getProfileById(profileId);
+    const result = await this.userService.adminUpdateProfile(
+      profileId,
+      updates,
+    );
+    await this.audit.logEvent({
+      type: 'admin.update_profile',
+      profileId,
+      before,
+      updates,
+    });
+    return result;
   }
 
   @Delete('admin/profiles/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: delete any profile and linked auth account' })
+  @ApiOperation({
+    summary: 'Admin: delete any profile and linked auth account',
+  })
   @ApiParam({ name: 'id', description: 'Profile ID' })
   @ApiOkResponse({ description: 'Admin deleted profile successfully' })
   async adminDeleteProfile(@Param('id') profileId: string) {
-    return this.userService.adminDeleteProfile(profileId);
+    const before = await this.userService.getProfileById(profileId);
+    const result = await this.userService.adminDeleteProfile(profileId);
+    await this.audit.logEvent({
+      type: 'admin.delete_profile',
+      profileId,
+      before,
+    });
+    return result;
   }
 
   @Get(':id')
@@ -164,6 +200,8 @@ export class UserController {
     },
   })
   async getPublicProfile(@Param('id') profileId: string) {
-    return this.userService.getPublicProfileById(profileId);
+    const profile = await this.userService.getPublicProfileById(profileId);
+    await this.audit.logEvent({ type: 'profile.view', profileId });
+    return profile;
   }
 }
