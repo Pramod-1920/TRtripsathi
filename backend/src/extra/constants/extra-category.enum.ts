@@ -4,4 +4,5 @@ export enum ExtraCategory {
   Xp = 'xp',
   Badge = 'badge',
   LevelUp = 'level-up',
+  Achievement = 'achievement',
 }

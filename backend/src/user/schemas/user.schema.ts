@@ -17,6 +17,52 @@ export class User extends Document {
   @Prop({ type: Number, default: 1 })
   level!: number;
 
+  @Prop({
+    type: {
+      hikes: { type: Number, default: 0 },
+      treks: { type: Number, default: 0 },
+      temples: { type: Number, default: 0 },
+      difficultRoutes: { type: Number, default: 0 },
+      legendaryRoutes: { type: Number, default: 0 },
+      questChains: { type: Number, default: 0 },
+    },
+    default: {},
+  })
+  achievementStats?: {
+    hikes?: number;
+    treks?: number;
+    temples?: number;
+    difficultRoutes?: number;
+    legendaryRoutes?: number;
+    questChains?: number;
+  };
+
+  @Prop({
+    type: [
+      {
+        key: String,
+        title: String,
+        subcategory: String,
+        count: Number,
+        target: Number,
+        hidden: Boolean,
+        completedAt: Date,
+        updatedAt: Date,
+      },
+    ],
+    default: [],
+  })
+  achievementProgress?: Array<{
+    key: string;
+    title: string;
+    subcategory: string;
+    count: number;
+    target: number;
+    hidden?: boolean;
+    completedAt?: Date;
+    updatedAt?: Date;
+  }>;
+
   @Prop({ type: Types.ObjectId, ref: 'Auth', default: null })
   referredByAuthId?: Types.ObjectId | null;
 
@@ -134,7 +180,7 @@ export class User extends Document {
   @Prop({ type: String, default: null })
   landmark?: string | null;
 
-  @Prop({ type: String, default: ExperienceLevel.Beginner })
+  @Prop({ type: String, default: ExperienceLevel.E })
   experienceLevel?: string | null;
 
   @Prop({ type: String, enum: Gender, default: null })

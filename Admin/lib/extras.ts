@@ -1,6 +1,12 @@
 import { apiClient } from '@/lib/api';
 
-export type ExtraCategory = 'places' | 'difficulty' | 'xp' | 'badge' | 'level-up';
+export type ExtraCategory =
+  | 'places'
+  | 'difficulty'
+  | 'xp'
+  | 'badge'
+  | 'level-up'
+  | 'achievement';
 
 export type ExtraItem = {
   _id: string;

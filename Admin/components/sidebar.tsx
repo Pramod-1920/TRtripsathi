@@ -39,6 +39,7 @@ export function Sidebar() {
     { href: '/extra/xp', label: 'XP' },
     { href: '/extra/badge', label: 'Badge' },
     { href: '/extra/level-up', label: 'Level Up' },
+    { href: '/extra/achievement', label: 'Achievements' },
   ];
 
   const isCampaignSectionActive = pathname.startsWith('/campaigns');

@@ -1,6 +1,11 @@
 export enum ExperienceLevel {
-  Beginner = 'beginner',
-  Intermediate = 'intermediate',
-  Advanced = 'advanced',
-  Expert = 'expert',
+  E = 'E',
+  D = 'D',
+  C = 'C',
+  B = 'B',
+  A = 'A',
+  S = 'S',
+  SS = 'SS',
+  SSS = 'SSS',
+  Mythic = 'Mythic',
 }

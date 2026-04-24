@@ -30,6 +30,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetReferrerDto } from './dto/set-referrer.dto';
 import { SubmitRatingDto } from './dto/submit-rating.dto';
 import { TriggerXpEventDto } from './dto/trigger-xp-event.dto';
+import { TriggerAchievementEventDto } from './dto/trigger-achievement-event.dto';
 import { CreatePhotoVerificationRequestDto } from './dto/create-photo-verification-request.dto';
 import { ReviewPhotoVerificationRequestDto } from './dto/review-photo-verification-request.dto';
 import { UserService } from './user.service';
@@ -79,6 +80,17 @@ export class UserController {
     @Body() body: TriggerXpEventDto,
   ) {
     return this.userService.awardXpForEvent(authId, body.eventKey, body.context ?? {});
+  }
+  
+  @Post('achievements/events')
+  @ApiOperation({ summary: 'Record an achievement event for own profile' })
+  @ApiBody({ type: TriggerAchievementEventDto })
+  @ApiOkResponse({ description: 'Achievement event recorded successfully' })
+  async triggerOwnAchievementEvent(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: TriggerAchievementEventDto,
+  ) {
+    return this.userService.recordAchievementEvent(authId, body);
   }
 
   @Get('profile/xp/history')
@@ -268,6 +280,21 @@ export class UserController {
     });
 
     return result;
+  }
+
+  @Post('admin/profiles/:id/achievements/events')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: record an achievement event for a profile' })
+  @ApiBody({ type: TriggerAchievementEventDto })
+  @ApiOkResponse({ description: 'Admin achievement event recorded successfully' })
+  async adminTriggerProfileAchievementEvent(
+    @Param('id') profileId: string,
+    @Body() body: TriggerAchievementEventDto,
+  ) {
+    const profile = await this.userService.getProfileById(profileId);
+    const authId = profile.authId?.toString?.() ?? profile.authId;
+    return this.userService.recordAchievementEvent(String(authId), body);
   }
 
   @Patch('admin/profiles/:id/photos/verification-requests/:requestCode')
