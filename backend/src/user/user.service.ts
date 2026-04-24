@@ -6,17 +6,26 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
+import { ExperienceLevel } from '../auth/constants/experience-level.enum';
 import { CloudinaryService } from '../config/cloudinary/cloudinary.service';
+import { ExtraCategory } from '../extra/constants/extra-category.enum';
+import { ExtraItem } from '../extra/schemas/extra.schema';
 import { Gender } from './constants/gender.enum';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './schemas/user.schema';
+
+type LevelUpRule = {
+  rankName: string;
+  requiredLevel: number;
+};
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Auth.name) private readonly authModel: Model<Auth>,
+    @InjectModel(ExtraItem.name) private readonly extraModel: Model<ExtraItem>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
@@ -52,6 +61,7 @@ export class UserService {
       'district',
       'landmark',
       'experienceLevel',
+      'level',
       'gender',
       'languagesKnown',
       'isProfilePublic',
@@ -107,7 +117,96 @@ export class UserService {
         .filter((language) => language.length > 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'level')) {
+      const rawLevel = Number(sanitized.level);
+
+      if (!Number.isFinite(rawLevel) || rawLevel < 1) {
+        throw new BadRequestException('Level must be a number greater than or equal to 1');
+      }
+
+      sanitized.level = Math.floor(rawLevel);
+    }
+
     return sanitized;
+  }
+
+  private parseRequiredLevel(value?: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  private async getLevelUpRules(): Promise<LevelUpRule[]> {
+    const items = await this.extraModel
+      .find({
+        category: ExtraCategory.LevelUp,
+        enabled: { $ne: false },
+      })
+      .sort({ createdAt: 1 });
+
+    return items
+      .map((item) => {
+        const requiredLevel = this.parseRequiredLevel(item.value);
+
+        if (!requiredLevel || !item.name?.trim()) {
+          return null;
+        }
+
+        return {
+          rankName: item.name.trim(),
+          requiredLevel,
+        };
+      })
+      .filter((item): item is LevelUpRule => Boolean(item))
+      .sort((first, second) => first.requiredLevel - second.requiredLevel);
+  }
+
+  private getRankForLevel(level: number, rules: LevelUpRule[]) {
+    let promotedRank = ExperienceLevel.Beginner;
+
+    for (const rule of rules) {
+      if (level >= rule.requiredLevel) {
+        promotedRank = rule.rankName;
+      }
+    }
+
+    return promotedRank;
+  }
+
+  private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
+    const level = Math.max(1, Math.floor(Number(profile.level ?? 1)));
+    const levelUpRules = rules ?? await this.getLevelUpRules();
+    const promotedRank = this.getRankForLevel(level, levelUpRules);
+
+    const shouldUpdate =
+      profile.level !== level
+      || (profile.experienceLevel ?? ExperienceLevel.Beginner) !== promotedRank;
+
+    if (!shouldUpdate) {
+      return profile;
+    }
+
+    const updated = await this.userModel.findByIdAndUpdate(
+      profile._id,
+      {
+        level,
+        experienceLevel: promotedRank,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    return updated ?? profile;
   }
 
   private validatePhoneNumber(phoneNumber: string) {
@@ -223,13 +322,17 @@ export class UserService {
   }
 
   async createProfile(authId: string) {
-    return this.userModel.create({
+    const created = await this.userModel.create({
       authId: this.toObjectId(authId),
       profileCompleted: false,
       xp: 0,
+      level: 1,
+      experienceLevel: ExperienceLevel.Beginner,
       badge: '',
       isProfilePublic: true,
     });
+
+    return this.applyLevelProgression(created);
   }
 
   async getProfileByAuthId(authId: string) {
@@ -241,7 +344,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
-    return this.attachAuthContactInfo(profile);
+    const syncedProfile = await this.applyLevelProgression(profile);
+    return this.attachAuthContactInfo(syncedProfile);
   }
 
   async getPublicProfileById(profileId: string) {
@@ -257,7 +361,11 @@ export class UserService {
       throw new NotFoundException('Public profile not found');
     }
 
-    return profile;
+    return {
+      ...profile.toObject(),
+      level: profile.level ?? 1,
+      experienceLevel: profile.experienceLevel ?? ExperienceLevel.Beginner,
+    };
   }
 
   async updateOwnProfile(authId: string, updates: UpdateProfileDto) {
@@ -299,7 +407,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
-    return this.attachAuthContactInfo(updatedProfile);
+    const syncedProfile = await this.applyLevelProgression(updatedProfile);
+    return this.attachAuthContactInfo(syncedProfile);
   }
 
   async deleteOwnProfile(authId: string) {
@@ -363,8 +472,13 @@ export class UserService {
       this.userModel.countDocuments(filter),
     ]);
 
+    const levelUpRules = await this.getLevelUpRules();
+    const syncedItems = await Promise.all(
+      items.map((item) => this.applyLevelProgression(item, levelUpRules)),
+    );
+
     return {
-      items,
+      items: syncedItems,
       pagination: {
         total,
         page,
@@ -384,8 +498,13 @@ export class UserService {
       this.userModel.countDocuments(),
     ]);
 
+    const levelUpRules = await this.getLevelUpRules();
+    const syncedItems = await Promise.all(
+      items.map((item) => this.applyLevelProgression(item, levelUpRules)),
+    );
+
     return {
-      items,
+      items: syncedItems,
       pagination: {
         total,
         page,
@@ -402,7 +521,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
-    return this.attachAuthContactInfo(profile);
+    const syncedProfile = await this.applyLevelProgression(profile);
+    return this.attachAuthContactInfo(syncedProfile);
   }
 
   async adminUpdateProfile(
@@ -434,7 +554,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
-    return this.attachAuthContactInfo(updatedProfile);
+    const syncedProfile = await this.applyLevelProgression(updatedProfile);
+    return this.attachAuthContactInfo(syncedProfile);
   }
 
   async adminDeleteProfile(profileId: string) {
@@ -464,6 +585,8 @@ export class UserService {
       ...profile.toObject(),
       phoneNumber: auth?.phoneNumber ?? null,
       email: auth?.email ?? null,
+      level: profile.level ?? 1,
+      experienceLevel: profile.experienceLevel ?? ExperienceLevel.Beginner,
     };
   }
 }

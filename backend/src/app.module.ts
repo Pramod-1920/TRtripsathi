@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { CampaignModule } from './campaign/campaign.module';
+import { ExtraModule } from './extra/extra.module';
 import { DatabaseModule } from './config/database/database.module';
 import { CloudinaryModule } from './config/cloudinary/cloudinary.module';
 import { UserModule } from './user/user.module';
@@ -22,6 +23,7 @@ import { SecurityModule } from './security/security.module';
     AuthModule,
     RedisModule,
     CampaignModule,
+    ExtraModule,
     SecurityModule,
   ],
   controllers: [AppController],

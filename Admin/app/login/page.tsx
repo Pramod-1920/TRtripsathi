@@ -7,6 +7,54 @@ import axios from 'axios';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
+function normalizePhoneNumber(input: string) {
+  const digitsOnly = input.replace(/\D/g, '');
+
+  // Keep last 10 digits to support inputs like +977-98XXXXXXXX.
+  if (digitsOnly.length > 10) {
+    return digitsOnly.slice(-10);
+  }
+
+  return digitsOnly;
+}
+
+function getAxiosErrorMessage(error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return undefined;
+  }
+
+  const data = error.response?.data as
+    | { message?: string | string[] }
+    | undefined;
+
+  if (!data?.message) {
+    return undefined;
+  }
+
+  if (Array.isArray(data.message)) {
+    return data.message.join(', ');
+  }
+
+  return data.message;
+}
+
+function getLoginErrorMessage(error: unknown) {
+  const backendMessage = getAxiosErrorMessage(error);
+  if (backendMessage) {
+    return backendMessage;
+  }
+
+  if (axios.isAxiosError(error)) {
+    if (!error.response) {
+      return 'Cannot reach backend server. Please verify API URL/CORS and that backend is running.';
+    }
+
+    return `Login failed with status ${error.response.status}.`;
+  }
+
+  return 'Invalid credentials or admin access denied.';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -32,9 +80,17 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
+    const normalizedPhone = normalizePhoneNumber(formData.phoneNumber);
+
+    if (!/^\d{10}$/.test(normalizedPhone)) {
+      setError('Phone number must be exactly 10 digits.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await apiClient.post('/auth/login', {
-        phoneNumber: formData.phoneNumber,
+        phoneNumber: normalizedPhone,
         password: formData.password,
       });
 
@@ -47,7 +103,11 @@ export default function LoginPage() {
       };
 
       if (data.user.role !== 'admin') {
-        await apiClient.post('/auth/logout');
+        try {
+          await apiClient.post('/auth/logout');
+        } catch {
+          // Best-effort cleanup only.
+        }
         setError('Admin access only. Please sign in with an admin account.');
         return;
       }
@@ -55,18 +115,14 @@ export default function LoginPage() {
       setSession(data.user);
       router.push('/dashboard');
     } catch (error) {
-      const backendMessage = axios.isAxiosError(error)
-        ? (error.response?.data as { message?: string } | undefined)?.message
-        : undefined;
-
-      setError(backendMessage || 'Invalid credentials or admin access denied.');
+      setError(getLoginErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-blue-600 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">

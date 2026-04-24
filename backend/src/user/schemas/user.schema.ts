@@ -14,6 +14,9 @@ export class User extends Document {
   @Prop({ type: Number, default: 0 })
   xp!: number;
 
+  @Prop({ type: Number, default: 1 })
+  level!: number;
+
   @Prop({ type: String, default: '' })
   badge!: string;
 
@@ -56,8 +59,8 @@ export class User extends Document {
   @Prop({ type: String, default: null })
   landmark?: string | null;
 
-  @Prop({ type: String, enum: ExperienceLevel, default: null })
-  experienceLevel?: ExperienceLevel | null;
+  @Prop({ type: String, default: ExperienceLevel.Beginner })
+  experienceLevel?: string | null;
 
   @Prop({ type: String, enum: Gender, default: null })
   gender?: Gender | null;

@@ -18,6 +18,9 @@ export class CampaignPhoto {
 
 @Schema({ timestamps: true })
 export class Campaign {
+  @Prop({ type: String, required: true, unique: true, index: true })
+  campaignCode!: string;
+
   @Prop({ type: String, required: true })
   title!: string;
 

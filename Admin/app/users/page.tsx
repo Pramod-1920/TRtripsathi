@@ -18,6 +18,7 @@ interface User {
   district?: string | null;
   landmark?: string | null;
   experienceLevel?: string | null;
+  level?: number;
   xp?: number;
   badge?: string;
   profileCompleted: boolean;
@@ -170,7 +171,8 @@ export default function UsersPage() {
                   <p className="text-xs text-slate-400">{user.province || ''} {user.district ? `• ${user.district}` : ''}</p>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-slate-600">{user.experienceLevel || 'N/A'}</span>
+                  <p className="text-sm font-medium text-slate-700">Level {user.level ?? 1}</p>
+                  <p className="text-xs text-slate-500">{user.experienceLevel || 'beginner'}</p>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(user.profileCompleted)}`}>

@@ -25,6 +25,7 @@ export type SafeUser = {
   email?: string | null;
   role: Role;
   profileCompleted: boolean;
+  level?: number;
   firstName?: string | null;
   middleName?: string | null;
   lastName?: string | null;
@@ -391,6 +392,7 @@ export class AuthService {
       email: user.email ?? null,
       role: user.role,
       profileCompleted: profile?.profileCompleted ?? false,
+      level: profile?.level ?? 1,
       firstName: profile?.firstName ?? null,
       middleName: profile?.middleName ?? null,
       lastName: profile?.lastName ?? null,
@@ -401,7 +403,7 @@ export class AuthService {
       province: profile?.province ?? null,
       district: profile?.district ?? null,
       landmark: profile?.landmark ?? null,
-      experienceLevel: profile?.experienceLevel ?? null,
+      experienceLevel: profile?.experienceLevel ?? 'beginner',
     };
   }
 }

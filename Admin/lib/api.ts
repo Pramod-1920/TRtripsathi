@@ -35,9 +35,23 @@ apiClient.interceptors.request.use((config) => attachCsrfHeader(config));
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const requestUrl = (originalRequest?.url || '').toString();
+    const isAuthEndpoint =
+      requestUrl.includes('/auth/login')
+      || requestUrl.includes('/auth/signup')
+      || requestUrl.includes('/auth/refresh')
+      || requestUrl.includes('/auth/logout');
+
+    if (
+      error.response?.status === 401
+      && originalRequest
+      && !originalRequest._retry
+      && !isAuthEndpoint
+    ) {
       originalRequest._retry = true;
 
       try {
