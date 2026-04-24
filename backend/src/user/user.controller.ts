@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -26,6 +27,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Role } from '../auth/constants/roles.enum';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { SetReferrerDto } from './dto/set-referrer.dto';
+import { SubmitRatingDto } from './dto/submit-rating.dto';
+import { TriggerXpEventDto } from './dto/trigger-xp-event.dto';
+import { CreatePhotoVerificationRequestDto } from './dto/create-photo-verification-request.dto';
+import { ReviewPhotoVerificationRequestDto } from './dto/review-photo-verification-request.dto';
 import { UserService } from './user.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -62,6 +68,63 @@ export class UserController {
   @ApiOkResponse({ description: 'Own account deleted successfully' })
   async deleteOwnProfile(@GetCurrentUser('userId') authId: string) {
     return this.userService.deleteOwnProfile(authId);
+  }
+
+  @Post('xp/events')
+  @ApiOperation({ summary: 'Apply XP rules for own profile using an event key' })
+  @ApiBody({ type: TriggerXpEventDto })
+  @ApiOkResponse({ description: 'XP event evaluated successfully' })
+  async triggerOwnXpEvent(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: TriggerXpEventDto,
+  ) {
+    return this.userService.awardXpForEvent(authId, body.eventKey, body.context ?? {});
+  }
+
+  @Get('profile/xp/history')
+  @ApiOperation({ summary: 'Get own XP award history with pagination' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiOkResponse({ description: 'XP history fetched successfully' })
+  async getOwnXpHistory(
+    @GetCurrentUser('userId') authId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.userService.getOwnXpHistory(authId, page, limit);
+  }
+
+  @Post('profile/referrer')
+  @ApiOperation({ summary: 'Set own referrer profile once' })
+  @ApiBody({ type: SetReferrerDto })
+  @ApiOkResponse({ description: 'Referrer linked successfully' })
+  async setOwnReferrer(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: SetReferrerDto,
+  ) {
+    return this.userService.setReferrerForOwnProfile(authId, body.referrerProfileId);
+  }
+
+  @Post('ratings')
+  @ApiOperation({ summary: 'Submit rating for another profile and auto-trigger rating XP' })
+  @ApiBody({ type: SubmitRatingDto })
+  @ApiOkResponse({ description: 'Rating submitted successfully' })
+  async submitRating(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: SubmitRatingDto,
+  ) {
+    return this.userService.submitRating(authId, body);
+  }
+
+  @Post('photos/verification-requests')
+  @ApiOperation({ summary: 'Submit campaign photo for manual verification before XP award' })
+  @ApiBody({ type: CreatePhotoVerificationRequestDto })
+  @ApiOkResponse({ description: 'Photo verification request submitted' })
+  async createPhotoVerificationRequest(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: CreatePhotoVerificationRequestDto,
+  ) {
+    return this.userService.createPhotoVerificationRequest(authId, body);
   }
 
   @Get('search')
@@ -176,6 +239,66 @@ export class UserController {
       profileId,
       before,
     });
+    return result;
+  }
+
+  @Post('admin/profiles/:id/xp/events')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: evaluate XP rules for a profile' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiBody({ type: TriggerXpEventDto })
+  @ApiOkResponse({ description: 'Admin-triggered XP event evaluated successfully' })
+  async adminTriggerProfileXpEvent(
+    @Param('id') profileId: string,
+    @Body() body: TriggerXpEventDto,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.awardXpForProfileEvent(
+      profileId,
+      body.eventKey,
+      body.context ?? {},
+    );
+
+    await this.audit.logEvent({
+      type: 'admin.trigger_xp_event',
+      profileId,
+      adminId,
+      eventKey: body.eventKey,
+    });
+
+    return result;
+  }
+
+  @Patch('admin/profiles/:id/photos/verification-requests/:requestCode')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: approve or reject a user photo verification request' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiParam({ name: 'requestCode', description: 'Photo verification request code' })
+  @ApiBody({ type: ReviewPhotoVerificationRequestDto })
+  @ApiOkResponse({ description: 'Photo verification request reviewed successfully' })
+  async reviewPhotoVerificationRequest(
+    @Param('id') profileId: string,
+    @Param('requestCode') requestCode: string,
+    @Body() body: ReviewPhotoVerificationRequestDto,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.reviewPhotoVerificationRequest(
+      profileId,
+      requestCode,
+      body,
+      adminId,
+    );
+
+    await this.audit.logEvent({
+      type: 'admin.review_photo_verification',
+      profileId,
+      requestCode,
+      adminId,
+      status: body.status,
+    });
+
     return result;
   }
 

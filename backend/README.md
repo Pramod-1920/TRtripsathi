@@ -68,7 +68,18 @@ npm run build
 npm run start:prod
 npm run test
 npm run test:e2e
+npm run seed:xp
 ```
+
+## XP Rule Seed
+
+Run this once to create default XP rules (5 difficulty levels and milestone events):
+
+```bash
+npm run seed:xp
+```
+
+The seed is idempotent by rule name in `category=xp`: existing matching rules are updated, missing rules are created.
 
 ## Authentication Design
 

@@ -12,6 +12,7 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { AuditService } from '../audit/audit.service';
 import { User } from '../user/schemas/user.schema';
 import { Auth } from '../auth/schemas/auth.schema';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class CampaignService {
@@ -23,6 +24,7 @@ export class CampaignService {
     @InjectModel(Auth.name)
     private readonly authModel: Model<Auth>,
     private readonly audit: AuditService,
+    private readonly userService: UserService,
   ) {}
 
   private generateCampaignCode() {
@@ -51,10 +53,16 @@ export class CampaignService {
         completed: false,
         startDate: { $ne: null },
       })
-      .select('_id startDate durationDays')
+      .select('_id startDate durationDays difficulty location hostId participants')
       .lean();
 
-    const toClose: Types.ObjectId[] = [];
+    const toClose: Array<{
+      _id: Types.ObjectId;
+      difficulty?: string | null;
+      location?: string | null;
+      hostId: Types.ObjectId;
+      participants?: Array<{ userId: Types.ObjectId; status?: string }>;
+    }> = [];
 
     for (const campaign of candidates) {
       if (!campaign.startDate) {
@@ -66,15 +74,74 @@ export class CampaignService {
       const endTime = startTime + durationDays * 24 * 60 * 60 * 1000;
 
       if (now.getTime() >= endTime) {
-        toClose.push(campaign._id as Types.ObjectId);
+        toClose.push({
+          _id: campaign._id as Types.ObjectId,
+          difficulty: campaign.difficulty,
+          location: campaign.location,
+          hostId: campaign.hostId as Types.ObjectId,
+          participants: (campaign.participants ?? []) as Array<{
+            userId: Types.ObjectId;
+            status?: string;
+          }>,
+        });
       }
     }
 
     if (toClose.length > 0) {
       await this.campaignModel.updateMany(
-        { _id: { $in: toClose } },
+        { _id: { $in: toClose.map((item) => item._id) } },
         { $set: { completed: true } },
       );
+
+      for (const campaign of toClose) {
+        const campaignId = campaign._id.toString();
+        const normalizedDifficulty = campaign.difficulty?.trim().toLowerCase();
+        const normalizedDistrict = campaign.location?.trim().toLowerCase();
+        const acceptedParticipants = (campaign.participants ?? []).filter(
+          (participant) => participant.status === 'accepted',
+        );
+        const participantCount = acceptedParticipants.length;
+
+        await this.userService.awardXpForEvent(
+          campaign.hostId.toString(),
+          'host_campaign_completed',
+          {
+            campaignId,
+            difficulty: normalizedDifficulty,
+            district: normalizedDistrict,
+            hostOnly: true,
+          },
+        );
+
+        for (const participant of acceptedParticipants) {
+          await this.userService.awardXpForEvent(
+            participant.userId.toString(),
+            'campaign_completed',
+            {
+              campaignId,
+              difficulty: normalizedDifficulty,
+              district: normalizedDistrict,
+              solo: participantCount <= 1,
+              hostOnly: false,
+            },
+          );
+
+          await this.userService.awardXpForEvent(
+            participant.userId.toString(),
+            'first_trek_new_district',
+            {
+              campaignId,
+              difficulty: normalizedDifficulty,
+              district: normalizedDistrict,
+              solo: participantCount <= 1,
+            },
+          );
+
+          await this.userService.applyReferralCompletionAwardForUser(
+            participant.userId.toString(),
+          );
+        }
+      }
     }
   }
 

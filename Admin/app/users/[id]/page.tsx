@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiArrowLeft, FiSave, FiTrash2, FiX } from 'react-icons/fi';
+import { FiArrowLeft, FiCheck, FiSave, FiTrash2, FiX } from 'react-icons/fi';
 import { apiClient } from '@/lib/api';
 
 type Gender = 'male' | 'female' | 'non_binary' | 'other' | 'prefer_not_to_say';
@@ -56,6 +56,16 @@ type Profile = {
   isProfilePublic?: boolean;
   profileCompleted?: boolean;
   createdAt?: string;
+  photoVerificationRequests?: Array<{
+    requestCode: string;
+    campaignId: string;
+    url: string;
+    kind: 'group' | 'solo';
+    status: 'pending' | 'approved' | 'rejected';
+    submittedAt: string;
+    reviewedAt?: string;
+    reviewNote?: string;
+  }>;
 };
 
 export default function UserDetailPage() {
@@ -66,54 +76,71 @@ export default function UserDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [customOtherLanguage, setCustomOtherLanguage] = useState('');
+  const [reviewNoteByCode, setReviewNoteByCode] = useState<Record<string, string>>({});
+  const [reviewingCode, setReviewingCode] = useState<string | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  async function loadProfile() {
+    try {
+      const response = await apiClient.get(`/user/admin/profiles/${userId}`);
+      const profile = response.data as Profile;
+      const loadedLanguages = Array.isArray(profile.languagesKnown) ? profile.languagesKnown : [];
+      const knownOptionValues = new Set(LANGUAGE_OPTIONS);
+      const customLoadedLanguages = loadedLanguages.filter((language) => !knownOptionValues.has(language));
+      const optionLoadedLanguages = loadedLanguages.filter((language) => knownOptionValues.has(language));
 
-    async function loadProfile() {
-      try {
-        const response = await apiClient.get(`/user/admin/profiles/${userId}`);
-
-        if (active) {
-          const profile = response.data as Profile;
-          const loadedLanguages = Array.isArray(profile.languagesKnown) ? profile.languagesKnown : [];
-          const knownOptionValues = new Set(LANGUAGE_OPTIONS);
-          const customLoadedLanguages = loadedLanguages.filter((language) => !knownOptionValues.has(language));
-          const optionLoadedLanguages = loadedLanguages.filter((language) => knownOptionValues.has(language));
-
-          if (customLoadedLanguages.length > 0) {
-            setCustomOtherLanguage(customLoadedLanguages.join(', '));
-          }
-
-          setFormData({
-            ...profile,
-            languagesKnown:
-              customLoadedLanguages.length > 0
-                ? Array.from(new Set([...optionLoadedLanguages, OTHER_LANGUAGE_VALUE]))
-                : optionLoadedLanguages,
-          });
-        }
-      } catch {
-        if (active) {
-          setError('Unable to load the selected profile from the backend.');
-        }
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
+      if (customLoadedLanguages.length > 0) {
+        setCustomOtherLanguage(customLoadedLanguages.join(', '));
       }
-    }
 
+      setFormData({
+        ...profile,
+        languagesKnown:
+          customLoadedLanguages.length > 0
+            ? Array.from(new Set([...optionLoadedLanguages, OTHER_LANGUAGE_VALUE]))
+            : optionLoadedLanguages,
+      });
+    } catch {
+      setError('Unable to load the selected profile from the backend.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
     if (userId) {
       void loadProfile();
     }
-
-    return () => {
-      active = false;
-    };
   }, [userId]);
+
+  async function handleReviewPhotoRequest(
+    requestCode: string,
+    status: 'approved' | 'rejected',
+  ) {
+    if (!userId) {
+      return;
+    }
+
+    setReviewingCode(requestCode);
+    setError('');
+
+    try {
+      await apiClient.patch(
+        `/user/admin/profiles/${userId}/photos/verification-requests/${requestCode}`,
+        {
+          status,
+          reviewNote: reviewNoteByCode[requestCode]?.trim() || undefined,
+        },
+      );
+
+      await loadProfile();
+    } catch {
+      setError('Failed to review photo verification request.');
+    } finally {
+      setReviewingCode(null);
+    }
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -710,6 +737,84 @@ export default function UserDetailPage() {
             <p className="text-xs text-slate-600 mt-2">
               <span className="font-semibold">Created:</span> {formData.createdAt ? new Date(formData.createdAt).toLocaleString() : 'N/A'}
             </p>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Photo Verification Requests</h4>
+            <div className="mt-3 space-y-3">
+              {(formData.photoVerificationRequests ?? []).length === 0 && (
+                <p className="text-xs text-slate-500">No photo verification requests.</p>
+              )}
+
+              {(formData.photoVerificationRequests ?? []).map((request) => (
+                <div key={request.requestCode} className="rounded-md border border-slate-200 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-700">{request.requestCode}</p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                        request.status === 'approved'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : request.status === 'rejected'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                      }`}
+                    >
+                      {request.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600">Campaign: {request.campaignId}</p>
+                  <p className="text-xs text-slate-600">Kind: {request.kind}</p>
+                  <a
+                    href={request.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-xs text-blue-700 underline"
+                  >
+                    Open photo
+                  </a>
+
+                  {request.status === 'pending' && (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        type="text"
+                        value={reviewNoteByCode[request.requestCode] ?? ''}
+                        onChange={(event) =>
+                          setReviewNoteByCode((current) => ({
+                            ...current,
+                            [request.requestCode]: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional review note"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleReviewPhotoRequest(request.requestCode, 'approved')}
+                          disabled={reviewingCode === request.requestCode}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          <FiCheck size={12} />
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleReviewPhotoRequest(request.requestCode, 'rejected')}
+                          disabled={reviewingCode === request.requestCode}
+                          className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {request.reviewNote && (
+                    <p className="mt-2 text-xs text-slate-600">Note: {request.reviewNote}</p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

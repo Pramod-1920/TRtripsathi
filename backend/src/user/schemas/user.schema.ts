@@ -17,6 +17,81 @@ export class User extends Document {
   @Prop({ type: Number, default: 1 })
   level!: number;
 
+  @Prop({ type: Types.ObjectId, ref: 'Auth', default: null })
+  referredByAuthId?: Types.ObjectId | null;
+
+  @Prop({
+    type: [
+      {
+        campaignId: String,
+        raterAuthId: Types.ObjectId,
+        rating: Number,
+        comment: String,
+        createdAt: Date,
+      },
+    ],
+    default: [],
+  })
+  receivedRatings?: Array<{
+    campaignId: string;
+    raterAuthId: Types.ObjectId;
+    rating: number;
+    comment?: string;
+    createdAt: Date;
+  }>;
+
+  @Prop({
+    type: [
+      {
+        requestCode: String,
+        campaignId: String,
+        url: String,
+        kind: String,
+        status: String,
+        submittedAt: Date,
+        reviewedAt: Date,
+        reviewedByAuthId: Types.ObjectId,
+        reviewNote: String,
+      },
+    ],
+    default: [],
+  })
+  photoVerificationRequests?: Array<{
+    requestCode: string;
+    campaignId: string;
+    url: string;
+    kind: 'group' | 'solo';
+    status: 'pending' | 'approved' | 'rejected';
+    submittedAt: Date;
+    reviewedAt?: Date;
+    reviewedByAuthId?: Types.ObjectId;
+    reviewNote?: string;
+  }>;
+
+  @Prop({
+    type: [
+      {
+        eventKey: String,
+        ruleCode: String,
+        ruleName: String,
+        points: Number,
+        contextKey: String,
+        context: Object,
+        awardedAt: Date,
+      },
+    ],
+    default: [],
+  })
+  xpHistory?: Array<{
+    eventKey: string;
+    ruleCode: string;
+    ruleName: string;
+    points: number;
+    contextKey: string;
+    context?: Record<string, unknown>;
+    awardedAt: Date;
+  }>;
+
   @Prop({ type: String, default: '' })
   badge!: string;
 
