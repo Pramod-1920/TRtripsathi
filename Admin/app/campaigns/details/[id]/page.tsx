@@ -7,6 +7,7 @@ import { FiArrowLeft, FiCopy, FiEdit2, FiSave, FiTrash2, FiX } from 'react-icons
 import {
   Campaign,
   CampaignPayload,
+  CampaignScheduleType,
   formatDateTimeLocal,
   JoinMode,
   deleteCampaign,
@@ -27,13 +28,16 @@ type CampaignPhotoInput = {
 type CampaignFormState = {
   title: string;
   description: string;
-  location: string;
+  province: string;
+  district: string;
+  placeName: string;
   difficulty: string;
   durationDays: string;
   maxParticipants: string;
   estimatedNPR: string;
+  scheduleType: CampaignScheduleType;
   startDate: string;
-  joinOpenDate: string;
+  endDate: string;
   joinMode: JoinMode;
   photos: CampaignPhotoInput[];
 };
@@ -41,13 +45,16 @@ type CampaignFormState = {
 const defaultFormState: CampaignFormState = {
   title: '',
   description: '',
-  location: '',
+  province: '',
+  district: '',
+  placeName: '',
   difficulty: '',
   durationDays: '1',
   maxParticipants: '10',
   estimatedNPR: '0',
+  scheduleType: 'scheduled',
   startDate: '',
-  joinOpenDate: '',
+  endDate: '',
   joinMode: 'open',
   photos: [{ url: '', publicId: '', caption: '' }],
 };
@@ -56,13 +63,16 @@ function toFormState(campaign: Campaign): CampaignFormState {
   return {
     title: campaign.title ?? '',
     description: campaign.description ?? '',
-    location: campaign.location ?? '',
+    province: campaign.province ?? '',
+    district: campaign.district ?? '',
+    placeName: campaign.placeName ?? '',
     difficulty: campaign.difficulty ?? '',
     durationDays: String(campaign.durationDays ?? 1),
     maxParticipants: String(campaign.maxParticipants ?? 10),
     estimatedNPR: String(campaign.estimatedNPR ?? 0),
+    scheduleType: campaign.scheduleType ?? 'scheduled',
     startDate: toDateTimeLocalValue(campaign.startDate),
-    joinOpenDate: toDateTimeLocalValue(campaign.joinOpenDate),
+    endDate: toDateTimeLocalValue(campaign.endDate),
     joinMode: campaign.joinMode ?? 'open',
     photos:
       campaign.photos && campaign.photos.length > 0
@@ -193,6 +203,12 @@ export default function CampaignDetailsByIdPage() {
     return values;
   }, [difficultyOptions, form.difficulty]);
 
+  const displayLocation = useMemo(() => {
+    const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()]
+      .filter((part) => part.length > 0);
+    return parts.join(', ');
+  }, [form.province, form.district, form.placeName]);
+
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -261,11 +277,8 @@ export default function CampaignDetailsByIdPage() {
     const maxParticipants = Number(form.maxParticipants);
     const estimatedNPR = Number(form.estimatedNPR);
     const now = new Date();
-    const minStartDate = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
     const selectedStartDate = form.startDate ? new Date(form.startDate) : null;
-    const selectedJoinOpenDate = form.joinOpenDate
-      ? new Date(form.joinOpenDate)
-      : null;
+    const selectedEndDate = form.endDate ? new Date(form.endDate) : null;
 
     if (!Number.isFinite(durationDays) || durationDays < 1) {
       setError('Duration must be a number greater than or equal to 1.');
@@ -282,18 +295,22 @@ export default function CampaignDetailsByIdPage() {
       return;
     }
 
-    if (selectedStartDate && selectedStartDate < minStartDate) {
-      setError('Start date/time must be at least 2 days from now.');
+    if (form.scheduleType === 'scheduled' && !selectedStartDate) {
+      setError('Start date/time is required for scheduled campaigns.');
       return;
     }
 
-    if (selectedJoinOpenDate && selectedJoinOpenDate < now) {
-      setError('Join open date/time must be now or later.');
+    const computedStartDate = form.scheduleType === 'instant'
+      ? now
+      : selectedStartDate;
+
+    if (!computedStartDate) {
+      setError('Unable to resolve campaign start date/time.');
       return;
     }
 
-    if (selectedStartDate && selectedJoinOpenDate && selectedJoinOpenDate > selectedStartDate) {
-      setError('Join open date/time must be before or equal to start date/time.');
+    if (selectedEndDate && selectedEndDate <= computedStartDate) {
+      setError('End date/time must be later than the start date/time.');
       return;
     }
 
@@ -308,13 +325,18 @@ export default function CampaignDetailsByIdPage() {
     const payload: CampaignPayload = {
       title: form.title.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
-      ...(form.location.trim() ? { location: form.location.trim() } : {}),
+      ...(form.province.trim() ? { province: form.province.trim() } : {}),
+      ...(form.district.trim() ? { district: form.district.trim() } : {}),
+      ...(form.placeName.trim() ? { placeName: form.placeName.trim() } : {}),
+      ...(displayLocation ? { location: displayLocation } : {}),
       ...(form.difficulty.trim() ? { difficulty: form.difficulty.trim() } : {}),
       durationDays,
       maxParticipants,
       estimatedNPR,
-      ...(form.startDate ? { startDate: toIsoFromDateInput(form.startDate) } : {}),
-      ...(form.joinOpenDate ? { joinOpenDate: toIsoFromDateInput(form.joinOpenDate) } : {}),
+      scheduleType: form.scheduleType,
+      startDate: computedStartDate.toISOString(),
+      joinOpenDate: computedStartDate.toISOString(),
+      ...(form.endDate ? { endDate: toIsoFromDateInput(form.endDate) } : {}),
       joinMode: form.joinMode,
       ...(photos.length > 0 ? { photos } : {}),
     };
@@ -378,10 +400,10 @@ export default function CampaignDetailsByIdPage() {
     );
   }
 
-  const minimumJoinOpenDateTime = formatDateTimeLocal(new Date());
-  const minimumStartDateTime = formatDateTimeLocal(
-    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-  );
+  const minimumStartDateTime = formatDateTimeLocal(new Date());
+  const minimumEndDateTime = form.scheduleType === 'scheduled' && form.startDate
+    ? form.startDate
+    : minimumStartDateTime;
 
   if (error && !campaign) {
     return (
@@ -536,13 +558,45 @@ export default function CampaignDetailsByIdPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-900">Location</label>
+            <label className="mb-1 block text-sm font-medium text-slate-900">Province</label>
             <input
               type="text"
-              value={form.location}
-              onChange={(event) => updateField('location', event.target.value)}
+              value={form.province}
+              onChange={(event) => updateField('province', event.target.value)}
               readOnly={readonly}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-900">District</label>
+            <input
+              type="text"
+              value={form.district}
+              onChange={(event) => updateField('district', event.target.value)}
+              readOnly={readonly}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-900">Place Name</label>
+            <input
+              type="text"
+              value={form.placeName}
+              onChange={(event) => updateField('placeName', event.target.value)}
+              readOnly={readonly}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-slate-900">Location Label</label>
+            <input
+              type="text"
+              value={displayLocation || campaign?.location || ''}
+              readOnly
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 bg-slate-50"
             />
           </div>
 
@@ -620,25 +674,41 @@ export default function CampaignDetailsByIdPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-900">Start date</label>
+            <label className="mb-1 block text-sm font-medium text-slate-900">Timing mode</label>
+            <select
+              value={form.scheduleType}
+              onChange={(event) => updateField('scheduleType', event.target.value as CampaignScheduleType)}
+              disabled={readonly}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+            >
+              <option value="instant">Instant (start now)</option>
+              <option value="scheduled">Scheduled (pick start time)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-900">Start date/time</label>
             <input
               type="datetime-local"
               value={form.startDate}
               onChange={(event) => updateField('startDate', event.target.value)}
-              readOnly={readonly}
+              readOnly={readonly || form.scheduleType === 'instant'}
               min={minimumStartDateTime}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
             />
+            {form.scheduleType === 'instant' && (
+              <p className="mt-1 text-xs text-slate-600">Instant campaigns automatically start at current time.</p>
+            )}
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-900">Join open date</label>
+            <label className="mb-1 block text-sm font-medium text-slate-900">End date/time (optional)</label>
             <input
               type="datetime-local"
-              value={form.joinOpenDate}
-              onChange={(event) => updateField('joinOpenDate', event.target.value)}
+              value={form.endDate}
+              onChange={(event) => updateField('endDate', event.target.value)}
               readOnly={readonly}
-              min={minimumJoinOpenDateTime}
+              min={minimumEndDateTime}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
             />
           </div>

@@ -1,6 +1,7 @@
 import { apiClient } from '@/lib/api';
 
 export type JoinMode = 'open' | 'request';
+export type CampaignScheduleType = 'instant' | 'scheduled';
 
 export type CampaignPhoto = {
   url: string;
@@ -14,11 +15,16 @@ export type Campaign = {
   title: string;
   description?: string | null;
   location?: string | null;
+  province?: string | null;
+  district?: string | null;
+  placeName?: string | null;
   difficulty?: string | null;
   durationDays?: number;
   maxParticipants?: number;
   estimatedNPR?: number;
+  scheduleType?: CampaignScheduleType;
   startDate?: string | null;
+  endDate?: string | null;
   joinOpenDate?: string | null;
   joinMode?: JoinMode;
   photos?: CampaignPhoto[];
@@ -36,11 +42,16 @@ export type CampaignPayload = {
   title: string;
   description?: string;
   location?: string;
+  province?: string;
+  district?: string;
+  placeName?: string;
   difficulty?: string;
   durationDays?: number;
   maxParticipants?: number;
   estimatedNPR?: number;
+  scheduleType?: CampaignScheduleType;
   startDate?: string;
+  endDate?: string;
   joinOpenDate?: string;
   joinMode?: JoinMode;
   photos?: CampaignPhoto[];
@@ -175,11 +186,16 @@ export function formatDateTimeLocal(value: Date) {
   return localAdjusted.toISOString().slice(0, 16);
 }
 
-export async function fetchCampaigns(params?: { page?: number; limit?: number }) {
-  const response = await apiClient.get('/campaigns', {
+export async function fetchCampaigns(params?: {
+  page?: number;
+  limit?: number;
+  includeFuture?: boolean;
+}) {
+  const response = await apiClient.get('/campaigns/admin/list', {
     params: {
       page: params?.page ?? 1,
       limit: params?.limit ?? 50,
+      includeFuture: params?.includeFuture ?? true,
     },
   });
 

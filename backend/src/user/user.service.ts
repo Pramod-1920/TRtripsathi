@@ -55,6 +55,8 @@ type AchievementDefinition = {
   subcategory: string;
   targetCount: number;
   hidden?: boolean;
+  rewardXp?: number;
+  badge?: string;
 };
 
 type XpRuleRepeatMode =
@@ -390,6 +392,8 @@ export class UserService {
         subcategory: string;
         targetCount: number;
         hidden?: boolean;
+        rewardXp?: number;
+        badge?: string;
       }>;
 
       if (!parsed.key || !parsed.subcategory || parsed.targetCount === undefined) {
@@ -407,6 +411,10 @@ export class UserService {
         subcategory: String(parsed.subcategory).trim(),
         targetCount: Math.floor(targetCount),
         ...(parsed.hidden ? { hidden: true } : {}),
+        ...(parsed.rewardXp !== undefined && Number.isFinite(Number(parsed.rewardXp)) && Number(parsed.rewardXp) > 0
+          ? { rewardXp: Math.floor(Number(parsed.rewardXp)) }
+          : {}),
+        ...(parsed.badge?.trim() ? { badge: String(parsed.badge).trim() } : {}),
       };
     } catch {
       return null;
@@ -433,6 +441,8 @@ export class UserService {
           subcategory: parsed.subcategory,
           targetCount: parsed.targetCount,
           ...(parsed.hidden ? { hidden: true } : {}),
+          ...(parsed.rewardXp !== undefined ? { rewardXp: parsed.rewardXp } : {}),
+          ...(parsed.badge ? { badge: parsed.badge } : {}),
         };
       })
       .filter(Boolean) as AchievementDefinition[];
@@ -502,7 +512,7 @@ export class UserService {
     }
 
     const progress = [...(profile.achievementProgress ?? [])];
-    const unlocked: Array<{ key: string; title: string }> = [];
+    const unlocked: Array<{ key: string; title: string; rewardXp: number; badge?: string }> = [];
 
     for (const definition of filtered) {
       const index = progress.findIndex(
@@ -517,6 +527,7 @@ export class UserService {
             subcategory: definition.subcategory,
             count: 0,
             target: definition.targetCount,
+            rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
             hidden: definition.hidden ?? false,
           };
 
@@ -536,6 +547,7 @@ export class UserService {
         ...existing,
         count: nextCount,
         target: definition.targetCount,
+        rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
         updatedAt: new Date(),
         ...(completedAt ? { completedAt } : {}),
       };
@@ -547,16 +559,33 @@ export class UserService {
       }
 
       if (!completed && completedAt) {
-        unlocked.push({ key: definition.key, title: definition.title });
+        unlocked.push({
+          key: definition.key,
+          title: definition.title,
+          rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
+          ...(definition.badge?.trim() ? { badge: definition.badge.trim() } : {}),
+        });
       }
     }
 
-    const updatedProfile = await this.userModel.findByIdAndUpdate(
-      profile._id,
-      {
+    const bonusXp = unlocked.reduce((total, entry) => total + entry.rewardXp, 0);
+    const rewardBadge = [...unlocked]
+      .reverse()
+      .map((entry) => entry.badge?.trim())
+      .find((badge): badge is string => Boolean(badge));
+
+    const updates: Record<string, unknown> = {
+      $set: {
         achievementStats: stats,
         achievementProgress: progress,
+        ...(rewardBadge ? { badge: rewardBadge } : {}),
       },
+      ...(bonusXp > 0 ? { $inc: { xp: bonusXp } } : {}),
+    };
+
+    const updatedProfile = await this.userModel.findByIdAndUpdate(
+      profile._id,
+      updates,
       {
         new: true,
         runValidators: true,
@@ -568,6 +597,9 @@ export class UserService {
       updatedProfile ?? profile,
     );
     const newRank = syncedProfile.experienceLevel ?? previousRank;
+    const nextRankProgress = await this.buildRankProgress(
+      syncedProfile ?? updatedProfile ?? profile,
+    );
 
     return {
       subcategory,
@@ -577,6 +609,7 @@ export class UserService {
       rankUnlocked: newRank !== previousRank,
       previousRank,
       newRank,
+      nextRankProgress,
     };
   }
 
@@ -835,6 +868,10 @@ export class UserService {
     };
   }
 
+  private async buildRankProgress(profile: User, rules?: LevelUpRule[]) {
+    return this.buildNextRankProgress(profile, rules);
+  }
+
   private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
     const levelUpRules = rules ?? await this.getLevelUpRules();
 
@@ -986,7 +1023,13 @@ export class UserService {
       updatedProfile ?? profile,
     );
 
+    const levelUpRules = await this.getLevelUpRules();
+
     const newRank = syncedProfile?.experienceLevel ?? previousRank;
+    const nextRankProgress = await this.buildRankProgress(
+      syncedProfile ?? updatedProfile ?? profile,
+      levelUpRules,
+    );
 
     return {
       eventKey: normalizedEventKey,
@@ -1000,6 +1043,7 @@ export class UserService {
       rankUnlocked: newRank !== previousRank,
       previousRank,
       newRank,
+      nextRankProgress,
     };
   }
 
@@ -1430,8 +1474,9 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    const levelUpRules = await this.getLevelUpRules();
     const syncedProfile = await this.applyLevelProgression(profile);
-    return this.attachAuthContactInfo(syncedProfile);
+    return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
   async getPublicProfileById(profileId: string) {
@@ -1560,7 +1605,14 @@ export class UserService {
 
     const levelUpRules = await this.getLevelUpRules();
     const syncedItems = await Promise.all(
-      items.map((item) => this.applyLevelProgression(item, levelUpRules)),
+      items.map(async (item) => {
+        const syncedItem = await this.applyLevelProgression(item, levelUpRules);
+
+        return {
+          ...syncedItem.toObject(),
+          nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
+        };
+      }),
     );
 
     return {
@@ -1586,7 +1638,14 @@ export class UserService {
 
     const levelUpRules = await this.getLevelUpRules();
     const syncedItems = await Promise.all(
-      items.map((item) => this.applyLevelProgression(item, levelUpRules)),
+      items.map(async (item) => {
+        const syncedItem = await this.applyLevelProgression(item, levelUpRules);
+
+        return {
+          ...syncedItem.toObject(),
+          nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
+        };
+      }),
     );
 
     return {
@@ -1607,8 +1666,9 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    const levelUpRules = await this.getLevelUpRules();
     const syncedProfile = await this.applyLevelProgression(profile);
-    return this.attachAuthContactInfo(syncedProfile);
+    return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
   async adminUpdateProfile(
@@ -1640,8 +1700,9 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    const levelUpRules = await this.getLevelUpRules();
     const syncedProfile = await this.applyLevelProgression(updatedProfile);
-    return this.attachAuthContactInfo(syncedProfile);
+    return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
   async adminDeleteProfile(profileId: string) {
@@ -1662,17 +1723,19 @@ export class UserService {
     return { message: 'Profile deleted successfully' };
   }
 
-  private async attachAuthContactInfo(profile: User) {
+  private async attachAuthContactInfo(profile: User, rules?: LevelUpRule[]) {
     const auth = await this.authModel
       .findById(profile.authId)
       .select('phoneNumber email');
+    const nextRankProgress = await this.buildRankProgress(profile, rules);
 
     return {
       ...profile.toObject(),
       phoneNumber: auth?.phoneNumber ?? null,
       email: auth?.email ?? null,
       level: profile.level ?? 1,
-  experienceLevel: profile.experienceLevel ?? ExperienceLevel.E,
+      experienceLevel: profile.experienceLevel ?? ExperienceLevel.E,
+      nextRankProgress,
     };
   }
 }

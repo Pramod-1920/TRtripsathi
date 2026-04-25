@@ -56,6 +56,20 @@ type Profile = {
   isProfilePublic?: boolean;
   profileCompleted?: boolean;
   createdAt?: string;
+  nextRankProgress?: {
+    nextRank?: string;
+    requiredXp?: number;
+    remainingXp?: number;
+    requiredAchievements?: Record<string, number>;
+    remainingAchievements?: Record<string, number>;
+    nextRankHidden?: boolean;
+  } | null;
+  achievementProgress?: Array<{
+    key: string;
+    title?: string;
+    rewardXp?: number;
+    completedAt?: string;
+  }>;
   photoVerificationRequests?: Array<{
     requestCode: string;
     campaignId: string;
@@ -75,11 +89,79 @@ export default function UserDetailPage() {
   const [formData, setFormData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [customOtherLanguage, setCustomOtherLanguage] = useState('');
   const [reviewNoteByCode, setReviewNoteByCode] = useState<Record<string, string>>({});
   const [reviewingCode, setReviewingCode] = useState<string | null>(null);
+  const [achievementPopup, setAchievementPopup] = useState<{
+    items: Array<{ key: string; title: string; rewardXp: number }>;
+    totalRewardXp: number;
+  } | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
+
+  function getCompletionToken(entry: { key: string; completedAt?: string }) {
+    return `${entry.key}::${entry.completedAt ?? ''}`;
+  }
+
+  function maybeShowAchievementPopup(profile: Profile) {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const completedEntries = (profile.achievementProgress ?? []).filter(
+      (entry) => Boolean(entry.completedAt),
+    );
+
+    if (completedEntries.length === 0) {
+      return;
+    }
+
+    const storageKey = `admin_seen_achievement_completion_ids_${profile._id}`;
+    const seenTokens = new Set<string>();
+
+    try {
+      const persisted = window.sessionStorage.getItem(storageKey);
+
+      if (persisted) {
+        const parsed = JSON.parse(persisted) as unknown;
+
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item) => {
+            seenTokens.add(String(item));
+          });
+        }
+      }
+    } catch {
+      // Ignore malformed session data.
+    }
+
+    const newlyCompleted = completedEntries.filter((entry) => {
+      const token = getCompletionToken(entry);
+      return token.length > 2 && !seenTokens.has(token);
+    });
+
+    if (newlyCompleted.length === 0) {
+      return;
+    }
+
+    newlyCompleted.forEach((entry) => {
+      seenTokens.add(getCompletionToken(entry));
+    });
+
+    window.sessionStorage.setItem(storageKey, JSON.stringify(Array.from(seenTokens)));
+
+    const popupItems = newlyCompleted.map((entry) => ({
+      key: entry.key,
+      title: entry.title?.trim() || entry.key,
+      rewardXp: Math.max(0, Math.floor(Number(entry.rewardXp ?? 0))),
+    }));
+
+    setAchievementPopup({
+      items: popupItems,
+      totalRewardXp: popupItems.reduce((total, item) => total + item.rewardXp, 0),
+    });
+  }
 
   async function loadProfile() {
     try {
@@ -101,6 +183,8 @@ export default function UserDetailPage() {
             ? Array.from(new Set([...optionLoadedLanguages, OTHER_LANGUAGE_VALUE]))
             : optionLoadedLanguages,
       });
+
+      maybeShowAchievementPopup(profile);
     } catch {
       setError('Unable to load the selected profile from the backend.');
     } finally {
@@ -124,15 +208,28 @@ export default function UserDetailPage() {
 
     setReviewingCode(requestCode);
     setError('');
+    setSuccess('');
 
     try {
-      await apiClient.patch(
+      const response = await apiClient.patch(
         `/user/admin/profiles/${userId}/photos/verification-requests/${requestCode}`,
         {
           status,
           reviewNote: reviewNoteByCode[requestCode]?.trim() || undefined,
         },
       );
+
+      const xpAwarded = Number((response.data as { xp?: { totalAwarded?: number } })?.xp?.totalAwarded ?? 0);
+
+      if (status === 'approved') {
+        setSuccess(
+          xpAwarded > 0
+            ? `Photo approved. +${xpAwarded} XP added to the user profile.`
+            : 'Photo approved.',
+        );
+      } else {
+        setSuccess('Photo request rejected.');
+      }
 
       await loadProfile();
     } catch {
@@ -332,6 +429,12 @@ export default function UserDetailPage() {
 
   return (
     <div className="p-8">
+      {success && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          {success}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
@@ -729,6 +832,48 @@ export default function UserDetailPage() {
             </div>
           </div>
 
+          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Rank Progress</h3>
+            {formData.nextRankProgress ? (
+              <div className="space-y-3 text-sm text-slate-700">
+                {formData.nextRankProgress.nextRankHidden ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                    The next rank is hidden until the profile meets the eligibility requirements.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Target Rank</span>
+                      <span className="font-semibold text-slate-900">{formData.nextRankProgress.nextRank || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Remaining</span>
+                      <span className="font-semibold text-slate-900">{formData.nextRankProgress.remainingXp ?? 0}</span>
+                    </div>
+                    {formData.nextRankProgress.remainingAchievements &&
+                    Object.keys(formData.nextRankProgress.remainingAchievements).length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Remaining Achievements</p>
+                        <div className="space-y-1">
+                          {Object.entries(formData.nextRankProgress.remainingAchievements).map(([key, value]) => (
+                            <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                              <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                              <span className="font-semibold text-slate-900">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-500">No achievement requirements for the next rank.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No next-rank data is available for this profile yet.</p>
+            )}
+          </div>
+
           {/* Info Card */}
           <div className="bg-slate-50 rounded-lg p-4">
             <p className="text-xs text-slate-600">
@@ -818,6 +963,43 @@ export default function UserDetailPage() {
           </div>
         </div>
       </div>
+
+      {achievementPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-900">Achievement Unlocked</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              The user completed {achievementPopup.items.length} achievement{achievementPopup.items.length > 1 ? 's' : ''}.
+            </p>
+            {achievementPopup.totalRewardXp > 0 && (
+              <p className="mt-1 text-sm font-medium text-emerald-700">
+                +{achievementPopup.totalRewardXp} XP added from achievement rewards.
+              </p>
+            )}
+
+            <div className="mt-4 space-y-2">
+              {achievementPopup.items.map((item) => (
+                <div key={item.key} className="rounded-lg border border-slate-200 px-3 py-2">
+                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                  <p className="text-xs text-slate-500">
+                    {item.rewardXp > 0 ? `Reward: +${item.rewardXp} XP` : 'No XP reward configured'}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setAchievementPopup(null)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

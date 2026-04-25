@@ -45,6 +45,7 @@ export class User extends Document {
         subcategory: String,
         count: Number,
         target: Number,
+        rewardXp: Number,
         hidden: Boolean,
         completedAt: Date,
         updatedAt: Date,
@@ -58,6 +59,7 @@ export class User extends Document {
     subcategory: string;
     count: number;
     target: number;
+    rewardXp?: number;
     hidden?: boolean;
     completedAt?: Date;
     updatedAt?: Date;

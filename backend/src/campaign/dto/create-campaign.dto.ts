@@ -4,7 +4,7 @@ import {
   IsOptional,
   IsNumber,
   IsDateString,
-  IsEnum,
+  IsIn,
   IsArray,
 } from 'class-validator';
 
@@ -23,6 +23,18 @@ export class CreateCampaignDto {
 
   @IsString()
   @IsOptional()
+  province?: string;
+
+  @IsString()
+  @IsOptional()
+  district?: string;
+
+  @IsString()
+  @IsOptional()
+  placeName?: string;
+
+  @IsString()
+  @IsOptional()
   difficulty?: string;
 
   @IsNumber()
@@ -37,15 +49,23 @@ export class CreateCampaignDto {
   @IsOptional()
   estimatedNPR?: number;
 
+  @IsIn(['instant', 'scheduled'])
+  @IsOptional()
+  scheduleType?: 'instant' | 'scheduled';
+
   @IsDateString()
   @IsOptional()
   startDate?: string;
 
   @IsDateString()
   @IsOptional()
+  endDate?: string;
+
+  @IsDateString()
+  @IsOptional()
   joinOpenDate?: string;
 
-  @IsEnum(['open', 'request'])
+  @IsIn(['open', 'request'])
   @IsOptional()
   joinMode?: 'open' | 'request';
 

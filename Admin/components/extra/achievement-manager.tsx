@@ -16,6 +16,8 @@ type AchievementValuePayload = {
   subcategory: string;
   targetCount: number;
   hidden?: boolean;
+  rewardXp?: number;
+  badge?: string;
 };
 
 type AchievementFormState = {
@@ -24,6 +26,8 @@ type AchievementFormState = {
   key: string;
   subcategory: string;
   targetCount: string;
+  rewardXp: string;
+  badge: string;
   hidden: boolean;
   enabled: boolean;
 };
@@ -34,6 +38,8 @@ const defaultFormState: AchievementFormState = {
   key: '',
   subcategory: '',
   targetCount: '',
+  rewardXp: '',
+  badge: '',
   hidden: false,
   enabled: true,
 };
@@ -61,6 +67,10 @@ function parseAchievementValue(rawValue?: string | null): AchievementValuePayloa
       subcategory: String(parsed.subcategory),
       targetCount,
       ...(parsed.hidden ? { hidden: true } : {}),
+      ...(parsed.rewardXp !== undefined && Number.isFinite(Number(parsed.rewardXp)) && Number(parsed.rewardXp) > 0
+        ? { rewardXp: Math.floor(Number(parsed.rewardXp)) }
+        : {}),
+      ...(parsed.badge?.trim() ? { badge: String(parsed.badge).trim() } : {}),
     };
   } catch {
     return null;
@@ -87,6 +97,10 @@ function buildAchievementValue(form: AchievementFormState) {
     subcategory: form.subcategory.trim(),
     targetCount: Math.floor(targetCount),
     ...(form.hidden ? { hidden: true } : {}),
+    ...(Number.isFinite(Number(form.rewardXp)) && Number(form.rewardXp) > 0
+      ? { rewardXp: Math.floor(Number(form.rewardXp)) }
+      : {}),
+    ...(form.badge.trim() ? { badge: form.badge.trim() } : {}),
   };
 
   return JSON.stringify(payload);
@@ -148,6 +162,8 @@ export function AchievementManager() {
       key: parsed?.key ?? '',
       subcategory: parsed?.subcategory ?? '',
       targetCount: parsed?.targetCount !== undefined ? String(parsed.targetCount) : '',
+      rewardXp: parsed?.rewardXp !== undefined ? String(parsed.rewardXp) : '',
+      badge: parsed?.badge ?? '',
       hidden: parsed?.hidden ?? false,
       enabled: item.enabled !== false,
     });
@@ -306,6 +322,26 @@ export function AchievementManager() {
             />
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Reward XP</label>
+            <input
+              value={form.rewardXp}
+              onChange={(event) => setForm((current) => ({ ...current, rewardXp: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional XP granted on completion"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Badge Reward</label>
+            <input
+              value={form.badge}
+              onChange={(event) => setForm((current) => ({ ...current, badge: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional badge name to assign"
+            />
+          </div>
+
           <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
             <input
@@ -355,6 +391,8 @@ export function AchievementManager() {
               <th className="px-4 py-3 font-semibold">Key</th>
               <th className="px-4 py-3 font-semibold">Subcategory</th>
               <th className="px-4 py-3 font-semibold text-right">Target</th>
+              <th className="px-4 py-3 font-semibold text-right">Reward XP</th>
+              <th className="px-4 py-3 font-semibold">Badge</th>
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold text-right">Actions</th>
             </tr>
@@ -362,13 +400,13 @@ export function AchievementManager() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={6}>
+                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>
                   Loading achievements...
                 </td>
               </tr>
             ) : parsedRows.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={6}>
+                <td className="px-4 py-6 text-center text-slate-500" colSpan={8}>
                   No achievements found.
                 </td>
               </tr>
@@ -379,6 +417,8 @@ export function AchievementManager() {
                   <td className="px-4 py-3">{parsed?.key ?? '-'}</td>
                   <td className="px-4 py-3">{parsed?.subcategory ?? '-'}</td>
                   <td className="px-4 py-3 text-right">{parsed?.targetCount ?? '-'}</td>
+                  <td className="px-4 py-3 text-right">{parsed?.rewardXp ?? '-'}</td>
+                  <td className="px-4 py-3">{parsed?.badge ?? '-'}</td>
                   <td className="px-4 py-3">
                     {item.enabled === false ? (
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">

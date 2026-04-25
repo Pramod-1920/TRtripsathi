@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FiCalendar, FiCompass, FiMapPin, FiPlus, FiTrash2, FiUsers } from 'react-icons/fi';
 import {
   CampaignPayload,
+  CampaignScheduleType,
   formatDateTimeLocal,
   JoinMode,
   createCampaign,
@@ -20,13 +21,16 @@ type CampaignPhotoInput = {
 type CampaignFormState = {
   title: string;
   description: string;
-  location: string;
+  province: string;
+  district: string;
+  placeName: string;
   difficulty: string;
   durationDays: string;
   maxParticipants: string;
   estimatedNPR: string;
+  scheduleType: CampaignScheduleType;
   startDate: string;
-  joinOpenDate: string;
+  endDate: string;
   joinMode: JoinMode;
   photos: CampaignPhotoInput[];
 };
@@ -34,13 +38,16 @@ type CampaignFormState = {
 const defaultFormState: CampaignFormState = {
   title: '',
   description: '',
-  location: '',
+  province: '',
+  district: '',
+  placeName: '',
   difficulty: '',
   durationDays: '1',
   maxParticipants: '10',
   estimatedNPR: '0',
+  scheduleType: 'instant',
   startDate: '',
-  joinOpenDate: '',
+  endDate: '',
   joinMode: 'open',
   photos: [{ url: '', publicId: '', caption: '' }],
 };
@@ -101,6 +108,12 @@ export default function AddCampaignPage() {
     );
   }, [difficultyOptions]);
 
+  const displayLocation = useMemo(() => {
+    const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()]
+      .filter((part) => part.length > 0);
+    return parts.join(', ');
+  }, [form.province, form.district, form.placeName]);
+
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -158,11 +171,8 @@ export default function AddCampaignPage() {
     const maxParticipants = Number(form.maxParticipants);
     const estimatedNPR = Number(form.estimatedNPR);
     const now = new Date();
-    const minStartDate = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
     const selectedStartDate = form.startDate ? new Date(form.startDate) : null;
-    const selectedJoinOpenDate = form.joinOpenDate
-      ? new Date(form.joinOpenDate)
-      : null;
+    const selectedEndDate = form.endDate ? new Date(form.endDate) : null;
 
     if (!Number.isFinite(durationDays) || durationDays < 1) {
       setError('Duration must be a number greater than or equal to 1.');
@@ -179,18 +189,22 @@ export default function AddCampaignPage() {
       return;
     }
 
-    if (selectedStartDate && selectedStartDate < minStartDate) {
-      setError('Start date/time must be at least 2 days from now.');
+    if (form.scheduleType === 'scheduled' && !selectedStartDate) {
+      setError('Start date/time is required for scheduled campaigns.');
       return;
     }
 
-    if (selectedJoinOpenDate && selectedJoinOpenDate < now) {
-      setError('Join open date/time must be now or later.');
+    const computedStartDate = form.scheduleType === 'instant'
+      ? now
+      : selectedStartDate;
+
+    if (!computedStartDate) {
+      setError('Unable to resolve campaign start date/time.');
       return;
     }
 
-    if (selectedStartDate && selectedJoinOpenDate && selectedJoinOpenDate > selectedStartDate) {
-      setError('Join open date/time must be before or equal to start date/time.');
+    if (selectedEndDate && selectedEndDate <= computedStartDate) {
+      setError('End date/time must be later than the start date/time.');
       return;
     }
 
@@ -205,13 +219,18 @@ export default function AddCampaignPage() {
     const payload: CampaignPayload = {
       title: form.title.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
-      ...(form.location.trim() ? { location: form.location.trim() } : {}),
+      ...(form.province.trim() ? { province: form.province.trim() } : {}),
+      ...(form.district.trim() ? { district: form.district.trim() } : {}),
+      ...(form.placeName.trim() ? { placeName: form.placeName.trim() } : {}),
+      ...(displayLocation ? { location: displayLocation } : {}),
       ...(form.difficulty.trim() ? { difficulty: form.difficulty.trim() } : {}),
       durationDays,
       maxParticipants,
       estimatedNPR,
-      ...(form.startDate ? { startDate: toIsoFromDateInput(form.startDate) } : {}),
-      ...(form.joinOpenDate ? { joinOpenDate: toIsoFromDateInput(form.joinOpenDate) } : {}),
+      scheduleType: form.scheduleType,
+      startDate: computedStartDate.toISOString(),
+      joinOpenDate: computedStartDate.toISOString(),
+      ...(form.endDate ? { endDate: toIsoFromDateInput(form.endDate) } : {}),
       joinMode: form.joinMode,
       ...(photos.length > 0 ? { photos } : {}),
     };
@@ -231,10 +250,10 @@ export default function AddCampaignPage() {
     }
   }
 
-  const minimumJoinOpenDateTime = formatDateTimeLocal(new Date());
-  const minimumStartDateTime = formatDateTimeLocal(
-    new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-  );
+  const minimumStartDateTime = formatDateTimeLocal(new Date());
+  const minimumEndDateTime = form.scheduleType === 'scheduled' && form.startDate
+    ? form.startDate
+    : minimumStartDateTime;
 
   return (
     <div className="relative p-8">
@@ -292,13 +311,35 @@ export default function AddCampaignPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-900">Location</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Province</label>
                   <input
                     type="text"
-                    value={form.location}
-                    onChange={(event) => updateField('location', event.target.value)}
+                    value={form.province}
+                    onChange={(event) => updateField('province', event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Solukhumbu"
+                    placeholder="Bagmati (Province 3)"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">District</label>
+                  <input
+                    type="text"
+                    value={form.district}
+                    onChange={(event) => updateField('district', event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Kathmandu"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Place Name</label>
+                  <input
+                    type="text"
+                    value={form.placeName}
+                    onChange={(event) => updateField('placeName', event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Shivapuri hike"
                   />
                 </div>
 
@@ -377,23 +418,39 @@ export default function AddCampaignPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-900">Start date</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Timing mode</label>
+                  <select
+                    value={form.scheduleType}
+                    onChange={(event) => updateField('scheduleType', event.target.value as CampaignScheduleType)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="instant">Instant (start now)</option>
+                    <option value="scheduled">Scheduled (pick start time)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Start date/time</label>
                   <input
                     type="datetime-local"
                     value={form.startDate}
                     onChange={(event) => updateField('startDate', event.target.value)}
                     min={minimumStartDateTime}
+                    disabled={form.scheduleType === 'instant'}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  {form.scheduleType === 'instant' && (
+                    <p className="mt-1 text-xs text-slate-600">Instant campaigns automatically start at current time.</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-900">Join open date</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">End date/time (optional)</label>
                   <input
                     type="datetime-local"
-                    value={form.joinOpenDate}
-                    onChange={(event) => updateField('joinOpenDate', event.target.value)}
-                    min={minimumJoinOpenDateTime}
+                    value={form.endDate}
+                    onChange={(event) => updateField('endDate', event.target.value)}
+                    min={minimumEndDateTime}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -470,7 +527,7 @@ export default function AddCampaignPage() {
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                 <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-1">
                   <FiMapPin size={12} />
-                  {form.location.trim() || 'No location'}
+                  {displayLocation || 'No location'}
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-1">
                   <FiCompass size={12} />
@@ -491,8 +548,14 @@ export default function AddCampaignPage() {
               <p>System ID: <span className="font-semibold">Auto-generated by system</span></p>
               <p>Estimated budget: <span className="font-semibold">NPR {form.estimatedNPR || '0'}</span></p>
               <p>Join mode: <span className="font-semibold capitalize">{form.joinMode}</span></p>
-              <p>Start date: <span className="font-semibold">{form.startDate || 'Not set'}</span></p>
-              <p>Join open date: <span className="font-semibold">{form.joinOpenDate || 'Not set'}</span></p>
+              <p>Province: <span className="font-semibold">{form.province || 'Not set'}</span></p>
+              <p>District: <span className="font-semibold">{form.district || 'Not set'}</span></p>
+              <p>Place: <span className="font-semibold">{form.placeName || 'Not set'}</span></p>
+              <p>Location label: <span className="font-semibold">{displayLocation || 'Not set'}</span></p>
+              <p>Timing mode: <span className="font-semibold capitalize">{form.scheduleType}</span></p>
+              <p>Start date: <span className="font-semibold">{form.scheduleType === 'instant' ? 'Now (automatic)' : (form.startDate || 'Not set')}</span></p>
+              <p>Visibility: <span className="font-semibold">At campaign start time</span></p>
+              <p>End date: <span className="font-semibold">{form.endDate || 'Duration days fallback'}</span></p>
             </div>
           </aside>
         </div>

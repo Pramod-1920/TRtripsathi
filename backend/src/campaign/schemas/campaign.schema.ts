@@ -31,6 +31,15 @@ export class Campaign {
   location?: string | null;
 
   @Prop({ type: String, default: null })
+  province?: string | null;
+
+  @Prop({ type: String, default: null })
+  district?: string | null;
+
+  @Prop({ type: String, default: null })
+  placeName?: string | null;
+
+  @Prop({ type: String, default: null })
   difficulty?: string | null;
 
   @Prop({ type: Number, default: 1 })
@@ -42,8 +51,14 @@ export class Campaign {
   @Prop({ type: Number, default: 0 })
   estimatedNPR!: number;
 
+  @Prop({ type: String, enum: ['instant', 'scheduled'], default: 'scheduled' })
+  scheduleType!: 'instant' | 'scheduled';
+
   @Prop({ type: Date, default: null })
   startDate?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  endDate?: Date | null;
 
   @Prop({ type: Date, default: null })
   joinOpenDate?: Date | null;

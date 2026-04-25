@@ -34,13 +34,30 @@ export class CampaignController {
   async create(
     @Body() dto: CreateCampaignDto,
     @GetCurrentUser('userId') userId: string,
+    @Req() req,
   ) {
-    return this.service.createCampaign(dto, userId);
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.createCampaign(dto, userId, isAdmin);
   }
 
   @Get()
   async list(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.service.listCampaigns(Number(page), Number(limit));
+    return this.service.listCampaigns(Number(page), Number(limit), false);
+  }
+
+  @Get('admin/list')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async adminList(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('includeFuture') includeFuture = 'true',
+  ) {
+    return this.service.listCampaigns(
+      Number(page),
+      Number(limit),
+      includeFuture === 'true',
+    );
   }
 
   @Get(':id')
