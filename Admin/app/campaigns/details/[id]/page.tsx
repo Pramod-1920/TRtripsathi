@@ -20,7 +20,7 @@ import {
   toIsoFromDateInput,
   updateCampaign,
 } from '@/lib/campaigns';
-import { ExtraItem, fetchExtras } from '@/lib/extras';
+import { ExtraItem, fetchExtras, fetchPlaceCatalog, PlaceCatalogItem } from '@/lib/extras';
 import { useAuthStore } from '@/lib/auth-store';
 import { apiClient } from '@/lib/api';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
@@ -131,8 +131,10 @@ export default function CampaignDetailsByIdPage() {
   const [deleteReason, setDeleteReason] = useState('');
   const [difficultyOptions, setDifficultyOptions] = useState<ExtraItem[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<ExtraItem[]>([]);
+  const [placeCatalog, setPlaceCatalog] = useState<PlaceCatalogItem[]>([]);
   const [difficultyLoading, setDifficultyLoading] = useState(true);
   const [categoryLoading, setCategoryLoading] = useState(true);
+  const [placeLoading, setPlaceLoading] = useState(true);
   const campaignCode = campaign?.campaignCode || campaign?._id || 'N/A';
 
   useEffect(() => {
@@ -203,6 +205,38 @@ export default function CampaignDetailsByIdPage() {
     }
 
     void loadDifficultyOptions();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPlaceCatalog() {
+      setPlaceLoading(true);
+
+      try {
+        const response = await fetchPlaceCatalog();
+
+        if (!active) {
+          return;
+        }
+
+        setPlaceCatalog(response.items ?? []);
+      } catch {
+        if (active) {
+          setPlaceCatalog([]);
+        }
+      } finally {
+        if (active) {
+          setPlaceLoading(false);
+        }
+      }
+    }
+
+    void loadPlaceCatalog();
 
     return () => {
       active = false;
@@ -287,6 +321,67 @@ export default function CampaignDetailsByIdPage() {
       .filter((part) => part.length > 0);
     return parts.join(', ');
   }, [form.province, form.district, form.placeName]);
+
+  const provinceOptions = useMemo(() => {
+    const values = placeCatalog.map((item) => item.province).filter(Boolean);
+    const current = form.province.trim();
+
+    if (current && !values.includes(current)) {
+      values.unshift(current);
+    }
+
+    return values;
+  }, [form.province, placeCatalog]);
+
+  const districtOptions = useMemo(() => {
+    if (!form.province) {
+      return [];
+    }
+
+    const found = placeCatalog.find((item) => item.province === form.province);
+    const values = found?.districts ? [...found.districts] : [];
+    const currentDistrict = form.district.trim();
+
+    if (currentDistrict && !values.includes(currentDistrict)) {
+      values.unshift(currentDistrict);
+    }
+
+    return values;
+  }, [form.province, placeCatalog]);
+
+  const placeNameOptions = useMemo(() => {
+    if (!form.province || !form.district) {
+      return [];
+    }
+
+    const foundProvince = placeCatalog.find((item) => item.province === form.province);
+    const districtNode = (foundProvince?.districtItems ?? [])
+      .find((item) => item.district === form.district);
+    const values = districtNode?.places ? [...districtNode.places] : [];
+    const currentPlace = form.placeName.trim();
+
+    if (currentPlace && !values.includes(currentPlace)) {
+      values.unshift(currentPlace);
+    }
+
+    return values;
+  }, [form.district, form.placeName, form.province, placeCatalog]);
+
+  useEffect(() => {
+    if (!form.province || districtOptions.includes(form.district)) {
+      return;
+    }
+
+    setForm((current) => ({ ...current, district: '' }));
+  }, [districtOptions, form.district, form.province]);
+
+  useEffect(() => {
+    if (!form.placeName || placeNameOptions.length === 0 || placeNameOptions.includes(form.placeName)) {
+      return;
+    }
+
+    setForm((current) => ({ ...current, placeName: '' }));
+  }, [form.placeName, placeNameOptions]);
 
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -832,35 +927,72 @@ export default function CampaignDetailsByIdPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-900">Province</label>
-            <input
-              type="text"
+            <select
               value={form.province}
-              onChange={(event) => updateField('province', event.target.value)}
-              readOnly={readonly}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
-            />
+              onChange={(event) => {
+                updateField('province', event.target.value);
+                updateField('district', '');
+                updateField('placeName', '');
+              }}
+              disabled={readonly || placeLoading}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+            >
+              <option value="">{placeLoading ? 'Loading provinces...' : 'Select province'}</option>
+              {provinceOptions.map((provinceName) => (
+                <option key={provinceName} value={provinceName}>
+                  {provinceName}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-900">District</label>
-            <input
-              type="text"
+            <select
               value={form.district}
-              onChange={(event) => updateField('district', event.target.value)}
-              readOnly={readonly}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
-            />
+              onChange={(event) => {
+                updateField('district', event.target.value);
+                updateField('placeName', '');
+              }}
+              disabled={readonly || placeLoading || !form.province}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+            >
+              <option value="">
+                {placeLoading ? 'Loading districts...' : form.province ? 'Select district' : 'Select province first'}
+              </option>
+              {districtOptions.map((districtName) => (
+                <option key={districtName} value={districtName}>
+                  {districtName}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-900">Place Name</label>
-            <input
-              type="text"
+            <select
               value={form.placeName}
               onChange={(event) => updateField('placeName', event.target.value)}
-              readOnly={readonly}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
-            />
+              disabled={readonly || placeLoading || !form.province || !form.district || placeNameOptions.length === 0}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+            >
+              <option value="">
+                {placeLoading
+                  ? 'Loading places...'
+                  : !form.province
+                    ? 'Select province first'
+                    : !form.district
+                      ? 'Select district first'
+                      : placeNameOptions.length > 0
+                        ? 'Select place'
+                        : 'No active places in this district'}
+              </option>
+              {placeNameOptions.map((placeName) => (
+                <option key={placeName} value={placeName}>
+                  {placeName}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="md:col-span-2">

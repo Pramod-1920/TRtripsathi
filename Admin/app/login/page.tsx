@@ -3,66 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiArrowRight, FiLock, FiPhone } from 'react-icons/fi';
-import axios from 'axios';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
-function normalizePhoneNumber(input: string) {
-  const digitsOnly = input.replace(/\D/g, '');
-
-  // Keep last 10 digits to support inputs like +977-98XXXXXXXX.
-  if (digitsOnly.length > 10) {
-    return digitsOnly.slice(-10);
-  }
-
-  return digitsOnly;
-}
-
-function getAxiosErrorMessage(error: unknown) {
-  if (!axios.isAxiosError(error)) {
-    return undefined;
-  }
-
-  const data = error.response?.data as
-    | { message?: string | string[] }
-    | undefined;
-
-  if (!data?.message) {
-    return undefined;
-  }
-
-  if (Array.isArray(data.message)) {
-    return data.message.join(', ');
-  }
-
-  return data.message;
-}
-
-function getLoginErrorMessage(error: unknown) {
-  const backendMessage = getAxiosErrorMessage(error);
-  if (backendMessage) {
-    return backendMessage;
-  }
-
-  if (axios.isAxiosError(error)) {
-    if (!error.response) {
-      return 'Cannot reach backend server. Please verify API URL/CORS and that backend is running.';
-    }
-
-    return `Login failed with status ${error.response.status}.`;
-  }
-
-  return 'Invalid credentials or admin access denied.';
-}
-
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [formData, setFormData] = useState({
     phoneNumber: '',
     password: '',
+    role: 'user' as 'admin' | 'user',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const setSession = useAuthStore((state) => state.setSession);
 
   const handleInputChange = (
@@ -79,18 +33,24 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
-    const normalizedPhone = normalizePhoneNumber(formData.phoneNumber);
-
-    if (!/^\d{10}$/.test(normalizedPhone)) {
-      setError('Phone number must be exactly 10 digits.');
-      setLoading(false);
-      return;
-    }
+    setSuccess('');
 
     try {
+      if (mode === 'signup') {
+        await apiClient.post('/auth/signup', {
+          phoneNumber: formData.phoneNumber,
+          password: formData.password,
+          role: formData.role,
+        });
+
+        setSuccess(`Account created as ${formData.role}. You can sign in now.`);
+        setMode('signin');
+        setFormData((prev) => ({ ...prev, password: '' }));
+        return;
+      }
+
       const response = await apiClient.post('/auth/login', {
-        phoneNumber: normalizedPhone,
+        phoneNumber: formData.phoneNumber,
         password: formData.password,
       });
 
@@ -103,26 +63,26 @@ export default function LoginPage() {
       };
 
       if (data.user.role !== 'admin') {
-        try {
-          await apiClient.post('/auth/logout');
-        } catch {
-          // Best-effort cleanup only.
-        }
+        await apiClient.post('/auth/logout');
         setError('Admin access only. Please sign in with an admin account.');
         return;
       }
 
       setSession(data.user);
       router.push('/dashboard');
-    } catch (error) {
-      setError(getLoginErrorMessage(error));
+    } catch {
+      if (mode === 'signup') {
+        setError('Unable to create account. Check phone/password or use another number.');
+      } else {
+        setError('Invalid credentials or admin access denied.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-600 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
@@ -132,7 +92,36 @@ export default function LoginPage() {
               <span className="text-2xl font-bold text-white">TR</span>
             </div>
             <h1 className="text-3xl font-bold text-slate-900">TRTrips Admin</h1>
-            <p className="text-slate-600 text-sm mt-2">Admin sign in only</p>
+            <p className="text-slate-600 text-sm mt-2">Sign in or create account</p>
+          </div>
+
+          <div className="mb-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signin');
+                setError('');
+                setSuccess('');
+              }}
+              className={`rounded-md py-2 text-sm font-medium transition-colors ${
+                mode === 'signin' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('signup');
+                setError('');
+                setSuccess('');
+              }}
+              className={`rounded-md py-2 text-sm font-medium transition-colors ${
+                mode === 'signup' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'
+              }`}
+            >
+              Create Account
+            </button>
           </div>
 
           {/* Form */}
@@ -154,6 +143,23 @@ export default function LoginPage() {
                 />
               </div>
             </div>
+
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">
+                  Role
+                </label>
+                <select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            )}
 
             {/* Password */}
             <div>
@@ -180,15 +186,21 @@ export default function LoginPage() {
               </div>
             )}
 
+            {success && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-700">{success}</p>
+              </div>
+            )}
+
             {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {loading ? 'Signing in...' : (
+              {loading ? (mode === 'signup' ? 'Creating account...' : 'Signing in...') : (
                 <>
-                  Sign In
+                  {mode === 'signup' ? 'Create Account' : 'Sign In'}
                   <FiArrowRight size={18} />
                 </>
               )}

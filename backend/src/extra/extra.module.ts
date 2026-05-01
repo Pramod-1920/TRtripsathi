@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
 import { ExtraController } from './extra.controller';
+import { PlaceCatalogController } from './place-catalog.controller';
 import { ExtraService } from './extra.service';
 import { ExtraItem, ExtraSchema } from './schemas/extra.schema';
 
@@ -12,7 +13,7 @@ import { ExtraItem, ExtraSchema } from './schemas/extra.schema';
       { name: Auth.name, schema: AuthSchema },
     ]),
   ],
-  controllers: [ExtraController],
+  controllers: [ExtraController, PlaceCatalogController],
   providers: [ExtraService],
   exports: [ExtraService],
 })

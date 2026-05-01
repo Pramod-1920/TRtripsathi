@@ -3,8 +3,14 @@
 import { useEffect } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
 import { apiClient } from '@/lib/api';
+import { FiMenu, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
 
-export function Header() {
+type HeaderProps = {
+  onMenuClick: () => void;
+  sidebarCollapsed: boolean;
+};
+
+export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   const user = useAuthStore((state) => state.user);
   const profilePhoto = useAuthStore((state) => state.user?.profilePhoto);
   const setProfilePhoto = useAuthStore((state) => state.setProfilePhoto);
@@ -37,10 +43,25 @@ export function Header() {
   }, [profilePhoto, setProfilePhoto]);
 
   return (
-    <div className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
-        <p className="text-sm text-slate-500">Welcome back, Admin</p>
+    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-6 lg:px-8">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-900 transition-colors hover:bg-slate-100"
+          aria-label="Toggle sidebar"
+        >
+          <FiMenu size={20} className="md:hidden" />
+          {sidebarCollapsed ? (
+            <FiChevronsRight size={18} className="hidden md:block" />
+          ) : (
+            <FiChevronsLeft size={18} className="hidden md:block" />
+          )}
+        </button>
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">Dashboard</h2>
+          <p className="text-sm text-slate-500">Welcome back, Admin</p>
+        </div>
       </div>
       <div className="flex items-center gap-4">
         <div className="text-right">

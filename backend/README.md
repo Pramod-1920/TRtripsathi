@@ -142,6 +142,7 @@ What is done:
 - Extra code generation (`EXT-xxxxxx`) with uniqueness checks.
 - Category-based listing with pagination.
 - Supports enabling/disabling individual extras.
+- Public active places catalog endpoint is available from extras (`category: places`).
 - This collection is actively used by:
   - XP rules (`category: xp`)
   - Achievement definitions
@@ -153,6 +154,9 @@ Implemented endpoints (admin-only):
 - `GET /extra/:id`
 - `PATCH /extra/:id`
 - `DELETE /extra/:id`
+
+Implemented public endpoint:
+- `GET /places/catalog`
 
 Key files:
 - `src/extra/extra.controller.ts`
@@ -223,6 +227,7 @@ Key files:
 
 What is done:
 - XP seed script implemented (`npm run seed:xp`).
+- Places seed script implemented (`npm run seed:places`).
 - Script is idempotent (upsert/update by rule identity).
 - Seed prepares default dynamic XP rules in extras collection.
 

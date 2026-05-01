@@ -52,6 +52,15 @@ export class ExtraController {
     });
   }
 
+  @Get('places/hierarchy')
+  @ApiOperation({ summary: 'Admin: get places hierarchy (province + district + place)' })
+  @ApiQuery({ name: 'includeDisabled', required: false, example: false })
+  @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
+  getPlacesHierarchy(@Query('includeDisabled') includeDisabled = 'false') {
+    const shouldIncludeDisabled = includeDisabled === 'true' || includeDisabled === '1';
+    return this.extraService.getPlaceHierarchy({ includeDisabled: shouldIncludeDisabled });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Admin: get extra item by id' })
   @ApiParam({ name: 'id', description: 'Extra item id' })

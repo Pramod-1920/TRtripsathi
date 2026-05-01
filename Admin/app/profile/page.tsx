@@ -29,6 +29,14 @@ type Profile = {
   district?: string | null;
   landmark?: string | null;
   experienceLevel?: string | null;
+  xp?: number | null;
+  level?: number | null;
+  nextRankProgress?: {
+    nextRank?: string | null;
+    requiredXp?: number | null;
+    remainingXp?: number | null;
+    currentXp?: number | null;
+  } | null;
   gender?: Gender | null;
   languagesKnown?: string[] | null;
   isProfilePublic?: boolean;
@@ -125,6 +133,9 @@ export default function ProfilePage() {
             phoneNumber: profile.phoneNumber ?? user?.phoneNumber ?? null,
             email: profile.email ?? user?.email ?? null,
             dateOfBirth: profile.dateOfBirth ? profile.dateOfBirth.slice(0, 10) : null,
+            xp: profile.xp ?? 0,
+            level: profile.level ?? 1,
+            nextRankProgress: profile.nextRankProgress ?? null,
             languagesKnown:
               customLoadedLanguages.length > 0
                 ? Array.from(new Set([...optionLoadedLanguages, OTHER_LANGUAGE_VALUE]))
@@ -390,6 +401,9 @@ export default function ProfilePage() {
       setFormData({
         ...updatedProfile,
         dateOfBirth: updatedProfile.dateOfBirth ? updatedProfile.dateOfBirth.slice(0, 10) : null,
+        xp: updatedProfile.xp ?? 0,
+        level: updatedProfile.level ?? 1,
+        nextRankProgress: updatedProfile.nextRankProgress ?? null,
         languagesKnown: Array.isArray(updatedProfile.languagesKnown)
           ? updatedProfile.languagesKnown
           : [],
@@ -483,6 +497,22 @@ export default function ProfilePage() {
           <FiSave size={18} />
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
+      </div>
+
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rank</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{formData.experienceLevel || 'Unranked'}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">XP</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{Number(formData.xp ?? 0).toLocaleString()}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">XP Needed for Next Level</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{formData.nextRankProgress?.remainingXp ?? 0}</p>
+          <p className="mt-1 text-sm text-slate-500">Next: {formData.nextRankProgress?.nextRank || 'N/A'}</p>
+        </div>
       </div>
 
       {error && (

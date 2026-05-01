@@ -16,6 +16,10 @@ export class Auth extends Document {
   @Prop({ type: String, enum: Role, default: Role.User, required: true })
   role!: Role;
 
+  // Current refresh token hash storage (single active session model)
+  @Prop({ type: String, default: null })
+  refreshTokenHash?: string | null;
+
   // Support multiple active refresh token hashes (for concurrent sessions)
   @Prop({ type: [{ hash: String, createdAt: Date }], default: [] })
   refreshTokens?: Array<{ hash: string; createdAt: Date }>;

@@ -41,6 +41,27 @@ export type ExtraListResponse = {
   pagination: ExtraListPagination;
 };
 
+export type PlaceCatalogItem = {
+  province: string;
+  districts: string[];
+  districtItems?: PlaceCatalogDistrictItem[];
+};
+
+export type PlaceCatalogDistrictItem = {
+  district: string;
+  places: string[];
+};
+
+export type PlaceCatalogResponse = {
+  source: 'extras' | 'json';
+  items: PlaceCatalogItem[];
+  totals?: {
+    provinces: number;
+    districts: number;
+    places?: number;
+  };
+};
+
 export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
   if (typeof data === 'object' && data !== null) {
     const asRecord = data as {
@@ -110,4 +131,19 @@ export async function updateExtra(id: string, payload: ExtraPayload) {
 export async function deleteExtra(id: string) {
   const response = await apiClient.delete(`/extra/${id}`);
   return response.data as { message?: string };
+}
+
+export async function fetchPlaceCatalog() {
+  const response = await apiClient.get('/places/catalog');
+  return response.data as PlaceCatalogResponse;
+}
+
+export async function fetchAdminPlaceHierarchy(params?: { includeDisabled?: boolean }) {
+  const response = await apiClient.get('/extra/places/hierarchy', {
+    params: {
+      includeDisabled: params?.includeDisabled ?? true,
+    },
+  });
+
+  return response.data as PlaceCatalogResponse;
 }

@@ -1,0 +1,261 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import mongoose, { Model, Schema } from 'mongoose';
+
+type ExtraDocument = {
+  _id?: unknown;
+  extraCode: string;
+  category: string;
+  name: string;
+  description?: string | null;
+  value?: string | null;
+  enabled: boolean;
+};
+
+type PlaceCatalogFile = {
+  provinces?: Array<{
+    province?: string;
+    districts?: string[];
+  }>;
+};
+
+const extraSchema = new Schema<ExtraDocument>(
+  {
+    extraCode: { type: String, required: true, unique: true, index: true },
+    category: { type: String, required: true, index: true },
+    name: { type: String, required: true },
+    description: { type: String, default: null },
+    value: { type: String, default: null },
+    enabled: { type: Boolean, default: true },
+  },
+  {
+    collection: 'extraitems',
+    timestamps: true,
+  },
+);
+
+const ExtraModel: Model<ExtraDocument> =
+  mongoose.models.ExtraItem || mongoose.model<ExtraDocument>('ExtraItem', extraSchema);
+
+function readMongoUri() {
+  const direct = process.env.MONGODB_URI?.trim();
+
+  if (direct) {
+    return direct;
+  }
+
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'backend/.env'),
+  ];
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split(/\r?\n/);
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+
+      if (!line || line.startsWith('#')) {
+        continue;
+      }
+
+      const separatorIndex = line.indexOf('=');
+
+      if (separatorIndex <= 0) {
+        continue;
+      }
+
+      const key = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+
+      if (key === 'MONGODB_URI' && value) {
+        return value;
+      }
+    }
+  }
+
+  throw new Error('MONGODB_URI is not set in environment or .env');
+}
+
+function normalizePlaceKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function readCatalogFile() {
+  const candidates = [
+    path.resolve(process.cwd(), 'nepal_province_district.json'),
+    path.resolve(process.cwd(), 'backend', 'nepal_province_district.json'),
+  ];
+
+  const sourcePath = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!sourcePath) {
+    throw new Error('Unable to locate nepal_province_district.json');
+  }
+
+  const raw = fs.readFileSync(sourcePath, 'utf8');
+  const parsed = JSON.parse(raw) as PlaceCatalogFile;
+
+  if (!Array.isArray(parsed.provinces)) {
+    throw new Error('Invalid place JSON format: expected provinces array');
+  }
+
+  return parsed.provinces.map((item) => ({
+    province: String(item.province ?? '').trim(),
+    districts: Array.isArray(item.districts)
+      ? item.districts.map((district) => String(district).trim()).filter(Boolean)
+      : [],
+  }));
+}
+
+async function generateUniqueExtraCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    let code = '';
+
+    for (let i = 0; i < 6; i += 1) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+
+    const extraCode = `EXT-${code}`;
+    const exists = await ExtraModel.exists({ extraCode });
+
+    if (!exists) {
+      return extraCode;
+    }
+  }
+
+  throw new Error('Unable to generate unique extra code for places seed');
+}
+
+function parsePlaceValue(value?: string | null): { type?: string; province?: string } | null {
+  if (!value || !value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as { type?: string; province?: string };
+  } catch {
+    return null;
+  }
+}
+
+async function upsertPlaceByMetadata(input: {
+  name: string;
+  type: 'province' | 'district';
+  province?: string;
+}) {
+  const placeName = input.name.trim();
+
+  if (!placeName) {
+    return false;
+  }
+
+  const allPlaces = await ExtraModel.find({ category: 'places' })
+    .select('_id name value')
+    .lean();
+
+  const match = allPlaces.find((item) => {
+    if (normalizePlaceKey(String(item.name ?? '')) !== normalizePlaceKey(placeName)) {
+      return false;
+    }
+
+    const metadata = parsePlaceValue(item.value);
+
+    if (!metadata || metadata.type !== input.type) {
+      return false;
+    }
+
+    if (input.type === 'province') {
+      return true;
+    }
+
+    return normalizePlaceKey(String(metadata.province ?? '')) === normalizePlaceKey(String(input.province ?? ''));
+  });
+
+  if (match) {
+    return false;
+  }
+
+  const value = input.type === 'province'
+    ? JSON.stringify({ type: 'province' })
+    : JSON.stringify({ type: 'district', province: input.province?.trim() ?? '' });
+
+  await ExtraModel.create({
+    extraCode: await generateUniqueExtraCode(),
+    category: 'places',
+    name: placeName,
+    description: input.type === 'province'
+      ? 'Seeded from nepal_province_district.json'
+      : `District in ${input.province?.trim() ?? 'Unknown Province'}`,
+    value,
+    enabled: true,
+  });
+
+  return true;
+}
+
+async function run() {
+  const mongoUri = readMongoUri();
+  const catalog = readCatalogFile();
+
+  await mongoose.connect(mongoUri);
+
+  try {
+    let created = 0;
+    const districtSeen = new Set<string>();
+
+    for (const provinceRow of catalog) {
+      const province = provinceRow.province.trim();
+
+      if (!province) {
+        continue;
+      }
+
+      if (await upsertPlaceByMetadata({ name: province, type: 'province' })) {
+        created += 1;
+      }
+
+      for (const districtRaw of provinceRow.districts) {
+        const district = districtRaw.trim();
+
+        if (!district) {
+          continue;
+        }
+
+        const districtKey = `${normalizePlaceKey(province)}::${normalizePlaceKey(district)}`;
+
+        if (districtSeen.has(districtKey)) {
+          continue;
+        }
+
+        districtSeen.add(districtKey);
+
+        if (await upsertPlaceByMetadata({
+          name: district,
+          type: 'district',
+          province,
+        })) {
+          created += 1;
+        }
+      }
+    }
+
+    const total = await ExtraModel.countDocuments({ category: 'places' });
+    console.log(`Places seed completed. Added ${created} new records. Total places: ${total}.`);
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+void run().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('Places seed failed:', message);
+  process.exitCode = 1;
+});

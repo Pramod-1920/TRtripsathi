@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
@@ -14,11 +14,24 @@ export default function LayoutWrapper({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isLoginPage = pathname === '/login';
   const isLoading = useAuthStore((state) => state.isLoading);
   const setLoading = useAuthStore((state) => state.setLoading);
   const setSession = useAuthStore((state) => state.setSession);
   const logout = useAuthStore((state) => state.logout);
+
+  const sidebarWidthClass = sidebarCollapsed ? 'md:pl-20' : 'md:pl-72';
+
+  const toggleSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen((current) => !current);
+      return;
+    }
+
+    setSidebarCollapsed((current) => !current);
+  };
 
   useEffect(() => {
     if (isLoginPage) {
@@ -174,11 +187,18 @@ export default function LayoutWrapper({
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <Sidebar />
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto">
+    <div className={`min-h-screen bg-slate-50 ${sidebarWidthClass}`}>
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        mobileOpen={sidebarOpen}
+        onCloseMobile={() => setSidebarOpen(false)}
+      />
+      <div className="min-h-screen min-w-0 flex flex-col overflow-hidden">
+        <Header
+          onMenuClick={toggleSidebar}
+          sidebarCollapsed={sidebarCollapsed}
+        />
+        <main className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
           {children}
         </main>
       </div>

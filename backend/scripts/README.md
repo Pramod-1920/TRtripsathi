@@ -53,3 +53,26 @@ XP seed finished. created=3, updated=9, total=12
 - **Hangs or slow start:** MongoDB is likely unreachable. Verify `MONGODB_URI` and network access.
 - **Duplicate key errors:** Ensure the `extraitems` collection is healthy and that `extraCode` is unique (the script already retries).
 - **No updates:** Confirm the `category` is still `xp` and rule `name` strings match the defaults.
+
+## Places Seed
+
+This script loads province and district entries from `backend/nepal_province_district.json` into the `extraitems` collection with `category: "places"`.
+
+### What it does
+
+- Connects to MongoDB using `MONGODB_URI`.
+- Creates missing place records for provinces and districts.
+- Stores district metadata in `value` as JSON: `{ "type": "district", "province": "..." }`.
+- Stores province metadata in `value` as JSON: `{ "type": "province" }`.
+- Keeps existing place records unchanged, so reruns are safe.
+
+### Run the seed
+
+```powershell
+npm run seed:places
+```
+
+### After seeding
+
+- Manage place visibility from Admin Extra > Places using the `Enabled` toggle.
+- Deleting a place in Admin removes it from the active catalog used by campaign forms.

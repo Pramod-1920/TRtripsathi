@@ -1,0 +1,115 @@
+{
+  "provinces": [
+    {
+      "province": "KOSHI PROVINCE",
+      "districts": [
+        "TAPLEJUNG",
+        "SANKHUWASABHA",
+        "SOLUKHUMBU",
+        "OKHALDHUNGA",
+        "KHOTANG",
+        "BHOJPUR",
+        "DHANKUTA",
+        "TERHATHUM",
+        "PANCHTHAR",
+        "ILAM",
+        "JHAPA",
+        "MORANG",
+        "SUNSARI",
+        "UDAYAPUR"
+      ]
+    },
+    {
+      "province": "MADHESH PROVINCE",
+      "districts": [
+        "SAPTARI",
+        "SIRAHA",
+        "DHANUSA",
+        "MAHOTTARI",
+        "SARLAHI",
+        "RAUTAHAT",
+        "BARA",
+        "PARSA"
+      ]
+    },
+    {
+      "province": "BAGMATI PROVINCE",
+      "districts": [
+        "DOLAKHA",
+        "SINDHUPALCHOWK",
+        "RASUWA",
+        "DHADING",
+        "NUWAKOT",
+        "KATHMANDU",
+        "BHAKTAPUR",
+        "LALITPUR",
+        "KAVREPALANCHOK",
+        "RAMECHHAP",
+        "SINDHULI",
+        "MAKWANPUR",
+        "CHITWAN"
+      ]
+    },
+    {
+      "province": "GANDAKI PROVINCE",
+      "districts": [
+        "GORKHA",
+        "MANANG",
+        "MUSTANG",
+        "MYAGDI",
+        "KASKI",
+        "LAMJUNG",
+        "TANAHU",
+        "NAWALPARASI (BARDAGHAT SUSTA EAST)",
+        "SYANGJA",
+        "PARBAT",
+        "BAGLUNG"
+      ]
+    },
+    {
+      "province": "LUMBINI PROVINCE",
+      "districts": [
+        "RUKUM EAST",
+        "ROLPA",
+        "PYUTHAN",
+        "GULMI",
+        "ARGHAKHANCHI",
+        "PALPA",
+        "NAWALPARASI (BARDAGHAT SUSTA WEST)",
+        "RUPANDEHI",
+        "KAPILVASTU",
+        "DANG",
+        "BANKE",
+        "BARDIYA"
+      ]
+    },
+    {
+      "province": "KARNALI PROVINCE",
+      "districts": [
+        "DOLPA",
+        "MUGU",
+        "HUMLA",
+        "JUMLA",
+        "KALIKOT",
+        "DAILEKH",
+        "SURKHET",
+        "SALYAN",
+        "JAJARKOT"
+      ]
+    },
+    {
+      "province": "SUDUR PASHCHIMANCHAL PROVINCE",
+      "districts": [
+        "BAJURA",
+        "BAJHANG",
+        "DARCHULA",
+        "BAITADI",
+        "DADELDHURA",
+        "KAILALI",
+        "KANCHANPUR",
+        "DOTI",
+        "ACHHAM"
+      ]
+    }
+  ]
+}
