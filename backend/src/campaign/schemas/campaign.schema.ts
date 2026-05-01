@@ -16,6 +16,8 @@ export class CampaignPhoto {
   caption?: string | null;
 }
 
+export type CampaignApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+
 @Schema({ timestamps: true })
 export class Campaign {
   @Prop({ type: String, required: true, unique: true, index: true })
@@ -41,6 +43,12 @@ export class Campaign {
 
   @Prop({ type: String, default: null })
   difficulty?: string | null;
+
+  @Prop({ type: String, required: true, default: null })
+  category!: string;
+
+  @Prop({ type: String, enum: ['solo', 'group'], required: true, default: 'group' })
+  hikeType!: 'solo' | 'group';
 
   @Prop({ type: Number, default: 1 })
   durationDays!: number;
@@ -99,6 +107,27 @@ export class Campaign {
 
   @Prop({ type: Boolean, default: false })
   completed!: boolean;
+
+  @Prop({ type: String, enum: ['draft', 'submitted', 'approved', 'rejected'], default: 'draft', index: true })
+  approvalStatus!: CampaignApprovalStatus;
+
+  @Prop({ type: Date, default: null })
+  submittedAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  approvedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'Auth', default: null })
+  approvedBy?: Types.ObjectId | null;
+
+  @Prop({ type: Date, default: null })
+  rejectedAt?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'Auth', default: null })
+  rejectedBy?: Types.ObjectId | null;
+
+  @Prop({ type: String, default: null })
+  approvalNote?: string | null;
 }
 
 export const CampaignSchema = SchemaFactory.createForClass(Campaign);

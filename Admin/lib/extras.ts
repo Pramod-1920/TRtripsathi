@@ -3,6 +3,7 @@ import { apiClient } from '@/lib/api';
 export type ExtraCategory =
   | 'places'
   | 'difficulty'
+  | 'activities'
   | 'xp'
   | 'badge'
   | 'level-up'

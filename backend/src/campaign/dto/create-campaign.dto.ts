@@ -37,6 +37,14 @@ export class CreateCampaignDto {
   @IsOptional()
   difficulty?: string;
 
+  @IsString()
+  @IsNotEmpty()
+  category!: string;
+
+  @IsIn(['solo', 'group'])
+  @IsNotEmpty()
+  hikeType!: 'solo' | 'group';
+
   @IsNumber()
   @IsOptional()
   durationDays?: number;

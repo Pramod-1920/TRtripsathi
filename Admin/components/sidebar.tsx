@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiUsers, FiBarChart2, FiUser, FiLogOut, FiMapPin, FiCircle, FiChevronDown, FiChevronRight, FiGrid } from 'react-icons/fi';
+import { FiHome, FiUsers, FiBarChart2, FiUser, FiLogOut, FiMapPin, FiCircle, FiChevronDown, FiChevronRight, FiGrid, FiShield } from 'react-icons/fi';
 import clsx from 'clsx';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -25,6 +25,7 @@ export function Sidebar() {
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: FiHome },
     { href: '/users', label: 'Users', icon: FiUsers },
+    { href: '/photo-verification-queue', label: 'Photo Queue', icon: FiShield },
     { href: '/analytics', label: 'Analytics', icon: FiBarChart2 },
     { href: '/profile', label: 'My Profile', icon: FiUser },
   ];
@@ -36,6 +37,7 @@ export function Sidebar() {
   const extraItems = [
     { href: '/extra/places', label: 'Places' },
     { href: '/extra/difficulty', label: 'Difficulty' },
+    { href: '/extra/activities', label: 'Activities' },
     { href: '/extra/xp', label: 'XP' },
     { href: '/extra/badge', label: 'Badge' },
     { href: '/extra/level-up', label: 'Level Up' },

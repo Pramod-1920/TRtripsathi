@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { FiArrowLeft, FiCheck, FiSave, FiTrash2, FiX } from 'react-icons/fi';
 import { apiClient } from '@/lib/api';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 type Gender = 'male' | 'female' | 'non_binary' | 'other' | 'prefer_not_to_say';
 
@@ -80,6 +81,16 @@ type Profile = {
     reviewedAt?: string;
     reviewNote?: string;
   }>;
+  xpHistory?: Array<{
+    _id?: string;
+    eventKey?: string;
+    ruleCode?: string;
+    ruleName?: string;
+    points?: number;
+    contextKey?: string;
+    context?: Record<string, unknown>;
+    awardedAt?: string;
+  }>;
 };
 
 export default function UserDetailPage() {
@@ -99,6 +110,16 @@ export default function UserDetailPage() {
   } | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+  const [editingHistoryPoints, setEditingHistoryPoints] = useState('0');
+  const [savingHistoryId, setSavingHistoryId] = useState<string | null>(null);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [xpActionReason, setXpActionReason] = useState('');
+  const [xpActionModal, setXpActionModal] = useState<{
+    mode: 'edit' | 'delete';
+    historyId: string;
+  } | null>(null);
+  const [xpActionProcessing, setXpActionProcessing] = useState(false);
 
   function getCompletionToken(entry: { key: string; completedAt?: string }) {
     return `${entry.key}::${entry.completedAt ?? ''}`;
@@ -237,6 +258,131 @@ export default function UserDetailPage() {
     } finally {
       setReviewingCode(null);
     }
+  }
+
+  function startXpHistoryEdit(entry: NonNullable<Profile['xpHistory']>[number]) {
+    if (!entry._id) {
+      return;
+    }
+
+    setEditingHistoryId(entry._id);
+    setEditingHistoryPoints(String(Math.max(0, Math.floor(Number(entry.points ?? 0)))));
+  }
+
+  function cancelXpHistoryEdit() {
+    setEditingHistoryId(null);
+    setEditingHistoryPoints('0');
+  }
+
+  function closeXpActionModal() {
+    setXpActionModal(null);
+    setXpActionReason('');
+  }
+
+  function requestSaveXpHistoryEdit() {
+    if (!editingHistoryId) {
+      return;
+    }
+
+    setXpActionModal({
+      mode: 'edit',
+      historyId: editingHistoryId,
+    });
+  }
+
+  function requestDeleteXpHistoryEntry(historyId: string) {
+    setXpActionModal({
+      mode: 'delete',
+      historyId,
+    });
+  }
+
+  async function saveXpHistoryEdit() {
+    if (!userId || !editingHistoryId) {
+      return;
+    }
+
+    const points = Math.max(0, Math.floor(Number(editingHistoryPoints)));
+
+    if (!Number.isFinite(points)) {
+      setError('XP points must be a valid non-negative number.');
+      return;
+    }
+
+    setSavingHistoryId(editingHistoryId);
+    setXpActionProcessing(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await apiClient.patch(
+        `/user/admin/profiles/${userId}/xp/history/${editingHistoryId}`,
+        {
+          points,
+          reason: xpActionReason.trim(),
+        },
+      );
+
+      setSuccess('XP history entry updated successfully.');
+      cancelXpHistoryEdit();
+      closeXpActionModal();
+      await loadProfile();
+    } catch {
+      setError('Failed to update XP history entry.');
+    } finally {
+      setSavingHistoryId(null);
+      setXpActionProcessing(false);
+    }
+  }
+
+  async function deleteXpHistoryEntry(historyId: string) {
+    if (!userId) {
+      return;
+    }
+
+    setDeletingHistoryId(historyId);
+    setXpActionProcessing(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await apiClient.delete(`/user/admin/profiles/${userId}/xp/history/${historyId}`, {
+        data: {
+          reason: xpActionReason.trim(),
+        },
+      });
+      setSuccess('XP history entry deleted successfully.');
+
+      if (editingHistoryId === historyId) {
+        cancelXpHistoryEdit();
+      }
+
+      closeXpActionModal();
+      await loadProfile();
+    } catch {
+      setError('Failed to delete XP history entry.');
+    } finally {
+      setDeletingHistoryId(null);
+      setXpActionProcessing(false);
+    }
+  }
+
+  async function confirmXpAction() {
+    if (!xpActionModal) {
+      return;
+    }
+
+    if (!xpActionReason.trim()) {
+      setError('Reason is required for XP admin actions.');
+      return;
+    }
+
+    if (xpActionModal.mode === 'edit') {
+      await saveXpHistoryEdit();
+      return;
+    }
+
+    await deleteXpHistoryEntry(xpActionModal.historyId);
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -801,6 +947,106 @@ export default function UserDetailPage() {
               <label className="ml-3 text-sm font-medium text-slate-700">Make profile public</label>
             </div>
           </div>
+
+          <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">XP History Manager</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Admins can correct or remove awarded XP entries. Total XP, level, and rank are recalculated automatically.
+            </p>
+
+            {(formData.xpHistory ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">No XP history entries found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-slate-600">
+                      <th className="px-3 py-2">Awarded At</th>
+                      <th className="px-3 py-2">Event</th>
+                      <th className="px-3 py-2">Rule</th>
+                      <th className="px-3 py-2">Points</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...(formData.xpHistory ?? [])]
+                      .sort((a, b) => {
+                        return new Date(b.awardedAt ?? 0).getTime() - new Date(a.awardedAt ?? 0).getTime();
+                      })
+                      .slice(0, 50)
+                      .map((entry) => {
+                        const historyId = entry._id ?? '';
+                        const isEditingRow = editingHistoryId === historyId;
+
+                        return (
+                          <tr key={historyId || `${entry.contextKey ?? 'ctx'}-${entry.awardedAt ?? Date.now()}`} className="border-b border-slate-100 align-top">
+                            <td className="px-3 py-2 text-slate-700">
+                              {entry.awardedAt ? new Date(entry.awardedAt).toLocaleString() : 'N/A'}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">{entry.eventKey ?? '-'}</td>
+                            <td className="px-3 py-2 text-slate-700">{entry.ruleName ?? entry.ruleCode ?? '-'}</td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {isEditingRow ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editingHistoryPoints}
+                                  onChange={(event) => setEditingHistoryPoints(event.target.value)}
+                                  className="w-24 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              ) : (
+                                Math.max(0, Math.floor(Number(entry.points ?? 0)))
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {!historyId ? (
+                                <span className="text-xs text-slate-400">Entry ID unavailable</span>
+                              ) : isEditingRow ? (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={requestSaveXpHistoryEdit}
+                                    disabled={savingHistoryId === historyId}
+                                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                                  >
+                                    {savingHistoryId === historyId ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelXpHistoryEdit}
+                                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => startXpHistoryEdit(entry)}
+                                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Edit XP
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => requestDeleteXpHistoryEntry(historyId)}
+                                    disabled={deletingHistoryId === historyId}
+                                    className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                  >
+                                    {deletingHistoryId === historyId ? 'Deleting...' : 'Delete'}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
@@ -1000,6 +1246,24 @@ export default function UserDetailPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={Boolean(xpActionModal)}
+        title={xpActionModal?.mode === 'edit' ? 'Confirm XP Update' : 'Confirm XP Deletion'}
+        description={xpActionModal?.mode === 'edit'
+          ? 'Provide a reason and confirm to update this XP history entry.'
+          : 'Provide a reason and confirm to delete this XP history entry. This will recalculate XP progression.'}
+        confirmLabel={xpActionModal?.mode === 'edit' ? 'Confirm Update' : 'Confirm Delete'}
+        cancelLabel="Cancel"
+        isProcessing={xpActionProcessing}
+        requireReason
+        reasonLabel="Reason (required)"
+        reasonPlaceholder="Enter why this admin action is needed"
+        reasonValue={xpActionReason}
+        onReasonChange={setXpActionReason}
+        onConfirm={() => void confirmXpAction()}
+        onCancel={closeXpActionModal}
+      />
     </div>
   );
 }

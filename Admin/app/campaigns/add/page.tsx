@@ -8,9 +8,12 @@ import {
   formatDateTimeLocal,
   JoinMode,
   createCampaign,
-  toIsoFromDateInput,
+  submitCampaign,
 } from '@/lib/campaigns';
 import { ExtraItem, fetchExtras } from '@/lib/extras';
+import { apiClient } from '@/lib/api';
+
+const INSTANT_CAMPAIGN_DURATION_HOURS = 12;
 
 type CampaignPhotoInput = {
   url: string;
@@ -21,6 +24,8 @@ type CampaignPhotoInput = {
 type CampaignFormState = {
   title: string;
   description: string;
+  category: string;
+  hikeType: 'solo' | 'group' | '';
   province: string;
   district: string;
   placeName: string;
@@ -38,6 +43,8 @@ type CampaignFormState = {
 const defaultFormState: CampaignFormState = {
   title: '',
   description: '',
+  category: '',
+  hikeType: '',
   province: '',
   district: '',
   placeName: '',
@@ -58,7 +65,9 @@ export default function AddCampaignPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [difficultyOptions, setDifficultyOptions] = useState<ExtraItem[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<ExtraItem[]>([]);
   const [difficultyLoading, setDifficultyLoading] = useState(true);
+  const [categoryLoading, setCategoryLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -85,7 +94,30 @@ export default function AddCampaignPage() {
       }
     }
 
+    async function loadCategoryOptions() {
+      setCategoryLoading(true);
+
+      try {
+        const response = await fetchExtras('activities', { page: 1, limit: 100 });
+
+        if (!active) {
+          return;
+        }
+
+        setCategoryOptions(response.items.filter((item) => item.enabled !== false));
+      } catch {
+        if (active) {
+          setCategoryOptions([]);
+        }
+      } finally {
+        if (active) {
+          setCategoryLoading(false);
+        }
+      }
+    }
+
     void loadDifficultyOptions();
+    void loadCategoryOptions();
 
     return () => {
       active = false;
@@ -108,11 +140,50 @@ export default function AddCampaignPage() {
     );
   }, [difficultyOptions]);
 
+  const uniqueCategoryNames = useMemo(() => {
+    const sortedByCreatedAt = [...categoryOptions].sort((first, second) => {
+      const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return firstTime - secondTime;
+    });
+
+    return Array.from(
+      new Set(
+        sortedByCreatedAt
+          .map((item) => item.name?.trim())
+          .filter((name): name is string => Boolean(name))
+      )
+    );
+  }, [categoryOptions]);
+
   const displayLocation = useMemo(() => {
     const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()]
       .filter((part) => part.length > 0);
     return parts.join(', ');
   }, [form.province, form.district, form.placeName]);
+
+  const instantEndDateValue = useMemo(() => {
+    const now = new Date();
+    const endDate = new Date(now.getTime() + INSTANT_CAMPAIGN_DURATION_HOURS * 60 * 60 * 1000);
+    return formatDateTimeLocal(endDate);
+  }, [form.scheduleType]);
+
+  useEffect(() => {
+    if (form.scheduleType === 'instant') {
+      setForm((current) => ({
+        ...current,
+        startDate: '',
+        endDate: instantEndDateValue,
+      }));
+      return;
+    }
+
+    setForm((current) => (
+      current.endDate === instantEndDateValue
+        ? { ...current, endDate: '' }
+        : current
+    ));
+  }, [form.scheduleType, instantEndDateValue]);
 
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -132,6 +203,34 @@ export default function AddCampaignPage() {
         };
       }),
     }));
+  }
+
+  function handlePhotoFileSelect(index: number, event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    (async () => {
+      try {
+        const sig = await apiClient.post('/cloudinary/signature', { folder: 'campaigns' });
+        const { cloudName, apiKey, timestamp, signature, folder } = sig.data;
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('api_key', apiKey);
+        fd.append('timestamp', String(timestamp));
+        fd.append('signature', signature);
+        if (folder) fd.append('folder', folder);
+
+        const res = await fetch(uploadUrl, { method: 'POST', body: fd });
+        if (!res.ok) throw new Error('Upload failed');
+        const data = await res.json();
+
+        updatePhotoField(index, 'url', data.secure_url ?? data.url ?? '');
+        updatePhotoField(index, 'publicId', data.public_id ?? '');
+      } catch (e) {
+        setError('Image upload failed.');
+      }
+    })();
   }
 
   function addPhotoRow() {
@@ -167,21 +266,34 @@ export default function AddCampaignPage() {
       return;
     }
 
+    if (!form.category.trim()) {
+      setError('Category is required.');
+      return;
+    }
+
+    if (!form.hikeType) {
+      setError('Type is required.');
+      return;
+    }
+
     const durationDays = Number(form.durationDays);
     const maxParticipants = Number(form.maxParticipants);
     const estimatedNPR = Number(form.estimatedNPR);
     const now = new Date();
     const selectedStartDate = form.startDate ? new Date(form.startDate) : null;
     const selectedEndDate = form.endDate ? new Date(form.endDate) : null;
+    const autoCloseEndDate = new Date(now.getTime() + INSTANT_CAMPAIGN_DURATION_HOURS * 60 * 60 * 1000);
 
     if (!Number.isFinite(durationDays) || durationDays < 1) {
       setError('Duration must be a number greater than or equal to 1.');
       return;
     }
 
-    if (!Number.isFinite(maxParticipants) || maxParticipants < 1) {
-      setError('Max participants must be a number greater than or equal to 1.');
-      return;
+    if (form.hikeType !== 'solo') {
+      if (!Number.isFinite(maxParticipants) || maxParticipants < 1) {
+        setError('Max participants must be a number greater than or equal to 1.');
+        return;
+      }
     }
 
     if (!Number.isFinite(estimatedNPR) || estimatedNPR < 0) {
@@ -198,39 +310,45 @@ export default function AddCampaignPage() {
       ? now
       : selectedStartDate;
 
+    const computedEndDate = form.scheduleType === 'instant'
+      ? autoCloseEndDate
+      : selectedEndDate;
+
     if (!computedStartDate) {
       setError('Unable to resolve campaign start date/time.');
       return;
     }
 
-    if (selectedEndDate && selectedEndDate <= computedStartDate) {
+    if (computedEndDate && computedEndDate <= computedStartDate) {
       setError('End date/time must be later than the start date/time.');
       return;
     }
 
     const photos = form.photos
-      .filter((photo) => photo.url.trim().length > 0)
+      .filter((photo) => String(photo.url).trim().length > 0)
       .map((photo) => ({
-        url: photo.url.trim(),
-        ...(photo.publicId.trim() ? { publicId: photo.publicId.trim() } : {}),
-        ...(photo.caption.trim() ? { caption: photo.caption.trim() } : {}),
+        url: String(photo.url).trim(),
+        ...(String(photo.publicId).trim() ? { publicId: String(photo.publicId).trim() } : {}),
+        ...(String(photo.caption).trim() ? { caption: String(photo.caption).trim() } : {}),
       }));
 
     const payload: CampaignPayload = {
       title: form.title.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
+      category: form.category.trim(),
+      hikeType: form.hikeType,
       ...(form.province.trim() ? { province: form.province.trim() } : {}),
       ...(form.district.trim() ? { district: form.district.trim() } : {}),
       ...(form.placeName.trim() ? { placeName: form.placeName.trim() } : {}),
       ...(displayLocation ? { location: displayLocation } : {}),
       ...(form.difficulty.trim() ? { difficulty: form.difficulty.trim() } : {}),
       durationDays,
-      maxParticipants,
+      ...(form.hikeType !== 'solo' ? { maxParticipants } : {}),
       estimatedNPR,
       scheduleType: form.scheduleType,
       startDate: computedStartDate.toISOString(),
       joinOpenDate: computedStartDate.toISOString(),
-      ...(form.endDate ? { endDate: toIsoFromDateInput(form.endDate) } : {}),
+      ...(computedEndDate ? { endDate: computedEndDate.toISOString() } : {}),
       joinMode: form.joinMode,
       ...(photos.length > 0 ? { photos } : {}),
     };
@@ -239,12 +357,20 @@ export default function AddCampaignPage() {
 
     try {
       const createdCampaign = await createCampaign(payload);
+      const requiresSubmission = createdCampaign.approvalStatus === 'draft' || createdCampaign.approvalStatus === 'rejected';
+
+      if (requiresSubmission) {
+        await submitCampaign(createdCampaign._id);
+      }
+
       setForm(defaultFormState);
       setSuccess(
-        `Campaign created successfully. System ID: ${createdCampaign.campaignCode ?? createdCampaign._id}`,
+        requiresSubmission
+          ? `Campaign submitted for admin review. System ID: ${createdCampaign.campaignCode ?? createdCampaign._id}`
+          : `Campaign created successfully. System ID: ${createdCampaign.campaignCode ?? createdCampaign._id}`,
       );
     } catch {
-      setError('Could not create campaign. Check form values and admin session.');
+      setError('Could not submit campaign. Check form values and session permissions.');
     } finally {
       setSubmitting(false);
     }
@@ -264,11 +390,24 @@ export default function AddCampaignPage() {
 
       <div className="space-y-8">
         <header className="rounded-2xl border border-slate-200 bg-linear-to-r from-slate-900 via-blue-900 to-cyan-800 p-8 text-white shadow-xl">
-          <p className="text-xs uppercase tracking-[0.22em] text-blue-100">Campaign Management</p>
-          <h1 className="mt-2 text-3xl font-bold">Create a New Campaign</h1>
-          <p className="mt-2 max-w-2xl text-sm text-blue-100">
-            Build a complete campaign record and publish it directly to your backend in one flow.
-          </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-blue-100">Campaign Management</p>
+              <h1 className="mt-2 text-3xl font-bold">Create a New Campaign</h1>
+              <p className="mt-2 max-w-2xl text-sm text-blue-100">
+                Build a complete campaign record and publish it directly to your backend in one flow.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              form="create-campaign-form"
+              disabled={submitting}
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-white/15 px-5 py-2.5 text-sm font-semibold text-white ring-1 ring-white/40 transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? 'Submitting...' : 'Submit Campaign'}
+            </button>
+          </div>
         </header>
 
         {error && (
@@ -284,7 +423,7 @@ export default function AddCampaignPage() {
         )}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <form onSubmit={handleCreateCampaign} className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg space-y-6">
+          <form id="create-campaign-form" onSubmit={handleCreateCampaign} className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg space-y-6">
             <section className="space-y-4">
               <h2 className="text-lg font-semibold text-slate-900">Basic Information</h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -373,6 +512,43 @@ export default function AddCampaignPage() {
               <h2 className="text-lg font-semibold text-slate-900">Planning & Enrollment</h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Campaign Activity *</label>
+                  <select
+                    value={form.category}
+                    onChange={(event) => updateField('category', event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={categoryLoading}
+                  >
+                    <option value="">{categoryLoading ? 'Loading activities...' : 'Select activity'}</option>
+                    {uniqueCategoryNames.map((categoryName) => (
+                      <option key={categoryName} value={categoryName}>
+                        {categoryName}
+                      </option>
+                    ))}
+                  </select>
+                  {!categoryLoading && uniqueCategoryNames.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-700">
+                      No enabled activities found. Create them in Extra {'>'} Activities first.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-900">Type *</label>
+                  <select
+                    value={form.hikeType}
+                    onChange={(event) => updateField('hikeType', event.target.value as 'solo' | 'group')}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select type</option>
+                    <option value="solo">Solo</option>
+                    <option value="group">Group</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
                   <label className="mb-1 block text-sm font-medium text-slate-900">Duration (days)</label>
                   <input
                     type="number"
@@ -383,16 +559,18 @@ export default function AddCampaignPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-900">Max participants</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.maxParticipants}
-                    onChange={(event) => updateField('maxParticipants', event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                {form.hikeType !== 'solo' && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-900">Max participants</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.maxParticipants}
+                      onChange={(event) => updateField('maxParticipants', event.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-900">Estimated NPR</label>
@@ -451,8 +629,14 @@ export default function AddCampaignPage() {
                     value={form.endDate}
                     onChange={(event) => updateField('endDate', event.target.value)}
                     min={minimumEndDateTime}
+                    disabled={form.scheduleType === 'instant'}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  {form.scheduleType === 'instant' && (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Instant campaigns auto-close 12 hours after start. Close time is set to {form.endDate || instantEndDateValue}.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
@@ -472,13 +656,18 @@ export default function AddCampaignPage() {
 
               {form.photos.map((photo, index) => (
                 <div key={`photo-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-12">
-                  <input
-                    type="url"
-                    value={photo.url}
-                    onChange={(event) => updatePhotoField(index, 'url', event.target.value)}
-                    className="md:col-span-6 rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="https://..."
-                  />
+                  <div className="md:col-span-6">
+                    <label className="sr-only">Photo file</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => handlePhotoFileSelect(index, event)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {photo.url && (
+                      <img src={photo.url} alt={`photo-${index}`} className="mt-2 max-h-32 w-auto rounded-md object-cover" />
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={photo.publicId}
@@ -511,7 +700,7 @@ export default function AddCampaignPage() {
                 disabled={submitting}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60"
               >
-                {submitting ? 'Creating...' : 'Create Campaign'}
+                {submitting ? 'Submitting...' : 'Submit Campaign'}
               </button>
             </div>
           </form>
@@ -524,7 +713,7 @@ export default function AddCampaignPage() {
               <h3 className="mt-2 text-xl font-bold">{form.title.trim() || 'Untitled Campaign'}</h3>
               <p className="mt-2 text-sm text-blue-100 line-clamp-4">{form.description.trim() || 'No description added yet.'}</p>
 
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                 <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-1">
                   <FiMapPin size={12} />
                   {displayLocation || 'No location'}
@@ -537,10 +726,12 @@ export default function AddCampaignPage() {
                   <FiCalendar size={12} />
                   {form.durationDays} day(s)
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-1">
-                  <FiUsers size={12} />
-                  {form.maxParticipants} seats
-                </span>
+                {form.hikeType !== 'solo' && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-1">
+                    <FiUsers size={12} />
+                    {form.maxParticipants} seats
+                  </span>
+                )}
               </div>
             </div>
 
@@ -548,6 +739,8 @@ export default function AddCampaignPage() {
               <p>System ID: <span className="font-semibold">Auto-generated by system</span></p>
               <p>Estimated budget: <span className="font-semibold">NPR {form.estimatedNPR || '0'}</span></p>
               <p>Join mode: <span className="font-semibold capitalize">{form.joinMode}</span></p>
+              <p>Activity: <span className="font-semibold">{form.category || 'Not set'}</span></p>
+              <p>Type: <span className="font-semibold capitalize">{form.hikeType || 'Not set'}</span></p>
               <p>Province: <span className="font-semibold">{form.province || 'Not set'}</span></p>
               <p>District: <span className="font-semibold">{form.district || 'Not set'}</span></p>
               <p>Place: <span className="font-semibold">{form.placeName || 'Not set'}</span></p>

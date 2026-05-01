@@ -12,14 +12,33 @@ type XpRuleRepeatMode =
 
 type XpRuleValue = {
   eventKey: string;
-  points: number;
+  baseXp: number;
+  overrideXp?: number;
+  bonusXp?: number;
+  socialBonusXp?: number;
+  ruleType: 'activity' | 'location' | 'global' | 'social';
+  activityType?: string;
+  locationKey?: string;
+  overrideEnabled?: boolean;
+  repeatPenaltyEnabled?: boolean;
+  difficultyMultipliers?: Partial<Record<'easy' | 'moderate' | 'hard' | 'extreme', number>>;
+  explorationBonuses?: {
+    firstVisit?: number;
+    newDistrict?: number;
+    hiddenGem?: number;
+    rareRoute?: number;
+  };
   repeat: XpRuleRepeatMode;
   conditions?: {
     difficulty?: string;
     district?: string;
+    locationKey?: string;
+    activityType?: string;
     ratingGte?: number;
     solo?: boolean;
     hostOnly?: boolean;
+    hiddenGem?: boolean;
+    rareRoute?: boolean;
   };
 };
 
@@ -109,53 +128,103 @@ function normalizeKey(value: string) {
 function defaultRules(): RuleSeed[] {
   return [
     {
-      name: 'Difficulty Easy Completion XP',
-      description: 'XP for completing easy campaigns as participant',
+      name: 'Activity Rule: Hike',
+      description: 'Dynamic XP rule for hike activities',
       value: {
         eventKey: 'campaign_completed',
-        points: 60,
+        ruleType: 'activity',
+        activityType: 'hike',
+        baseXp: 50,
+        difficultyMultipliers: {
+          easy: 1,
+          moderate: 1.4,
+          hard: 1.9,
+          extreme: 2.5,
+        },
+        explorationBonuses: {
+          firstVisit: 150,
+          newDistrict: 250,
+          hiddenGem: 300,
+          rareRoute: 400,
+        },
+        repeatPenaltyEnabled: true,
         repeat: 'once_per_campaign',
-        conditions: { difficulty: 'easy' },
+        conditions: { activityType: 'hike' },
       },
     },
     {
-      name: 'Difficulty Moderate Completion XP',
-      description: 'XP for completing moderate campaigns as participant',
+      name: 'Activity Rule: Trek',
+      description: 'Dynamic XP rule for trek activities',
       value: {
         eventKey: 'campaign_completed',
-        points: 90,
+        ruleType: 'activity',
+        activityType: 'trek',
+        baseXp: 100,
+        difficultyMultipliers: {
+          easy: 1,
+          moderate: 1.3,
+          hard: 1.8,
+          extreme: 2.4,
+        },
+        explorationBonuses: {
+          firstVisit: 150,
+          newDistrict: 250,
+          hiddenGem: 300,
+          rareRoute: 400,
+        },
+        repeatPenaltyEnabled: true,
         repeat: 'once_per_campaign',
-        conditions: { difficulty: 'moderate' },
+        conditions: { activityType: 'trek' },
       },
     },
     {
-      name: 'Difficulty Challenging Completion XP',
-      description: 'XP for completing challenging campaigns as participant',
+      name: 'Activity Rule: Temple / Heritage',
+      description: 'Dynamic XP rule for temple and heritage visits',
       value: {
         eventKey: 'campaign_completed',
-        points: 130,
+        ruleType: 'activity',
+        activityType: 'temple',
+        baseXp: 90,
+        difficultyMultipliers: {
+          easy: 1,
+          moderate: 1.2,
+          hard: 1.6,
+          extreme: 2,
+        },
+        explorationBonuses: {
+          firstVisit: 150,
+          newDistrict: 250,
+          hiddenGem: 300,
+          rareRoute: 400,
+        },
+        repeatPenaltyEnabled: true,
         repeat: 'once_per_campaign',
-        conditions: { difficulty: 'challenging' },
+        conditions: { activityType: 'temple' },
       },
     },
     {
-      name: 'Difficulty Hard Completion XP',
-      description: 'XP for completing hard campaigns as participant',
+      name: 'Activity Rule: Adventure',
+      description: 'Dynamic XP rule for nature adventure campaigns',
       value: {
         eventKey: 'campaign_completed',
-        points: 180,
+        ruleType: 'activity',
+        activityType: 'adventure',
+        baseXp: 120,
+        difficultyMultipliers: {
+          easy: 1,
+          moderate: 1.4,
+          hard: 1.9,
+          extreme: 2.6,
+        },
+        explorationBonuses: {
+          firstVisit: 150,
+          newDistrict: 250,
+          hiddenGem: 300,
+          rareRoute: 400,
+        },
+        repeatPenaltyEnabled: true,
         repeat: 'once_per_campaign',
-        conditions: { difficulty: 'hard' },
-      },
-    },
-    {
-      name: 'Difficulty Extreme Completion XP',
-      description: 'XP for completing extreme campaigns as participant',
-      value: {
-        eventKey: 'campaign_completed',
-        points: 240,
-        repeat: 'once_per_campaign',
-        conditions: { difficulty: 'extreme' },
+        conditions: { activityType: 'adventure' },
       },
     },
     {
@@ -163,7 +232,10 @@ function defaultRules(): RuleSeed[] {
       description: 'XP for successfully hosting and completing a campaign',
       value: {
         eventKey: 'host_campaign_completed',
-        points: 150,
+        ruleType: 'social',
+        baseXp: 100,
+        socialBonusXp: 180,
+        repeatPenaltyEnabled: true,
         repeat: 'once_per_campaign',
         conditions: { hostOnly: true },
       },
@@ -173,7 +245,9 @@ function defaultRules(): RuleSeed[] {
       description: 'XP for uploading a group campaign photo',
       value: {
         eventKey: 'group_photo_uploaded',
-        points: 25,
+        ruleType: 'global',
+        baseXp: 25,
+        repeatPenaltyEnabled: false,
         repeat: 'once_per_campaign',
       },
     },
@@ -182,7 +256,9 @@ function defaultRules(): RuleSeed[] {
       description: 'XP for uploading solo trek photo',
       value: {
         eventKey: 'solo_photo_uploaded',
-        points: 35,
+        ruleType: 'global',
+        baseXp: 35,
+        repeatPenaltyEnabled: false,
         repeat: 'once_per_campaign',
         conditions: { solo: true },
       },
@@ -192,7 +268,9 @@ function defaultRules(): RuleSeed[] {
       description: 'Bonus XP for first solo trek completion',
       value: {
         eventKey: 'first_solo_trek',
-        points: 120,
+        ruleType: 'global',
+        baseXp: 120,
+        repeatPenaltyEnabled: false,
         repeat: 'once_per_user',
         conditions: { solo: true },
       },
@@ -202,7 +280,10 @@ function defaultRules(): RuleSeed[] {
       description: 'XP bonus when user completes first trek in a district',
       value: {
         eventKey: 'first_trek_new_district',
-        points: 80,
+        ruleType: 'location',
+        baseXp: 100,
+        bonusXp: 80,
+        repeatPenaltyEnabled: false,
         repeat: 'once_per_district',
       },
     },
@@ -211,7 +292,9 @@ function defaultRules(): RuleSeed[] {
       description: 'XP bonus for receiving 5-star review from group members',
       value: {
         eventKey: 'received_five_star_rating',
-        points: 70,
+        ruleType: 'social',
+        baseXp: 70,
+        repeatPenaltyEnabled: false,
         repeat: 'always',
         conditions: { ratingGte: 5 },
       },
@@ -221,7 +304,10 @@ function defaultRules(): RuleSeed[] {
       description: 'XP bonus when referred user completes a trek',
       value: {
         eventKey: 'referral_completed_trek',
-        points: 160,
+        ruleType: 'social',
+        baseXp: 90,
+        socialBonusXp: 250,
+        repeatPenaltyEnabled: false,
         repeat: 'once_per_referred_user',
       },
     },
@@ -257,7 +343,35 @@ async function upsertRule(rule: RuleSeed) {
 
   const normalizedValue: XpRuleValue = {
     eventKey: normalizeKey(rule.value.eventKey),
-    points: Math.floor(rule.value.points),
+    ruleType: rule.value.ruleType,
+    baseXp: Math.floor(rule.value.baseXp),
+    ...(rule.value.overrideXp !== undefined
+      ? { overrideXp: Math.floor(rule.value.overrideXp) }
+      : {}),
+    ...(rule.value.bonusXp !== undefined
+      ? { bonusXp: Math.floor(rule.value.bonusXp) }
+      : {}),
+    ...(rule.value.socialBonusXp !== undefined
+      ? { socialBonusXp: Math.floor(rule.value.socialBonusXp) }
+      : {}),
+    ...(rule.value.activityType
+      ? { activityType: normalizeKey(rule.value.activityType) }
+      : {}),
+    ...(rule.value.locationKey
+      ? { locationKey: normalizeKey(rule.value.locationKey) }
+      : {}),
+    ...(rule.value.overrideEnabled !== undefined
+      ? { overrideEnabled: Boolean(rule.value.overrideEnabled) }
+      : {}),
+    ...(rule.value.repeatPenaltyEnabled !== undefined
+      ? { repeatPenaltyEnabled: Boolean(rule.value.repeatPenaltyEnabled) }
+      : {}),
+    ...(rule.value.difficultyMultipliers
+      ? { difficultyMultipliers: rule.value.difficultyMultipliers }
+      : {}),
+    ...(rule.value.explorationBonuses
+      ? { explorationBonuses: rule.value.explorationBonuses }
+      : {}),
     repeat: rule.value.repeat,
     ...(rule.value.conditions
       ? {
@@ -268,6 +382,12 @@ async function upsertRule(rule: RuleSeed) {
             ...(rule.value.conditions.district
               ? { district: normalizeKey(rule.value.conditions.district) }
               : {}),
+            ...(rule.value.conditions.locationKey
+              ? { locationKey: normalizeKey(rule.value.conditions.locationKey) }
+              : {}),
+            ...(rule.value.conditions.activityType
+              ? { activityType: normalizeKey(rule.value.conditions.activityType) }
+              : {}),
             ...(rule.value.conditions.ratingGte !== undefined
               ? { ratingGte: Number(rule.value.conditions.ratingGte) }
               : {}),
@@ -276,6 +396,12 @@ async function upsertRule(rule: RuleSeed) {
               : {}),
             ...(rule.value.conditions.hostOnly !== undefined
               ? { hostOnly: Boolean(rule.value.conditions.hostOnly) }
+              : {}),
+            ...(rule.value.conditions.hiddenGem !== undefined
+              ? { hiddenGem: Boolean(rule.value.conditions.hiddenGem) }
+              : {}),
+            ...(rule.value.conditions.rareRoute !== undefined
+              ? { rareRoute: Boolean(rule.value.conditions.rareRoute) }
               : {}),
           },
         }

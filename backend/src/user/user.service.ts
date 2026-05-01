@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, PipelineStage, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
 import { ExperienceLevel } from '../auth/constants/experience-level.enum';
 import { CloudinaryService } from '../config/cloudinary/cloudinary.service';
@@ -69,7 +69,23 @@ type XpRuleRepeatMode =
 
 type XpRuleDefinition = {
   eventKey: string;
-  points: number;
+  points?: number;
+  baseXp?: number;
+  overrideXp?: number;
+  bonusXp?: number;
+  socialBonusXp?: number;
+  ruleType?: 'activity' | 'location' | 'global' | 'social';
+  activityType?: string;
+  locationKey?: string;
+  overrideEnabled?: boolean;
+  repeatPenaltyEnabled?: boolean;
+  difficultyMultipliers?: Partial<Record<'easy' | 'moderate' | 'hard' | 'extreme', number>>;
+  explorationBonuses?: {
+    firstVisit?: number;
+    newDistrict?: number;
+    hiddenGem?: number;
+    rareRoute?: number;
+  };
   repeat: XpRuleRepeatMode;
   conditions?: {
     difficulty?: string;
@@ -77,6 +93,10 @@ type XpRuleDefinition = {
     ratingGte?: number;
     solo?: boolean;
     hostOnly?: boolean;
+    locationKey?: string;
+    activityType?: string;
+    hiddenGem?: boolean;
+    rareRoute?: boolean;
   };
 };
 
@@ -85,19 +105,56 @@ type ParsedXpRule = {
   name: string;
   eventKey: string;
   points: number;
+  baseXp: number;
+  overrideXp?: number;
+  bonusXp: number;
+  socialBonusXp: number;
+  ruleType: 'activity' | 'location' | 'global' | 'social';
+  activityType?: string;
+  locationKey?: string;
+  overrideEnabled: boolean;
+  repeatPenaltyEnabled: boolean;
+  difficultyMultipliers: Partial<Record<'easy' | 'moderate' | 'hard' | 'extreme', number>>;
+  explorationBonuses: {
+    firstVisit: number;
+    newDistrict: number;
+    hiddenGem: number;
+    rareRoute: number;
+  };
   repeat: XpRuleRepeatMode;
   conditions?: XpRuleDefinition['conditions'];
 };
 
 type XpEventContext = {
   campaignId?: string;
+  activityType?: string;
+  locationKey?: string;
+  placeName?: string;
   district?: string;
   difficulty?: string;
   rating?: number;
   solo?: boolean;
   hostOnly?: boolean;
+  hiddenGem?: boolean;
+  rareRoute?: boolean;
+  firstVisit?: boolean;
+  newDistrict?: boolean;
   referredUserId?: string;
   [key: string]: unknown;
+};
+
+type XpBreakdown = {
+  baseXp: number;
+  source: 'override' | 'rule' | 'fallback';
+  difficultyMultiplier: number;
+  difficultyComponent: number;
+  explorationBonus: number;
+  socialBonus: number;
+  repeatMultiplier: number;
+  repeatPenalty: number;
+  beforePenalty: number;
+  finalXp: number;
+  repeatCountForLocation: number;
 };
 
 @Injectable()
@@ -279,6 +336,76 @@ export class UserService {
     return value?.trim().toLowerCase() ?? '';
   }
 
+  private normalizeDifficulty(value?: string | null) {
+    const normalized = this.normalizeKey(value);
+
+    if (normalized === 'normal') {
+      return 'moderate';
+    }
+
+    return normalized;
+  }
+
+  private getSystemDifficultyBaseXp(difficulty?: string) {
+    const normalizedDifficulty = this.normalizeDifficulty(difficulty);
+
+    if (normalizedDifficulty === 'easy') {
+      return 50;
+    }
+
+    if (normalizedDifficulty === 'hard') {
+      return 180;
+    }
+
+    if (normalizedDifficulty === 'extreme') {
+      return 300;
+    }
+
+    return 100;
+  }
+
+  private getDefaultRepeatMultiplier(previousCountForLocation: number) {
+    const attempt = previousCountForLocation + 1;
+
+    if (attempt === 1) {
+      return 1;
+    }
+
+    if (attempt === 2) {
+      return 0.6;
+    }
+
+    if (attempt === 3) {
+      return 0.3;
+    }
+
+    if (attempt === 4) {
+      return 0.1;
+    }
+
+    return 0;
+  }
+
+  private resolveLocationKey(context: XpEventContext) {
+    const explicit = this.normalizeKey(String(context.locationKey ?? context.placeName ?? ''));
+
+    if (explicit) {
+      return explicit;
+    }
+
+    const district = this.normalizeKey(String(context.district ?? ''));
+
+    if (district) {
+      return district;
+    }
+
+    return '';
+  }
+
+  private resolveDistrictKey(context: XpEventContext) {
+    return this.normalizeKey(String(context.district ?? ''));
+  }
+
   private parseXpRuleValue(value?: string | null): XpRuleDefinition | null {
     if (!value?.trim()) {
       return null;
@@ -287,10 +414,27 @@ export class UserService {
     try {
       const parsed = JSON.parse(value) as Partial<XpRuleDefinition>;
       const eventKey = this.normalizeKey(parsed.eventKey);
-      const points = Number(parsed.points);
       const repeat = parsed.repeat ?? 'always';
 
-      if (!eventKey || !Number.isFinite(points) || points <= 0) {
+      const baseXp = Number(
+        parsed.baseXp
+        ?? parsed.points
+        ?? 0,
+      );
+
+      const overrideXp = parsed.overrideXp !== undefined
+        ? Number(parsed.overrideXp)
+        : undefined;
+
+      const bonusXp = parsed.bonusXp !== undefined
+        ? Number(parsed.bonusXp)
+        : 0;
+
+      const socialBonusXp = parsed.socialBonusXp !== undefined
+        ? Number(parsed.socialBonusXp)
+        : 0;
+
+      if (!eventKey || !Number.isFinite(baseXp) || baseXp < 0) {
         return null;
       }
 
@@ -307,13 +451,51 @@ export class UserService {
         return null;
       }
 
+      const difficultyMultipliers = parsed.difficultyMultipliers
+        ? {
+            ...(parsed.difficultyMultipliers.easy !== undefined
+              ? { easy: Number(parsed.difficultyMultipliers.easy) }
+              : {}),
+            ...(parsed.difficultyMultipliers.moderate !== undefined
+              ? { moderate: Number(parsed.difficultyMultipliers.moderate) }
+              : {}),
+            ...(parsed.difficultyMultipliers.hard !== undefined
+              ? { hard: Number(parsed.difficultyMultipliers.hard) }
+              : {}),
+            ...(parsed.difficultyMultipliers.extreme !== undefined
+              ? { extreme: Number(parsed.difficultyMultipliers.extreme) }
+              : {}),
+          }
+        : {};
+
+      if (Object.values(difficultyMultipliers).some((value) => !Number.isFinite(value))) {
+        return null;
+      }
+
+      const explorationBonuses = {
+        firstVisit: Number(parsed.explorationBonuses?.firstVisit ?? 150),
+        newDistrict: Number(parsed.explorationBonuses?.newDistrict ?? 250),
+        hiddenGem: Number(parsed.explorationBonuses?.hiddenGem ?? 300),
+        rareRoute: Number(parsed.explorationBonuses?.rareRoute ?? 400),
+      };
+
+      if (Object.values(explorationBonuses).some((bonus) => !Number.isFinite(bonus))) {
+        return null;
+      }
+
       const conditions = parsed.conditions
         ? {
             ...(parsed.conditions.difficulty
-              ? { difficulty: this.normalizeKey(String(parsed.conditions.difficulty)) }
+              ? { difficulty: this.normalizeDifficulty(String(parsed.conditions.difficulty)) }
               : {}),
             ...(parsed.conditions.district
               ? { district: this.normalizeKey(String(parsed.conditions.district)) }
+              : {}),
+            ...(parsed.conditions.locationKey
+              ? { locationKey: this.normalizeKey(String(parsed.conditions.locationKey)) }
+              : {}),
+            ...(parsed.conditions.activityType
+              ? { activityType: this.normalizeKey(String(parsed.conditions.activityType)) }
               : {}),
             ...(parsed.conditions.ratingGte !== undefined
               ? { ratingGte: Number(parsed.conditions.ratingGte) }
@@ -324,6 +506,12 @@ export class UserService {
             ...(parsed.conditions.hostOnly !== undefined
               ? { hostOnly: Boolean(parsed.conditions.hostOnly) }
               : {}),
+            ...(parsed.conditions.hiddenGem !== undefined
+              ? { hiddenGem: Boolean(parsed.conditions.hiddenGem) }
+              : {}),
+            ...(parsed.conditions.rareRoute !== undefined
+              ? { rareRoute: Boolean(parsed.conditions.rareRoute) }
+              : {}),
           }
         : undefined;
 
@@ -333,7 +521,28 @@ export class UserService {
 
       return {
         eventKey,
-        points: Math.floor(points),
+        points: Math.floor(baseXp),
+        baseXp: Math.floor(baseXp),
+        ...(overrideXp !== undefined && Number.isFinite(overrideXp) && overrideXp >= 0
+          ? { overrideXp: Math.floor(overrideXp) }
+          : {}),
+        ...(Number.isFinite(bonusXp) ? { bonusXp: Math.floor(Math.max(0, bonusXp)) } : {}),
+        ...(Number.isFinite(socialBonusXp)
+          ? { socialBonusXp: Math.floor(Math.max(0, socialBonusXp)) }
+          : {}),
+        ...(parsed.ruleType ? { ruleType: parsed.ruleType } : {}),
+        ...(parsed.activityType ? { activityType: this.normalizeKey(parsed.activityType) } : {}),
+        ...(parsed.locationKey ? { locationKey: this.normalizeKey(parsed.locationKey) } : {}),
+        ...(parsed.overrideEnabled !== undefined
+          ? { overrideEnabled: Boolean(parsed.overrideEnabled) }
+          : {}),
+        ...(parsed.repeatPenaltyEnabled !== undefined
+          ? { repeatPenaltyEnabled: Boolean(parsed.repeatPenaltyEnabled) }
+          : {}),
+        ...(Object.keys(difficultyMultipliers).length > 0
+          ? { difficultyMultipliers }
+          : {}),
+        explorationBonuses,
         repeat: repeat as XpRuleRepeatMode,
         ...(conditions ? { conditions } : {}),
       };
@@ -344,10 +553,20 @@ export class UserService {
         return null;
       }
 
-      // Backward-compatible fallback: numeric value means manual points rule.
       return {
         eventKey: 'manual',
         points: Math.floor(points),
+        baseXp: Math.floor(points),
+        ruleType: 'global',
+        overrideEnabled: false,
+        repeatPenaltyEnabled: false,
+        difficultyMultipliers: {},
+        explorationBonuses: {
+          firstVisit: 150,
+          newDistrict: 250,
+          hiddenGem: 300,
+          rareRoute: 400,
+        },
         repeat: 'always',
       };
     }
@@ -374,6 +593,22 @@ export class UserService {
           name: item.name.trim(),
           eventKey: parsed.eventKey,
           points: parsed.points,
+          baseXp: Math.floor(parsed.baseXp ?? parsed.points ?? 0),
+          ...(parsed.overrideXp !== undefined ? { overrideXp: parsed.overrideXp } : {}),
+          bonusXp: Math.floor(parsed.bonusXp ?? 0),
+          socialBonusXp: Math.floor(parsed.socialBonusXp ?? 0),
+          ruleType: parsed.ruleType ?? 'global',
+          ...(parsed.activityType ? { activityType: parsed.activityType } : {}),
+          ...(parsed.locationKey ? { locationKey: parsed.locationKey } : {}),
+          overrideEnabled: parsed.overrideEnabled ?? false,
+          repeatPenaltyEnabled: parsed.repeatPenaltyEnabled ?? true,
+          difficultyMultipliers: parsed.difficultyMultipliers ?? {},
+          explorationBonuses: {
+            firstVisit: Math.floor(parsed.explorationBonuses?.firstVisit ?? 150),
+            newDistrict: Math.floor(parsed.explorationBonuses?.newDistrict ?? 250),
+            hiddenGem: Math.floor(parsed.explorationBonuses?.hiddenGem ?? 300),
+            rareRoute: Math.floor(parsed.explorationBonuses?.rareRoute ?? 400),
+          },
           repeat: parsed.repeat,
           ...(parsed.conditions ? { conditions: parsed.conditions } : {}),
         } as ParsedXpRule;
@@ -620,7 +855,7 @@ export class UserService {
 
     if (
       rule.conditions.difficulty
-      && this.normalizeKey(String(context.difficulty ?? '')) !== rule.conditions.difficulty
+      && this.normalizeDifficulty(String(context.difficulty ?? '')) !== rule.conditions.difficulty
     ) {
       return false;
     }
@@ -628,6 +863,20 @@ export class UserService {
     if (
       rule.conditions.district
       && this.normalizeKey(String(context.district ?? '')) !== rule.conditions.district
+    ) {
+      return false;
+    }
+
+    if (
+      rule.conditions.locationKey
+      && this.resolveLocationKey(context) !== rule.conditions.locationKey
+    ) {
+      return false;
+    }
+
+    if (
+      rule.conditions.activityType
+      && this.normalizeKey(String(context.activityType ?? '')) !== rule.conditions.activityType
     ) {
       return false;
     }
@@ -648,6 +897,14 @@ export class UserService {
       }
     }
 
+    if (rule.conditions.hiddenGem !== undefined && Boolean(context.hiddenGem) !== rule.conditions.hiddenGem) {
+      return false;
+    }
+
+    if (rule.conditions.rareRoute !== undefined && Boolean(context.rareRoute) !== rule.conditions.rareRoute) {
+      return false;
+    }
+
     return true;
   }
 
@@ -660,7 +917,7 @@ export class UserService {
       case 'once_per_district':
         return `${rule.code}:district:${this.normalizeKey(String(context.district ?? ''))}`;
       case 'once_per_difficulty':
-        return `${rule.code}:difficulty:${this.normalizeKey(String(context.difficulty ?? ''))}`;
+        return `${rule.code}:difficulty:${this.normalizeDifficulty(String(context.difficulty ?? ''))}`;
       case 'once_per_referred_user':
         return `${rule.code}:ref:${String(context.referredUserId ?? '').trim().toLowerCase()}`;
       case 'always':
@@ -679,7 +936,7 @@ export class UserService {
     }
 
     if (rule.repeat === 'once_per_difficulty') {
-      return Boolean(this.normalizeKey(String(context.difficulty ?? '')));
+      return Boolean(this.normalizeDifficulty(String(context.difficulty ?? '')));
     }
 
     if (rule.repeat === 'once_per_referred_user') {
@@ -687,6 +944,146 @@ export class UserService {
     }
 
     return true;
+  }
+
+  private getRepeatCountForLocation(
+    history: NonNullable<User['xpHistory']>,
+    eventKey: string,
+    context: XpEventContext,
+  ) {
+    const locationKey = this.resolveLocationKey(context);
+
+    if (!locationKey) {
+      return 0;
+    }
+
+    return history.filter((entry) => {
+      const entryEvent = this.normalizeKey(String(entry.eventKey ?? ''));
+
+      if (entryEvent !== this.normalizeKey(eventKey)) {
+        return false;
+      }
+
+      const entryLocation = this.resolveLocationKey((entry.context ?? {}) as XpEventContext);
+      return entryLocation === locationKey;
+    }).length;
+  }
+
+  private hasVisitedDistrict(
+    history: NonNullable<User['xpHistory']>,
+    districtKey: string,
+  ) {
+    if (!districtKey) {
+      return false;
+    }
+
+    return history.some((entry) => {
+      const entryDistrict = this.resolveDistrictKey((entry.context ?? {}) as XpEventContext);
+      return entryDistrict === districtKey;
+    });
+  }
+
+  private hasVisitedLocation(
+    history: NonNullable<User['xpHistory']>,
+    locationKey: string,
+  ) {
+    if (!locationKey) {
+      return false;
+    }
+
+    return history.some((entry) => {
+      const entryLocation = this.resolveLocationKey((entry.context ?? {}) as XpEventContext);
+      return entryLocation === locationKey;
+    });
+  }
+
+  private evaluateXpBreakdown(
+    rule: ParsedXpRule | null,
+    eventKey: string,
+    context: XpEventContext,
+    history: NonNullable<User['xpHistory']>,
+  ): XpBreakdown {
+    const normalizedDifficulty = this.normalizeDifficulty(String(context.difficulty ?? ''));
+    const fallbackBase = this.getSystemDifficultyBaseXp(normalizedDifficulty);
+    const baseXp = rule
+      ? rule.overrideEnabled && rule.overrideXp !== undefined
+        ? Math.max(0, Math.floor(rule.overrideXp))
+        : Math.max(0, Math.floor(rule.baseXp))
+      : fallbackBase;
+
+    const source: XpBreakdown['source'] = rule
+      ? rule.overrideEnabled && rule.overrideXp !== undefined
+        ? 'override'
+        : 'rule'
+      : 'fallback';
+
+    const difficultyMultiplier = Math.max(
+      0,
+      Number(
+        rule?.difficultyMultipliers?.[normalizedDifficulty as 'easy' | 'moderate' | 'hard' | 'extreme']
+        ?? 1,
+      ),
+    );
+
+    const difficultyComponent = Math.floor(baseXp * difficultyMultiplier);
+
+    const locationKey = this.resolveLocationKey(context);
+    const districtKey = this.resolveDistrictKey(context);
+    const firstVisit = context.firstVisit !== undefined
+      ? Boolean(context.firstVisit)
+      : !this.hasVisitedLocation(history, locationKey);
+    const newDistrict = context.newDistrict !== undefined
+      ? Boolean(context.newDistrict)
+      : !this.hasVisitedDistrict(history, districtKey);
+
+    const explorationBonus =
+      (firstVisit ? Math.max(0, Math.floor(rule?.explorationBonuses.firstVisit ?? 150)) : 0)
+      + (newDistrict ? Math.max(0, Math.floor(rule?.explorationBonuses.newDistrict ?? 250)) : 0)
+      + (Boolean(context.hiddenGem)
+        ? Math.max(0, Math.floor(rule?.explorationBonuses.hiddenGem ?? 300))
+        : 0)
+      + (Boolean(context.rareRoute)
+        ? Math.max(0, Math.floor(rule?.explorationBonuses.rareRoute ?? 400))
+        : 0);
+
+    const normalizedEventKey = this.normalizeKey(eventKey);
+    const fallbackSocialBonus = normalizedEventKey === 'referral_completed_trek'
+      ? 250
+      : normalizedEventKey === 'host_campaign_completed'
+        ? 180
+        : normalizedEventKey === 'campaign_created'
+          ? 120
+          : 0;
+
+    const socialBonus = Math.max(
+      0,
+      Math.floor(
+        rule?.socialBonusXp
+        ?? fallbackSocialBonus,
+      ),
+    ) + Math.max(0, Math.floor(rule?.bonusXp ?? 0));
+
+    const beforePenalty = Math.max(0, difficultyComponent + explorationBonus + socialBonus);
+    const repeatCountForLocation = this.getRepeatCountForLocation(history, eventKey, context);
+    const repeatMultiplier = rule?.repeatPenaltyEnabled === false
+      ? 1
+      : this.getDefaultRepeatMultiplier(repeatCountForLocation);
+    const finalXp = Math.max(0, Math.floor(beforePenalty * repeatMultiplier));
+    const repeatPenalty = Math.max(0, beforePenalty - finalXp);
+
+    return {
+      baseXp,
+      source,
+      difficultyMultiplier,
+      difficultyComponent,
+      explorationBonus,
+      socialBonus,
+      repeatMultiplier,
+      repeatPenalty,
+      beforePenalty,
+      finalXp,
+      repeatCountForLocation,
+    };
   }
 
   private async getLevelUpRules(): Promise<LevelUpRule[]> {
@@ -786,27 +1183,21 @@ export class UserService {
   private async buildNextRankProgress(profile: User, rules?: LevelUpRule[]) {
     const rulesList = rules ?? await this.getLevelUpRules();
 
-    if (rulesList.length === 0) {
-      return null;
-    }
-
-    const currentRankCode = String(
-      profile.experienceLevel ?? rulesList[0].rankCode,
+    const normalizedCurrentRank = this.normalizeKey(String(profile.experienceLevel ?? ''));
+    const sortedRules = [...rulesList].sort((first, second) => first.requiredXp - second.requiredXp);
+    const currentIndex = sortedRules.findIndex(
+      (rule) => this.normalizeKey(rule.rankCode) === normalizedCurrentRank,
     );
-    const currentIndex = Math.max(
-      0,
-      rulesList.findIndex(
-        (rule) => rule.rankCode.trim().toLowerCase()
-          === currentRankCode.trim().toLowerCase(),
-      ),
-    );
-    const nextRule = rulesList[currentIndex + 1];
+    const nextRule = currentIndex >= 0
+      ? sortedRules[currentIndex + 1]
+      : sortedRules.find((rule) => rule.requiredXp > Math.max(0, Math.floor(Number(profile.xp ?? 0))));
 
     if (!nextRule) {
       return null;
     }
 
     const currentXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)));
+    const currentRankCode = String(profile.experienceLevel ?? sortedRules[0]?.rankCode ?? 'F');
     const remainingXp = Math.max(0, nextRule.requiredXp - currentXp);
     const stats = this.getAchievementStats(profile);
     const requirements = nextRule.requirements ?? {};
@@ -872,45 +1263,100 @@ export class UserService {
     return this.buildNextRankProgress(profile, rules);
   }
 
-  private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
-    const levelUpRules = rules ?? await this.getLevelUpRules();
+  private getXpThresholdForLevel(level: number) {
+    const safeLevel = Math.max(1, Math.floor(level));
 
-    if (levelUpRules.length === 0) {
-      return profile;
+    if (safeLevel <= 1) {
+      return 0;
     }
 
-    const currentRankCode = String(
-      profile.experienceLevel ?? levelUpRules[0].rankCode,
-    );
-    const normalizedRank = currentRankCode.trim().toLowerCase();
-    const currentIndex = Math.max(
-      0,
-      levelUpRules.findIndex(
-        (rule) => rule.rankCode.trim().toLowerCase() === normalizedRank,
-      ),
-    );
+    let requiredXp = 0;
 
-    const nextRule = levelUpRules[currentIndex + 1];
+    for (let step = 2; step <= safeLevel; step += 1) {
+      requiredXp += 80 + (step - 2) * 35;
+    }
+
+    return requiredXp;
+  }
+
+  private getLevelFromXp(xp: number) {
+    const safeXp = Math.max(0, Math.floor(Number(xp) || 0));
+    let level = 1;
+
+    for (let nextLevel = 2; nextLevel <= 100; nextLevel += 1) {
+      if (safeXp >= this.getXpThresholdForLevel(nextLevel)) {
+        level = nextLevel;
+      } else {
+        break;
+      }
+    }
+
+    return level;
+  }
+
+  private getFallbackRankForLevel(level: number) {
+    if (level >= 95) {
+      return 'SSS';
+    }
+
+    if (level >= 80) {
+      return 'SS';
+    }
+
+    if (level >= 65) {
+      return 'S';
+    }
+
+    if (level >= 50) {
+      return 'A';
+    }
+
+    if (level >= 35) {
+      return 'B';
+    }
+
+    if (level >= 20) {
+      return 'C';
+    }
+
+    if (level >= 10) {
+      return 'D';
+    }
+
+    return 'F';
+  }
+
+  private resolveRankByRulesOrFallback(profile: User, rules: LevelUpRule[], level: number) {
+    if (rules.length === 0) {
+      return this.getFallbackRankForLevel(level);
+    }
+
+    const currentRank = this.normalizeKey(String(profile.experienceLevel ?? rules[0].rankCode));
+    const sortedRules = [...rules].sort((first, second) => first.requiredXp - second.requiredXp);
+    const eligible = sortedRules.filter((rule) => {
+      return (
+        Math.max(0, Math.floor(Number(profile.xp ?? 0))) >= Math.max(0, Math.floor(rule.requiredXp))
+        && this.meetsLevelUpRequirements(rule, profile)
+        && this.meetsRankGate(rule, currentRank)
+      );
+    });
+
+    if (eligible.length === 0) {
+      return sortedRules[0].rankCode;
+    }
+
+    return eligible[eligible.length - 1].rankCode;
+  }
+
+  private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
+    const levelUpRules = rules ?? await this.getLevelUpRules();
     const currentXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)));
-    const nextRankReached = Boolean(
-      nextRule
-        && Number.isFinite(nextRule.requiredXp)
-        && currentXp >= nextRule.requiredXp
-        && this.meetsLevelUpRequirements(nextRule, profile)
-        && this.meetsRankGate(nextRule, normalizedRank),
-    );
-
-    const nextRankCode = nextRankReached
-      ? nextRule.rankCode
-      : levelUpRules[currentIndex].rankCode;
-
-    const nextLevel = Math.max(1, currentIndex + (nextRankReached ? 2 : 1));
-    const nextXp = nextRankReached ? 0 : currentXp;
+    const nextLevel = this.getLevelFromXp(currentXp);
+    const nextRankCode = this.resolveRankByRulesOrFallback(profile, levelUpRules, nextLevel);
 
     const shouldUpdate =
       profile.level !== nextLevel
-      || (profile.experienceLevel ?? levelUpRules[0].rankCode) !== nextRankCode
-      || profile.xp !== nextXp;
+      || this.normalizeKey(String(profile.experienceLevel ?? '')) !== this.normalizeKey(nextRankCode);
 
     if (!shouldUpdate) {
       return profile;
@@ -921,7 +1367,6 @@ export class UserService {
       {
         level: nextLevel,
         experienceLevel: nextRankCode,
-        xp: nextXp,
       },
       {
         new: true,
@@ -932,10 +1377,13 @@ export class UserService {
     return updated ?? profile;
   }
 
-  async awardXpForEvent(
-    authId: string,
+  private async evaluateXpForProfile(
+    profile: User,
     eventKey: string,
     context: XpEventContext = {},
+    options?: {
+      simulateOnly?: boolean;
+    },
   ) {
     const normalizedEventKey = this.normalizeKey(eventKey);
 
@@ -943,29 +1391,79 @@ export class UserService {
       throw new BadRequestException('eventKey is required');
     }
 
-    const profile = await this.userModel.findOne({
-      authId: this.toObjectId(authId),
-    });
-
-    if (!profile) {
-      throw new NotFoundException('Profile not found');
-    }
-
     const rules = await this.getEnabledXpRules();
-    const matchingRules = rules.filter(
-      (rule) => rule.eventKey === normalizedEventKey,
-    );
-
-    if (matchingRules.length === 0) {
-      return {
-        eventKey: normalizedEventKey,
-        totalAwarded: 0,
-        appliedRules: [],
-      };
-    }
-
+    const matchingRules = rules.filter((rule) => rule.eventKey === normalizedEventKey);
     const existingHistory = profile.xpHistory ?? [];
     const updates: NonNullable<User['xpHistory']> = [];
+
+    if (matchingRules.length === 0) {
+      const fallbackBreakdown = this.evaluateXpBreakdown(
+        null,
+        normalizedEventKey,
+        context,
+        existingHistory,
+      );
+
+      const fallbackUpdate = {
+        eventKey: normalizedEventKey,
+        ruleCode: 'SYS-FALLBACK',
+        ruleName: 'System fallback XP',
+        points: fallbackBreakdown.finalXp,
+        contextKey: `SYS-FALLBACK:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+        context: {
+          ...context,
+          xpBreakdown: fallbackBreakdown,
+        },
+        awardedAt: new Date(),
+      };
+
+      const shouldLog = options?.simulateOnly !== true || fallbackBreakdown.finalXp > 0;
+      const totalAwarded = fallbackBreakdown.finalXp;
+      const previousRank = profile.experienceLevel ?? 'F';
+      let syncedProfile = profile;
+
+      if (!options?.simulateOnly && shouldLog) {
+        const updatedProfile = await this.userModel.findByIdAndUpdate(
+          profile._id,
+          {
+            ...(totalAwarded > 0 ? { $inc: { xp: totalAwarded } } : {}),
+            $push: { xpHistory: { $each: [fallbackUpdate] } },
+          },
+          {
+            new: true,
+            runValidators: true,
+          },
+        );
+
+        syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+      }
+
+      const levelUpRules = await this.getLevelUpRules();
+      const newRank = (options?.simulateOnly ? previousRank : syncedProfile.experienceLevel) ?? previousRank;
+      const rankProgressTarget = options?.simulateOnly ? profile : syncedProfile;
+      const nextRankProgress = await this.buildRankProgress(rankProgressTarget, levelUpRules);
+
+      return {
+        eventKey: normalizedEventKey,
+        totalAwarded,
+        currentXp: options?.simulateOnly
+          ? Math.max(0, Math.floor(Number(profile.xp ?? 0))) + totalAwarded
+          : syncedProfile.xp ?? Math.max(0, Math.floor(Number(profile.xp ?? 0))) + totalAwarded,
+        appliedRules: [
+          {
+            ruleCode: fallbackUpdate.ruleCode,
+            ruleName: fallbackUpdate.ruleName,
+            points: fallbackUpdate.points,
+            breakdown: fallbackBreakdown,
+          },
+        ],
+        rankUnlocked: newRank !== previousRank,
+        previousRank,
+        newRank,
+        nextRankProgress,
+        fallbackApplied: true,
+      };
+    }
 
     for (const rule of matchingRules) {
       if (!this.hasSufficientRepeatContext(rule, context)) {
@@ -985,13 +1483,23 @@ export class UserService {
         continue;
       }
 
+      const breakdown = this.evaluateXpBreakdown(
+        rule,
+        normalizedEventKey,
+        context,
+        existingHistory,
+      );
+
       updates.push({
         eventKey: normalizedEventKey,
         ruleCode: rule.code,
         ruleName: rule.name,
-        points: rule.points,
+        points: breakdown.finalXp,
         contextKey,
-        context,
+        context: {
+          ...context,
+          xpBreakdown: breakdown,
+        },
         awardedAt: new Date(),
       });
     }
@@ -1001,16 +1509,36 @@ export class UserService {
         eventKey: normalizedEventKey,
         totalAwarded: 0,
         appliedRules: [],
+        fallbackApplied: false,
       };
     }
 
-  const totalAwarded = updates.reduce((total, entry) => total + entry.points, 0);
-  const previousRank = profile.experienceLevel ?? ExperienceLevel.E;
+    const totalAwarded = updates.reduce((total, entry) => total + Math.max(0, entry.points), 0);
+    const previousRank = profile.experienceLevel ?? 'F';
+
+    if (options?.simulateOnly) {
+      return {
+        eventKey: normalizedEventKey,
+        totalAwarded,
+        currentXp: Math.max(0, Math.floor(Number(profile.xp ?? 0))) + totalAwarded,
+        appliedRules: updates.map((entry) => ({
+          ruleCode: entry.ruleCode,
+          ruleName: entry.ruleName,
+          points: entry.points,
+          breakdown: (entry.context?.xpBreakdown ?? null) as XpBreakdown | null,
+        })),
+        rankUnlocked: false,
+        previousRank,
+        newRank: previousRank,
+        nextRankProgress: await this.buildRankProgress(profile),
+        fallbackApplied: false,
+      };
+    }
 
     const updatedProfile = await this.userModel.findByIdAndUpdate(
       profile._id,
       {
-        $inc: { xp: totalAwarded },
+        ...(totalAwarded > 0 ? { $inc: { xp: totalAwarded } } : {}),
         $push: { xpHistory: { $each: updates } },
       },
       {
@@ -1019,12 +1547,8 @@ export class UserService {
       },
     );
 
-    const syncedProfile = await this.applyLevelProgression(
-      updatedProfile ?? profile,
-    );
-
+    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
     const levelUpRules = await this.getLevelUpRules();
-
     const newRank = syncedProfile?.experienceLevel ?? previousRank;
     const nextRankProgress = await this.buildRankProgress(
       syncedProfile ?? updatedProfile ?? profile,
@@ -1034,17 +1558,79 @@ export class UserService {
     return {
       eventKey: normalizedEventKey,
       totalAwarded,
-      currentXp: syncedProfile?.xp ?? profile.xp + totalAwarded,
+      currentXp: syncedProfile?.xp ?? Math.max(0, Math.floor(Number(profile.xp ?? 0))) + totalAwarded,
       appliedRules: updates.map((entry) => ({
         ruleCode: entry.ruleCode,
         ruleName: entry.ruleName,
         points: entry.points,
+        breakdown: (entry.context?.xpBreakdown ?? null) as XpBreakdown | null,
       })),
       rankUnlocked: newRank !== previousRank,
       previousRank,
       newRank,
       nextRankProgress,
+      fallbackApplied: false,
     };
+  }
+
+  async awardXpForEvent(
+    authId: string,
+    eventKey: string,
+    context: XpEventContext = {},
+  ) {
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    return this.evaluateXpForProfile(profile, eventKey, context);
+  }
+
+  async simulateXpForProfileEvent(
+    profileId: string,
+    eventKey: string,
+    context: XpEventContext = {},
+  ) {
+    const profile = await this.userModel.findById(profileId);
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    return this.evaluateXpForProfile(profile, eventKey, context, {
+      simulateOnly: true,
+    });
+  }
+
+  async simulateXpEvent(
+    eventKey: string,
+    context: XpEventContext = {},
+    profileId?: string,
+  ) {
+    if (profileId?.trim()) {
+      return this.simulateXpForProfileEvent(profileId.trim(), eventKey, context);
+    }
+
+    const simulatedProfile = {
+      xp: 0,
+      level: 1,
+      experienceLevel: 'F',
+      xpHistory: [],
+      achievementStats: {
+        hikes: 0,
+        treks: 0,
+        temples: 0,
+        difficultRoutes: 0,
+        legendaryRoutes: 0,
+        questChains: 0,
+      },
+    } as unknown as User;
+
+    return this.evaluateXpForProfile(simulatedProfile, eventKey, context, {
+      simulateOnly: true,
+    });
   }
 
   async awardXpForProfileEvent(
@@ -1086,6 +1672,151 @@ export class UserService {
         totalPages: Math.max(1, Math.ceil(history.length / safeLimit)),
       },
       currentXp: profile.xp ?? 0,
+    };
+  }
+
+  async adminUpdateXpHistoryEntry(
+    profileId: string,
+    historyId: string,
+    payload: {
+      points: number;
+      reason: string;
+    },
+    adminId: string,
+  ) {
+    const profile = await this.userModel.findById(profileId);
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    const newPoints = Math.max(0, Math.floor(Number(payload.points)));
+
+    if (!Number.isFinite(newPoints)) {
+      throw new BadRequestException('points must be a valid non-negative number');
+    }
+
+    if (!String(payload.reason ?? '').trim()) {
+      throw new BadRequestException('reason is required for XP history updates');
+    }
+
+    const history = [...(profile.xpHistory ?? [])];
+    const index = history.findIndex((entry) => {
+      const entryId = String((entry as unknown as { _id?: unknown })._id ?? '').trim();
+      return entryId === historyId;
+    });
+
+    if (index === -1) {
+      throw new NotFoundException('XP history entry not found');
+    }
+
+    const existing = history[index];
+    const oldPoints = Math.max(0, Math.floor(Number(existing.points ?? 0)));
+    const delta = newPoints - oldPoints;
+
+    history[index] = {
+      ...existing,
+      points: newPoints,
+      context: {
+        ...(existing.context ?? {}),
+        adminAdjustment: {
+          adjustedAt: new Date(),
+          adjustedBy: adminId,
+          oldPoints,
+          newPoints,
+          reason: payload.reason.trim(),
+        },
+      },
+    };
+
+    const nextXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)) + delta);
+
+    const updatedProfile = await this.userModel.findByIdAndUpdate(
+      profile._id,
+      {
+        xp: nextXp,
+        xpHistory: history,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+    const levelUpRules = await this.getLevelUpRules();
+
+    return {
+      message: 'XP history entry updated successfully',
+      historyId,
+      oldPoints,
+      newPoints,
+      delta,
+      reason: payload.reason.trim(),
+      currentXp: syncedProfile.xp ?? nextXp,
+      level: syncedProfile.level,
+      rank: syncedProfile.experienceLevel,
+      nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
+    };
+  }
+
+  async adminDeleteXpHistoryEntry(
+    profileId: string,
+    historyId: string,
+    adminId: string,
+    reason: string,
+  ) {
+    const profile = await this.userModel.findById(profileId);
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    const history = [...(profile.xpHistory ?? [])];
+    const index = history.findIndex((entry) => {
+      const entryId = String((entry as unknown as { _id?: unknown })._id ?? '').trim();
+      return entryId === historyId;
+    });
+
+    if (index === -1) {
+      throw new NotFoundException('XP history entry not found');
+    }
+
+    if (!String(reason ?? '').trim()) {
+      throw new BadRequestException('reason is required for XP history deletion');
+    }
+
+    const existing = history[index];
+    const deletedPoints = Math.max(0, Math.floor(Number(existing.points ?? 0)));
+    history.splice(index, 1);
+
+    const nextXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)) - deletedPoints);
+
+    const updatedProfile = await this.userModel.findByIdAndUpdate(
+      profile._id,
+      {
+        xp: nextXp,
+        xpHistory: history,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+    const levelUpRules = await this.getLevelUpRules();
+
+    return {
+      message: 'XP history entry deleted successfully',
+      historyId,
+      deletedPoints,
+      deletedBy: adminId,
+      reason: reason.trim(),
+      currentXp: syncedProfile.xp ?? nextXp,
+      level: syncedProfile.level,
+      rank: syncedProfile.experienceLevel,
+      nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
     };
   }
 
@@ -1650,6 +2381,87 @@ export class UserService {
 
     return {
       items: syncedItems,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getPhotoVerificationQueue(pagination: {
+    status?: 'pending' | 'approved' | 'rejected' | 'all';
+    page: number;
+    limit: number;
+  }) {
+    const page = pagination.page ?? 1;
+    const limit = pagination.limit ?? 20;
+    const skip = (page - 1) * limit;
+    const status = pagination.status ?? 'pending';
+
+    const pipeline: PipelineStage[] = [
+      { $unwind: '$photoVerificationRequests' },
+    ];
+
+    if (status !== 'all') {
+      pipeline.push({
+        $match: {
+          'photoVerificationRequests.status': status,
+        },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { 'photoVerificationRequests.submittedAt': -1 } },
+      {
+        $facet: {
+          items: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                profileId: '$_id',
+                firstName: 1,
+                middleName: 1,
+                lastName: 1,
+                profilePhoto: 1,
+                location: 1,
+                province: 1,
+                district: 1,
+                level: 1,
+                experienceLevel: 1,
+                badge: 1,
+                profileCompleted: 1,
+                createdAt: 1,
+                requestCode: '$photoVerificationRequests.requestCode',
+                campaignId: '$photoVerificationRequests.campaignId',
+                url: '$photoVerificationRequests.url',
+                kind: '$photoVerificationRequests.kind',
+                status: '$photoVerificationRequests.status',
+                submittedAt: '$photoVerificationRequests.submittedAt',
+                reviewedAt: '$photoVerificationRequests.reviewedAt',
+                reviewedByAuthId: '$photoVerificationRequests.reviewedByAuthId',
+                reviewNote: '$photoVerificationRequests.reviewNote',
+              },
+            },
+          ],
+          total: [{ $count: 'value' }],
+        },
+      },
+    );
+
+    const [result] = await this.userModel.aggregate(pipeline);
+    const items = (result?.items ?? []).map((item: Record<string, unknown>) => ({
+      ...item,
+      profileId: String(item.profileId),
+      reviewedByAuthId: item.reviewedByAuthId ? String(item.reviewedByAuthId) : undefined,
+    }));
+
+    const total = Number(result?.total?.[0]?.value ?? 0);
+
+    return {
+      items,
       pagination: {
         total,
         page,

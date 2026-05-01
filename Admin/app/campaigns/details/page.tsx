@@ -5,20 +5,33 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   FiChevronLeft,
   FiChevronRight,
+  FiCheck,
   FiCopy,
   FiEye,
   FiEdit2,
+  FiSend,
   FiTrash2,
+  FiX,
   FiRefreshCw,
   FiMapPin,
 } from 'react-icons/fi';
-import { Campaign, deleteCampaign, fetchCampaigns } from '@/lib/campaigns';
+import {
+  Campaign,
+  CampaignApprovalStatus,
+  approveCampaign,
+  deleteCampaign,
+  fetchCampaigns,
+  rejectCampaign,
+  submitCampaign,
+} from '@/lib/campaigns';
+import { useAuthStore } from '@/lib/auth-store';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 type SearchScope = 'all' | 'id' | 'title' | 'location' | 'creator';
-type StatusFilter = 'all' | 'active' | 'upcoming' | 'closed';
+type TimingStatus = 'active' | 'upcoming' | 'closed';
+type ApprovalFilter = 'all' | CampaignApprovalStatus;
 
-function getCampaignStatus(campaign: Campaign) {
+function getCampaignTimingStatus(campaign: Campaign): TimingStatus {
   if (campaign.completed) {
     return 'closed';
   }
@@ -42,15 +55,32 @@ function getCampaignStatus(campaign: Campaign) {
   return 'active';
 }
 
+function getApprovalBadgeClass(status?: CampaignApprovalStatus) {
+  switch (status) {
+    case 'approved':
+      return 'bg-emerald-50 text-emerald-700';
+    case 'submitted':
+      return 'bg-amber-50 text-amber-700';
+    case 'rejected':
+      return 'bg-red-50 text-red-700';
+    case 'draft':
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
 export default function CampaignDetailsPage() {
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === 'admin';
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [searchScope, setSearchScope] = useState<SearchScope>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -110,12 +140,12 @@ export default function CampaignDetailsPage() {
         }
       })();
 
-      const campaignStatus = getCampaignStatus(campaign);
-      const matchesStatus = statusFilter === 'all' || campaignStatus === statusFilter;
+      const approvalStatus = campaign.approvalStatus ?? 'draft';
+      const matchesApproval = approvalFilter === 'all' || approvalStatus === approvalFilter;
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesApproval;
     });
-  }, [campaigns, search, searchScope, statusFilter]);
+  }, [campaigns, search, searchScope, approvalFilter]);
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
@@ -165,6 +195,59 @@ export default function CampaignDetailsPage() {
       setError('Unable to delete campaign.');
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleSubmitForReview(campaignId: string) {
+    setError('');
+    setSuccess('');
+    setStatusActionId(campaignId);
+
+    try {
+      await submitCampaign(campaignId);
+      await loadCampaigns(page);
+      setSuccess('Campaign submitted for review.');
+    } catch {
+      setError('Unable to submit campaign for review.');
+    } finally {
+      setStatusActionId(null);
+    }
+  }
+
+  async function handleApprove(campaignId: string) {
+    setError('');
+    setSuccess('');
+    setStatusActionId(campaignId);
+
+    try {
+      await approveCampaign(campaignId);
+      await loadCampaigns(page);
+      setSuccess('Campaign approved successfully.');
+    } catch {
+      setError('Unable to approve campaign.');
+    } finally {
+      setStatusActionId(null);
+    }
+  }
+
+  async function handleReject(campaignId: string) {
+    const reason = window.prompt('Enter reject reason');
+    if (!reason || !reason.trim()) {
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setStatusActionId(campaignId);
+
+    try {
+      await rejectCampaign(campaignId, reason.trim());
+      await loadCampaigns(page);
+      setSuccess('Campaign rejected successfully.');
+    } catch {
+      setError('Unable to reject campaign.');
+    } finally {
+      setStatusActionId(null);
     }
   }
 
@@ -218,13 +301,23 @@ export default function CampaignDetailsPage() {
             <option value="creator">Creator</option>
           </select>
           <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            value={approvalFilter}
+            onChange={(event) => setApprovalFilter(event.target.value as ApprovalFilter)}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Status</option>
+            <option value="all">All Approval</option>
+            <option value="draft">Draft</option>
+            <option value="submitted">Submitted</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <select
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-50 text-slate-600"
+            disabled
+            defaultValue="all"
+          >
+            <option value="all">Timing badges in table</option>
             <option value="active">Active</option>
-            <option value="upcoming">Upcoming</option>
             <option value="closed">Closed</option>
           </select>
           <div className="flex items-center gap-2">
@@ -257,7 +350,8 @@ export default function CampaignDetailsPage() {
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Title</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Location</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Difficulty</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Approval</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Timing</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Join</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Created</th>
               <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">Actions</th>
@@ -266,7 +360,7 @@ export default function CampaignDetailsPage() {
           <tbody className="divide-y divide-slate-200">
             {loading && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={7}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={8}>
                   Loading campaigns...
                 </td>
               </tr>
@@ -274,7 +368,7 @@ export default function CampaignDetailsPage() {
 
             {!loading && filteredCampaigns.length === 0 && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={7}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={8}>
                   No campaigns found.
                 </td>
               </tr>
@@ -310,14 +404,19 @@ export default function CampaignDetailsPage() {
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-700">{campaign.difficulty || 'N/A'}</td>
                 <td className="px-6 py-4 text-sm text-slate-700">
+                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${getApprovalBadgeClass(campaign.approvalStatus)}`}>
+                    {campaign.approvalStatus ?? 'draft'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-sm text-slate-700">
                   <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    getCampaignStatus(campaign) === 'closed'
+                    getCampaignTimingStatus(campaign) === 'closed'
                       ? 'bg-slate-100 text-slate-700'
-                      : getCampaignStatus(campaign) === 'upcoming'
+                      : getCampaignTimingStatus(campaign) === 'upcoming'
                         ? 'bg-amber-50 text-amber-700'
                         : 'bg-emerald-50 text-emerald-700'
                   }`}>
-                    {getCampaignStatus(campaign)}
+                    {getCampaignTimingStatus(campaign)}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-700">{campaign.joinMode || 'open'}</td>
@@ -325,7 +424,43 @@ export default function CampaignDetailsPage() {
                   {campaign.createdAt ? new Date(campaign.createdAt).toLocaleDateString() : 'N/A'}
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {(campaign.approvalStatus === 'draft' || campaign.approvalStatus === 'rejected') && (
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitForReview(campaign._id)}
+                        disabled={statusActionId === campaign._id}
+                        className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-white hover:bg-slate-900 disabled:opacity-60"
+                        title="Submit for review"
+                      >
+                        <FiSend size={12} />
+                        Submit
+                      </button>
+                    )}
+                    {isAdmin && campaign.approvalStatus === 'submitted' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleApprove(campaign._id)}
+                          disabled={statusActionId === campaign._id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:opacity-60"
+                          title="Approve campaign"
+                        >
+                          <FiCheck size={12} />
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleReject(campaign._id)}
+                          disabled={statusActionId === campaign._id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs text-white hover:bg-red-700 disabled:opacity-60"
+                          title="Reject campaign"
+                        >
+                          <FiX size={12} />
+                          Reject
+                        </button>
+                      </>
+                    )}
                     <Link
                       href={`/campaigns/details/${campaign._id}`}
                       className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"

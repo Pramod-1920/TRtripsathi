@@ -300,7 +300,7 @@ export function LevelUpManager() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Level Up</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Configure rank progression rules. XP is reset to 0 when moving to the next rank.
+            Configure rank progression rules. User level is now computed on a 1-100 XP progression curve.
           </p>
         </div>
 
@@ -338,7 +338,9 @@ export function LevelUpManager() {
             <input
               value={form.rankCode}
               onChange={(event) => setForm((current) => ({ ...current, rankCode: event.target.value }))}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={!!editId}
+                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editId ? 'bg-slate-100 cursor-not-allowed text-slate-500' : ''}`}
+                title={editId ? 'Rank code cannot be changed after creation' : ''}
               placeholder="e.g. E, D, C"
             />
           </div>

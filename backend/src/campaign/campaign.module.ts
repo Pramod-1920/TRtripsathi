@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { UserModule } from '../user/user.module';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
+import { ExtraModule } from '../extra/extra.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
       { name: Auth.name, schema: AuthSchema },
     ]),
     UserModule,
+    ExtraModule,
   ],
   controllers: [CampaignController],
   providers: [CampaignService, AuditService],

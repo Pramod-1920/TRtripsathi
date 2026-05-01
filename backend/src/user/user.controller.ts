@@ -33,6 +33,9 @@ import { TriggerXpEventDto } from './dto/trigger-xp-event.dto';
 import { TriggerAchievementEventDto } from './dto/trigger-achievement-event.dto';
 import { CreatePhotoVerificationRequestDto } from './dto/create-photo-verification-request.dto';
 import { ReviewPhotoVerificationRequestDto } from './dto/review-photo-verification-request.dto';
+import { SimulateXpDto } from './dto/simulate-xp.dto';
+import { AdminUpdateXpHistoryDto } from './dto/admin-update-xp-history.dto';
+import { AdminXpHistoryReasonDto } from './dto/admin-xp-history-reason.dto';
 import { UserService } from './user.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -198,6 +201,35 @@ export class UserController {
     return result;
   }
 
+  @Get('admin/photo-verification-requests')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: list photo verification requests across all profiles' })
+  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected', 'all'], example: 'pending' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiOkResponse({ description: 'Photo verification queue fetched successfully' })
+  async getPhotoVerificationQueue(
+    @Query('status') status: 'pending' | 'approved' | 'rejected' | 'all' | undefined,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    const result = await this.userService.getPhotoVerificationQueue({
+      status,
+      page,
+      limit: Math.min(limit, 50),
+    });
+
+    await this.audit.logEvent({
+      type: 'admin.list_photo_verification_queue',
+      status: status ?? 'pending',
+      page,
+      limit,
+    });
+
+    return result;
+  }
+
   @Get('admin/profiles/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
@@ -277,6 +309,103 @@ export class UserController {
       profileId,
       adminId,
       eventKey: body.eventKey,
+    });
+
+    return result;
+  }
+
+  @Post('admin/xp/simulate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: simulate XP rule result without saving anything' })
+  @ApiBody({ type: SimulateXpDto })
+  @ApiOkResponse({ description: 'XP simulation completed successfully' })
+  async adminSimulateXp(@Body() body: SimulateXpDto) {
+    return this.userService.simulateXpEvent(
+      body.eventKey,
+      body.context ?? {},
+      body.profileId,
+    );
+  }
+
+  @Post('admin/profiles/:id/xp/simulate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: simulate XP calculation without writing history' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiBody({ type: TriggerXpEventDto })
+  @ApiOkResponse({ description: 'XP simulation completed successfully' })
+  async adminSimulateProfileXpEvent(
+    @Param('id') profileId: string,
+    @Body() body: TriggerXpEventDto,
+  ) {
+    return this.userService.simulateXpForProfileEvent(
+      profileId,
+      body.eventKey,
+      body.context ?? {},
+    );
+  }
+
+  @Patch('admin/profiles/:id/xp/history/:historyId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: edit a user XP history entry points' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiParam({ name: 'historyId', description: 'XP history entry ID' })
+  @ApiBody({ type: AdminUpdateXpHistoryDto })
+  @ApiOkResponse({ description: 'XP history entry updated successfully' })
+  async adminUpdateProfileXpHistory(
+    @Param('id') profileId: string,
+    @Param('historyId') historyId: string,
+    @Body() body: AdminUpdateXpHistoryDto,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.adminUpdateXpHistoryEntry(
+      profileId,
+      historyId,
+      body,
+      adminId,
+    );
+
+    await this.audit.logEvent({
+      type: 'admin.update_xp_history',
+      profileId,
+      historyId,
+      adminId,
+      points: body.points,
+      reason: body.reason,
+    });
+
+    return result;
+  }
+
+  @Delete('admin/profiles/:id/xp/history/:historyId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: delete a user XP history entry' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiParam({ name: 'historyId', description: 'XP history entry ID' })
+  @ApiBody({ type: AdminXpHistoryReasonDto })
+  @ApiOkResponse({ description: 'XP history entry deleted successfully' })
+  async adminDeleteProfileXpHistory(
+    @Param('id') profileId: string,
+    @Param('historyId') historyId: string,
+    @Body() body: AdminXpHistoryReasonDto,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.adminDeleteXpHistoryEntry(
+      profileId,
+      historyId,
+      adminId,
+      body.reason,
+    );
+
+    await this.audit.logEvent({
+      type: 'admin.delete_xp_history',
+      profileId,
+      historyId,
+      adminId,
+      reason: body.reason,
     });
 
     return result;

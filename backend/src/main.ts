@@ -52,6 +52,30 @@ function logMongoConnectionStatus(app: INestApplication): void {
   );
 }
 
+async function waitForMongoConnection(app: INestApplication, timeoutMs = 30000): Promise<void> {
+  const mongooseConnection = app.get<Connection>(getConnectionToken());
+
+  if (mongooseConnection.readyState === 1) {
+    return;
+  }
+
+  let timeoutHandle: NodeJS.Timeout | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timed out waiting for MongoDB connection after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([mongooseConnection.asPromise(), timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const frontendUrl = getFrontendUrlFromEnv();
@@ -133,6 +157,8 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
+
+  await waitForMongoConnection(app);
 
   const port = getPortFromEnv();
   await app.listen(port);

@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api';
 
 export type JoinMode = 'open' | 'request';
 export type CampaignScheduleType = 'instant' | 'scheduled';
+export type CampaignApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
 export type CampaignPhoto = {
   url: string;
@@ -14,6 +15,8 @@ export type Campaign = {
   campaignCode?: string;
   title: string;
   description?: string | null;
+  category?: string | null;
+  hikeType?: 'solo' | 'group' | null;
   location?: string | null;
   province?: string | null;
   district?: string | null;
@@ -27,6 +30,13 @@ export type Campaign = {
   endDate?: string | null;
   joinOpenDate?: string | null;
   joinMode?: JoinMode;
+  approvalStatus?: CampaignApprovalStatus;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
+  approvalNote?: string | null;
   photos?: CampaignPhoto[];
   completed?: boolean;
   creator?: {
@@ -41,6 +51,8 @@ export type Campaign = {
 export type CampaignPayload = {
   title: string;
   description?: string;
+  category: string;
+  hikeType: 'solo' | 'group';
   location?: string;
   province?: string;
   district?: string;
@@ -222,4 +234,23 @@ export async function deleteCampaign(id: string, reason?: string) {
     params: reason?.trim() ? { reason: reason.trim() } : undefined,
   });
   return response.data as { message?: string };
+}
+
+export async function submitCampaign(id: string) {
+  const response = await apiClient.post(`/campaigns/${id}/submit`);
+  return response.data as Campaign;
+}
+
+export async function approveCampaign(id: string, note?: string) {
+  const response = await apiClient.post(`/campaigns/${id}/approve`, {
+    ...(note?.trim() ? { note: note.trim() } : {}),
+  });
+  return response.data as Campaign;
+}
+
+export async function rejectCampaign(id: string, reason: string) {
+  const response = await apiClient.post(`/campaigns/${id}/reject`, {
+    reason: reason.trim(),
+  });
+  return response.data as Campaign;
 }

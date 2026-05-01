@@ -17,6 +17,7 @@ import { Role } from '../auth/constants/roles.enum';
 import { CampaignService } from './campaign.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
+import { ApproveCampaignDto, RejectCampaignDto } from './dto/review-campaign.dto';
 import { GetCurrentUser } from '../auth/decorators/get-current-user.decorator';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -75,6 +76,39 @@ export class CampaignController {
   ) {
     const isAdmin = req.user?.role === Role.Admin;
     return this.service.updateCampaign(id, dto, userId, isAdmin);
+  }
+
+  @Post(':id/submit')
+  @UseGuards(JwtAuthGuard)
+  async submit(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.submitCampaign(id, requesterId, isAdmin);
+  }
+
+  @Post(':id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async approve(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+    @Body() dto: ApproveCampaignDto,
+  ) {
+    return this.service.approveCampaign(id, adminId, dto.note);
+  }
+
+  @Post(':id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async reject(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+    @Body() dto: RejectCampaignDto,
+  ) {
+    return this.service.rejectCampaign(id, adminId, dto.reason);
   }
 
   @Delete(':id')
