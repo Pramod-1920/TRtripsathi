@@ -213,4 +213,23 @@ export class User extends Document {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-UserSchema.index({ profileCompleted: 1, isProfilePublic: 1 });
+// Composite indexes for admin filtering and pagination
+UserSchema.index({ profileCompleted: 1, isProfilePublic: 1, createdAt: -1 });
+
+// Indexes for profile search
+UserSchema.index({ firstName: 1, lastName: 1 });
+
+// Indexes for location filtering
+UserSchema.index({ province: 1, district: 1 });
+
+// Indexes for level/experience filtering
+UserSchema.index({ level: 1, experienceLevel: 1 });
+
+// Index for XP-based sorting
+UserSchema.index({ totalXp: -1 });
+
+// Index for timestamp-based sorting
+UserSchema.index({ createdAt: -1 });
+
+// Index for admin flags filtering
+UserSchema.index({ 'adminFlags.type': 1, 'adminFlags.date': -1 });

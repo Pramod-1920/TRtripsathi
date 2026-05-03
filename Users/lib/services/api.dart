@@ -48,6 +48,17 @@ class ApiService {
     throw Exception('Failed to load profile: \\$res');
   }
 
+  /// Get place hierarchy - GET /extra/places
+  static Future<List<dynamic>> getPlaceHierarchy() async {
+    final uri = Uri.parse('$baseUrl/extra/places');
+    final res = await http.get(uri, headers: {'Content-Type': 'application/json'});
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return body['items'] as List<dynamic>? ?? [];
+    }
+    throw Exception('Failed to load place hierarchy: ${res.statusCode}');
+  }
+
   /// Signup - POST /auth/signup
   static Future<Map<String, dynamic>> signup(String phoneNumber, String password) async {
   final uri = Uri.parse('$baseUrl/auth/signup');

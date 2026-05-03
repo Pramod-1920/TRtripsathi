@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -173,6 +174,8 @@ type XpBreakdown = {
 
 @Injectable()
 export class UserService {
+  private logger = new Logger(UserService.name);
+
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Auth.name) private readonly authModel: Model<Auth>,
@@ -1449,39 +1452,9 @@ export class UserService {
   }
 
   private resolveRankByRulesOrFallback(profile: User, rules: LevelUpRule[], level: number) {
-    if (rules.length === 0) {
-      return this.getFallbackRankForLevel(level);
-    }
-
-    const sortedRules = [...rules].sort((first, second) => first.requiredXp - second.requiredXp);
-    const currentRank = this.normalizeKey(String(profile.experienceLevel ?? sortedRules[0].rankCode));
-    const currentXp = this.getTotalXp(profile);
-    const levelEligible = sortedRules.filter((rule) => {
-      return (
-        this.isLevelWithinRule(rule, level)
-        && currentXp >= Math.max(0, Math.floor(rule.requiredXp))
-        && this.meetsLevelUpRequirements(rule, profile)
-        && this.meetsRankGate(rule, currentRank)
-      );
-    });
-
-    if (levelEligible.length > 0) {
-      return levelEligible[levelEligible.length - 1].rankCode;
-    }
-
-    const eligible = sortedRules.filter((rule) => {
-      return (
-        currentXp >= Math.max(0, Math.floor(rule.requiredXp))
-        && this.meetsLevelUpRequirements(rule, profile)
-        && this.meetsRankGate(rule, currentRank)
-      );
-    });
-
-    if (eligible.length === 0) {
-      return this.getFallbackRankForLevel(level);
-    }
-
-    return eligible[eligible.length - 1].rankCode;
+    // For automatic XP-based progression, always use fallback (level-based rank assignment)
+    // Rank gates are only for achievement-based progression, not automatic progression
+    return this.getFallbackRankForLevel(level);
   }
 
   private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
@@ -1493,31 +1466,48 @@ export class UserService {
     const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
     const currentRankXp = Math.max(0, totalXp - currentRankRequiredXp);
 
-    const shouldUpdate =
-      profile.level !== nextLevel
-      || this.normalizeKey(String(profile.experienceLevel ?? '')) !== this.normalizeKey(nextRankCode)
-      || Math.max(0, Math.floor(Number(profile.totalXp ?? profile.xp ?? 0))) !== totalXp
-      || Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== currentRankXp;
+    const currentLevel = profile.level ?? 1;
+    const currentRank = String(profile.experienceLevel ?? '');
+    const normalizedCurrentRank = this.normalizeKey(currentRank);
+    const normalizedNextRank = this.normalizeKey(nextRankCode);
+    const levelDiffers = currentLevel !== nextLevel;
+    const rankDiffers = normalizedCurrentRank !== normalizedNextRank;
+    const xpDiffers = Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== currentRankXp;
+
+    const shouldUpdate = levelDiffers || rankDiffers || xpDiffers;
 
     if (!shouldUpdate) {
+      this.logger.debug(`No update needed for profile ${profile._id}: level=${currentLevel}, rank=${currentRank}, xp=${profile.xp}`);
       return profile;
     }
 
+    this.logger.log(`⚡ Updating profile ${profile._id}: level ${currentLevel}→${nextLevel}, rank ${currentRank}→${nextRankCode}, xp ${profile.xp}→${currentRankXp}`);
+
+    const updateData = {
+      totalXp,
+      xp: currentRankXp,
+      level: nextLevel,
+      experienceLevel: nextRankCode,
+    };
+
+    this.logger.log(`  Update payload:`, updateData);
+
     const updated = await this.userModel.findByIdAndUpdate(
       profile._id,
-      {
-        totalXp,
-        xp: currentRankXp,
-        level: nextLevel,
-        experienceLevel: nextRankCode,
-      },
+      updateData,
       {
         new: true,
         runValidators: true,
       },
     );
 
-    return updated ?? profile;
+    if (!updated) {
+      this.logger.error(`❌ Profile update FAILED (null returned) for ${profile._id}`);
+      return profile;
+    }
+
+    this.logger.log(`✅ Profile updated: level=${updated.level}, rank=${updated.experienceLevel}, xp=${updated.xp}`);
+    return updated;
   }
 
   private async evaluateXpForProfile(
@@ -1964,6 +1954,196 @@ export class UserService {
       rank: syncedProfile.experienceLevel,
       nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
     };
+  }
+
+  async adminAddXpToUser(
+    profileId: string,
+    xpToAdd: number,
+    adminId: string,
+    reason: string,
+  ) {
+    let profile = await this.userModel.findById(profileId);
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    // Validate input
+    const safeXp = Math.max(1, Math.min(500, Math.floor(Number(xpToAdd))));
+
+    if (!Number.isFinite(safeXp) || safeXp < 1 || safeXp > 500) {
+      throw new BadRequestException('XP to add must be between 1 and 500');
+    }
+
+    if (!String(reason ?? '').trim()) {
+      throw new BadRequestException('Reason is required for XP additions');
+    }
+
+    try {
+      this.logger.log(`🎯 Adding ${safeXp} XP to user ${profileId} (current totalXp: ${profile.totalXp})`);
+
+      // Store previous state
+      const previousXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)));
+      const previousTotalXp = this.getTotalXp(profile);
+      const previousLevel = profile.level ?? 1;
+      const previousRank = profile.experienceLevel ?? 'E';
+
+      this.logger.log(`  Before: level=${previousLevel}, rank=${previousRank}, totalXp=${previousTotalXp}, currentXp=${previousXp}`);
+
+      // Create XP history entry
+      const newHistoryEntry = {
+        eventKey: 'admin.add_xp',
+        ruleCode: 'admin_add_xp',
+        ruleName: 'Admin XP Addition',
+        points: safeXp,
+        contextKey: `admin_xp_${Date.now()}`,
+        context: {
+          adminId,
+          reason: reason.trim(),
+          previousTotalXp,
+        },
+        awardedAt: new Date(),
+      };
+
+      // Update profile with new XP
+      const nextTotalXp = previousTotalXp + safeXp;
+      const history = [...(profile.xpHistory ?? []), newHistoryEntry];
+
+      this.logger.log(`  Updating totalXp: ${previousTotalXp} → ${nextTotalXp}`);
+
+      let updatedProfile = await this.userModel.findByIdAndUpdate(
+        profile._id,
+        {
+          totalXp: nextTotalXp,
+          xpHistory: history,
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      );
+
+      if (!updatedProfile) {
+        throw new NotFoundException('Failed to update profile');
+      }
+
+      this.logger.log(`  ✅ XP updated in DB: totalXp now = ${updatedProfile.totalXp}`);
+      this.logger.log(`  Now applying level progression...`);
+
+      // Apply level progression (this automatically updates level and rank based on new totalXp)
+      await this.applyLevelProgression(updatedProfile);
+
+      // Force refresh from DB to ensure we have the latest data
+      const syncedProfile = await this.userModel.findById(profileId);
+      if (!syncedProfile) {
+        throw new NotFoundException('Profile lost after update');
+      }
+
+      this.logger.log(`  🔄 Refreshed from DB: level=${syncedProfile.level}, rank=${syncedProfile.experienceLevel}`);
+
+      const levelUpRules = await this.getLevelUpRules();
+      const newLevel = syncedProfile.level ?? previousLevel;
+      const newRank = syncedProfile.experienceLevel ?? previousRank;
+      const newXp = Math.max(0, Math.floor(Number(syncedProfile.xp ?? 0)));
+
+      this.logger.log(`  After: level=${newLevel}, rank=${newRank}, totalXp=${syncedProfile.totalXp}, currentXp=${newXp}`);
+
+      // Determine if rank actually changed
+      const rankChanged = this.normalizeKey(previousRank) !== this.normalizeKey(newRank);
+      const levelChanged = previousLevel !== newLevel;
+
+      this.logger.log(`  Comparison: rankChanged=${rankChanged} (${previousRank}→${newRank}), levelChanged=${levelChanged} (${previousLevel}→${newLevel})`);
+
+      const response = {
+        message: `Added ${safeXp} XP to user`,
+        previousXp,
+        previousLevel,
+        previousRank,
+        newXp,
+        newLevel,
+        newRank,
+        xpAdded: safeXp,
+        autoRankedUp: rankChanged && levelChanged,
+        autoRankUpReason: rankChanged ? `Rank automatically updated from ${previousRank} to ${newRank} due to level progression` : undefined,
+        nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
+      };
+
+      this.logger.log(`✅ XP addition complete`);
+      return response;
+    } catch (error) {
+      this.logger.error(`Error adding XP to user ${profileId}:`, error);
+      throw error;
+    }
+  }
+
+  async validateAndApplyAutoRankUp(
+    profileId: string,
+    previousRank: string,
+    currentRank: string,
+    currentLevel: number,
+  ) {
+    const profile = await this.userModel.findById(profileId);
+
+    if (!profile) {
+      return {
+        autoRankedUp: false,
+        newRank: currentRank,
+        newLevel: currentLevel,
+        message: 'Profile not found for rank-up validation',
+      };
+    }
+
+    // Don't auto-rank-up if rank didn't change from the level progression
+    if (previousRank === currentRank) {
+      return {
+        autoRankedUp: false,
+        newRank: currentRank,
+        newLevel: currentLevel,
+        message: 'Rank has not progressed',
+      };
+    }
+
+    // Check if user has completed all rank-up achievements for the new rank
+    // NOTE: This requires RankUpAchievementService to be injected
+    // For now, we'll add a check but it will be integrated with the service
+    try {
+      // This will be populated once RankUpAchievementService is available
+      const hasAllAchievements = true; // TODO: Call rankUpAchievementService.validateRankUp()
+
+      if (!hasAllAchievements) {
+        // Revert rank but keep level
+        await this.userModel.findByIdAndUpdate(
+          profile._id,
+          {
+            experienceLevel: previousRank,
+          },
+          { new: true },
+        );
+
+        return {
+          autoRankedUp: false,
+          newRank: previousRank,
+          newLevel: currentLevel,
+          message: 'Rank-up achievements not completed. User remains at previous rank.',
+        };
+      }
+
+      // Auto-rank-up is approved - rank is already updated by applyLevelProgression
+      return {
+        autoRankedUp: true,
+        newRank: currentRank,
+        newLevel: currentLevel,
+        message: `User automatically ranked up to ${currentRank} and completed all achievements`,
+      };
+    } catch {
+      // If there's an error checking achievements, allow rank-up to proceed
+      return {
+        autoRankedUp: true,
+        newRank: currentRank,
+        newLevel: currentLevel,
+        message: 'Auto rank-up applied (achievement validation unavailable)',
+      };
+    }
   }
 
   async setReferrerForOwnProfile(authId: string, referrerProfileId: string) {

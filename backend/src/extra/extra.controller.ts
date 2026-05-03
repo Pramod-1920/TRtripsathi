@@ -20,14 +20,24 @@ import { ExtraCategory } from './constants/extra-category.enum';
 import { ExtraService } from './extra.service';
 
 @ApiTags('extra')
-@ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.Admin)
 @Controller('extra')
 export class ExtraController {
   constructor(private readonly extraService: ExtraService) {}
 
+  // PUBLIC ENDPOINTS (no auth required)
+  @Get('places')
+  @ApiOperation({ summary: 'Get places hierarchy (public - for user dropdowns)' })
+  @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
+  async getPublicPlaces() {
+    const result = await this.extraService.getPlaceCatalog();
+    return result;
+  }
+
+  // ADMIN ENDPOINTS (require auth)
   @Post()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: create an extra item' })
   @ApiOkResponse({ description: 'Extra item created successfully' })
   create(@Body() dto: CreateExtraDto) {
@@ -35,6 +45,9 @@ export class ExtraController {
   }
 
   @Get()
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: list extra items' })
   @ApiQuery({ name: 'category', required: false, enum: ExtraCategory })
   @ApiQuery({ name: 'page', required: false, example: 1 })
@@ -53,6 +66,9 @@ export class ExtraController {
   }
 
   @Get('places/hierarchy')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: get places hierarchy (province + district + place)' })
   @ApiQuery({ name: 'includeDisabled', required: false, example: false })
   @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
@@ -62,6 +78,9 @@ export class ExtraController {
   }
 
   @Get(':id')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: get extra item by id' })
   @ApiParam({ name: 'id', description: 'Extra item id' })
   @ApiOkResponse({ description: 'Extra item fetched successfully' })
@@ -70,6 +89,9 @@ export class ExtraController {
   }
 
   @Patch(':id')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: update extra item' })
   @ApiParam({ name: 'id', description: 'Extra item id' })
   @ApiOkResponse({ description: 'Extra item updated successfully' })
@@ -78,6 +100,9 @@ export class ExtraController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: delete extra item' })
   @ApiParam({ name: 'id', description: 'Extra item id' })
   @ApiOkResponse({ description: 'Extra item deleted successfully' })

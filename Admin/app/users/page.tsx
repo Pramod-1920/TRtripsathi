@@ -32,6 +32,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -89,8 +91,23 @@ export default function UsersPage() {
       return;
     }
 
-    await apiClient.delete(`/user/admin/profiles/${userId}`);
-    setUsers((currentUsers) => currentUsers.filter((user) => user._id !== userId));
+    setDeleting(prev => new Set([...prev, userId]));
+    setDeleteError(null);
+
+    try {
+      await apiClient.delete(`/user/admin/profiles/${userId}`);
+      setUsers((currentUsers) => currentUsers.filter((user) => user._id !== userId));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete user';
+      setDeleteError(errorMessage);
+      console.error('Delete error:', err);
+    } finally {
+      setDeleting(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -110,6 +127,19 @@ export default function UsersPage() {
       {error && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 flex justify-between items-center">
+          <span>Error: {deleteError}</span>
+          <button
+            type="button"
+            onClick={() => setDeleteError(null)}
+            className="text-red-700 hover:text-red-800 font-bold"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -192,10 +222,11 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => void handleDeleteUser(user._id)}
-                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
-                      title="Delete User"
+                      disabled={deleting.has(user._id)}
+                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={deleting.has(user._id) ? 'Deleting...' : 'Delete User'}
                     >
-                      <FiTrash2 size={18} />
+                      {deleting.has(user._id) ? '⏳' : <FiTrash2 size={18} />}
                     </button>
                   </div>
                 </td>

@@ -179,10 +179,11 @@ export default function UserDetailPage() {
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [xpActionReason, setXpActionReason] = useState('');
   const [xpActionModal, setXpActionModal] = useState<{
-    mode: 'edit' | 'delete';
-    historyId: string;
+    mode: 'edit' | 'delete' | 'add';
+    historyId?: string;
   } | null>(null);
   const [xpActionProcessing, setXpActionProcessing] = useState(false);
+  const [xpToAddAmount, setXpToAddAmount] = useState('');
   const rankProgress = getRankProgress(formData);
 
   function getCompletionToken(entry: { key: string; completedAt?: string }) {
@@ -341,6 +342,15 @@ export default function UserDetailPage() {
   function closeXpActionModal() {
     setXpActionModal(null);
     setXpActionReason('');
+    setXpToAddAmount('');
+  }
+
+  function openAddXpModal() {
+    setXpToAddAmount('');
+    setXpActionReason('');
+    setXpActionModal({
+      mode: 'add',
+    });
   }
 
   function requestSaveXpHistoryEdit() {
@@ -436,6 +446,11 @@ export default function UserDetailPage() {
       return;
     }
 
+    if (xpActionModal.mode === 'add') {
+      await addXpToUser();
+      return;
+    }
+
     if (!xpActionReason.trim()) {
       setError('Reason is required for XP admin actions.');
       return;
@@ -446,7 +461,69 @@ export default function UserDetailPage() {
       return;
     }
 
-    await deleteXpHistoryEntry(xpActionModal.historyId);
+    await deleteXpHistoryEntry(xpActionModal.historyId ?? '');
+  }
+
+  async function addXpToUser() {
+    if (!userId) {
+      return;
+    }
+
+    const xpAmount = Math.floor(Number(xpToAddAmount));
+
+    if (!Number.isFinite(xpAmount) || xpAmount < 1 || xpAmount > 500) {
+      setError('XP to add must be between 1 and 500');
+      return;
+    }
+
+    if (!xpActionReason.trim()) {
+      setError('Reason is required for XP addition');
+      return;
+    }
+
+    if (xpActionReason.trim().length < 5) {
+      setError('Reason must be at least 5 characters');
+      return;
+    }
+
+    if (xpActionReason.trim().length > 500) {
+      setError('Reason cannot exceed 500 characters');
+      return;
+    }
+
+    setXpActionProcessing(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await apiClient.post(`/user/admin/profiles/${userId}/xp/add`, {
+        xpToAdd: xpAmount,
+        reason: xpActionReason.trim(),
+      });
+
+      const result = response.data as {
+        message: string;
+        newXp: number;
+        newLevel: number;
+        newRank: string;
+        autoRankedUp: boolean;
+        autoRankUpReason?: string;
+      };
+
+      const successMsg = result.autoRankedUp
+        ? `✅ ${result.message}\n🎉 User auto-ranked up to ${result.newRank}!\n${result.autoRankUpReason ?? ''}`
+        : `✅ ${result.message}\nNew Rank XP: ${result.newXp}, Level: ${result.newLevel}, Rank: ${result.newRank}`;
+
+      setSuccess(successMsg);
+      closeXpActionModal();
+      await loadProfile();
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : (err as any)?.response?.data?.message || 'Failed to add XP to user';
+      setError(`Failed to add XP to user: ${errorMsg}`);
+      console.error('XP addition error:', err);
+    } finally {
+      setXpActionProcessing(false);
+    }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -1013,14 +1090,23 @@ export default function UserDetailPage() {
           </div>
 
           <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <h2 className="text-lg font-semibold text-slate-900">XP History Manager</h2>
-              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
-                Rank resets at level-up
-              </span>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">XP History Manager</h2>
+                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  Rank resets at level-up
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={openAddXpModal}
+                className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                Add XP
+              </button>
             </div>
             <p className="text-sm text-slate-600 mb-4">
-              Admins can correct or remove awarded XP entries. Total XP is kept separately, while the current XP bar resets on each rank-up.
+              Admins can add XP to users (capped at 500 per action). Auto-rank-up will occur when user reaches level threshold and completes all rank-up achievements.
             </p>
 
             {(formData.xpHistory ?? []).length === 0 ? (
@@ -1089,23 +1175,7 @@ export default function UserDetailPage() {
                                   </button>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => startXpHistoryEdit(entry)}
-                                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Edit XP
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => requestDeleteXpHistoryEntry(historyId)}
-                                    disabled={deletingHistoryId === historyId}
-                                    className="rounded-md border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
-                                  >
-                                    {deletingHistoryId === historyId ? 'Deleting...' : 'Delete'}
-                                  </button>
-                                </div>
+                                <span className="text-xs text-slate-500">View only - use "Add XP" button above</span>
                               )}
                             </td>
                           </tr>
@@ -1363,7 +1433,7 @@ export default function UserDetailPage() {
       )}
 
       <ConfirmModal
-        open={Boolean(xpActionModal)}
+        open={Boolean(xpActionModal) && xpActionModal?.mode !== 'add'}
         title={xpActionModal?.mode === 'edit' ? 'Confirm XP Update' : 'Confirm XP Deletion'}
         description={xpActionModal?.mode === 'edit'
           ? 'Provide a reason and confirm to update this XP history entry.'
@@ -1379,6 +1449,69 @@ export default function UserDetailPage() {
         onConfirm={() => void confirmXpAction()}
         onCancel={closeXpActionModal}
       />
+
+      {/* Add XP Modal */}
+      {xpActionModal?.mode === 'add' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add XP to User</h2>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Current XP: <span className="font-semibold text-blue-600">{formData.xp}</span>
+              </label>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                XP to Add <span className="text-red-600">*</span>
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={xpToAddAmount}
+                onChange={(e) => setXpToAddAmount(e.target.value)}
+                placeholder="Enter amount (1-500)"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-slate-500 mt-1">Maximum 500 XP per action</p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Reason <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={xpActionReason}
+                onChange={(e) => setXpActionReason(e.target.value)}
+                placeholder="Enter reason for adding XP (e.g., 'Manual correction for completed activity')"
+                rows={3}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={closeXpActionModal}
+                disabled={xpActionProcessing}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmXpAction()}
+                disabled={xpActionProcessing}
+                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {xpActionProcessing ? 'Adding XP...' : 'Add XP'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

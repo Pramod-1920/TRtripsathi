@@ -8,15 +8,12 @@ import { useAuthStore } from '@/lib/auth-store';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [formData, setFormData] = useState({
     phoneNumber: '',
     password: '',
-    role: 'user' as 'admin' | 'user',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const setSession = useAuthStore((state) => state.setSession);
 
   const handleInputChange = (
@@ -33,22 +30,8 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setSuccess('');
 
     try {
-      if (mode === 'signup') {
-        await apiClient.post('/auth/signup', {
-          phoneNumber: formData.phoneNumber,
-          password: formData.password,
-          role: formData.role,
-        });
-
-        setSuccess(`Account created as ${formData.role}. You can sign in now.`);
-        setMode('signin');
-        setFormData((prev) => ({ ...prev, password: '' }));
-        return;
-      }
-
       const response = await apiClient.post('/auth/login', {
         phoneNumber: formData.phoneNumber,
         password: formData.password,
@@ -71,11 +54,7 @@ export default function LoginPage() {
       setSession(data.user);
       router.push('/dashboard');
     } catch {
-      if (mode === 'signup') {
-        setError('Unable to create account. Check phone/password or use another number.');
-      } else {
-        setError('Invalid credentials or admin access denied.');
-      }
+      setError('Invalid credentials or admin access denied.');
     } finally {
       setLoading(false);
     }
@@ -92,36 +71,7 @@ export default function LoginPage() {
               <span className="text-2xl font-bold text-white">TR</span>
             </div>
             <h1 className="text-3xl font-bold text-slate-900">TRTrips Admin</h1>
-            <p className="text-slate-600 text-sm mt-2">Sign in or create account</p>
-          </div>
-
-          <div className="mb-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signin');
-                setError('');
-                setSuccess('');
-              }}
-              className={`rounded-md py-2 text-sm font-medium transition-colors ${
-                mode === 'signin' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signup');
-                setError('');
-                setSuccess('');
-              }}
-              className={`rounded-md py-2 text-sm font-medium transition-colors ${
-                mode === 'signup' ? 'bg-white text-slate-900 shadow' : 'text-slate-600'
-              }`}
-            >
-              Create Account
-            </button>
+            <p className="text-slate-600 text-sm mt-2">Sign in to your account</p>
           </div>
 
           {/* Form */}
@@ -143,23 +93,6 @@ export default function LoginPage() {
                 />
               </div>
             </div>
-
-            {mode === 'signup' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-900 mb-2">
-                  Role
-                </label>
-                <select
-                  name="role"
-                  value={formData.role}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="user">User</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-            )}
 
             {/* Password */}
             <div>
@@ -186,21 +119,15 @@ export default function LoginPage() {
               </div>
             )}
 
-            {success && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm text-green-700">{success}</p>
-              </div>
-            )}
-
             {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              {loading ? (mode === 'signup' ? 'Creating account...' : 'Signing in...') : (
+              {loading ? 'Signing in...' : (
                 <>
-                  {mode === 'signup' ? 'Create Account' : 'Sign In'}
+                  Sign In
                   <FiArrowRight size={18} />
                 </>
               )}

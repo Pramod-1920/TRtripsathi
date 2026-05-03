@@ -7,6 +7,10 @@ import {
   AchievementDefinitionSchema,
 } from './schemas/achievement-definition.schema';
 import { UserAchievement, UserAchievementSchema } from './schemas/user-achievement.schema';
+import { RankUpAchievement, RankUpAchievementSchema } from './schemas/rank-up-achievement.schema';
+import { UserRankUpAchievement, UserRankUpAchievementSchema } from './schemas/user-rank-up-achievement.schema';
+import { RankUpAchievementService } from './rank-up-achievement.service';
+import { RankUpAchievementController } from './rank-up-achievement.controller';
 
 @Module({
   imports: [
@@ -19,10 +23,18 @@ import { UserAchievement, UserAchievementSchema } from './schemas/user-achieveme
         name: UserAchievement.name,
         schema: UserAchievementSchema,
       },
+      {
+        name: RankUpAchievement.name,
+        schema: RankUpAchievementSchema,
+      },
+      {
+        name: UserRankUpAchievement.name,
+        schema: UserRankUpAchievementSchema,
+      },
     ]),
   ],
-  controllers: [AchievementController],
-  providers: [AchievementService],
-  exports: [AchievementService],
+  controllers: [AchievementController, RankUpAchievementController],
+  providers: [AchievementService, RankUpAchievementService],
+  exports: [AchievementService, RankUpAchievementService],
 })
 export class AchievementModule {}

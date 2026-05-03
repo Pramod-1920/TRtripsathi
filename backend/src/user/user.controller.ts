@@ -36,6 +36,7 @@ import { ReviewPhotoVerificationRequestDto } from './dto/review-photo-verificati
 import { SimulateXpDto } from './dto/simulate-xp.dto';
 import { AdminUpdateXpHistoryDto } from './dto/admin-update-xp-history.dto';
 import { AdminXpHistoryReasonDto } from './dto/admin-xp-history-reason.dto';
+import { AdminAddXpDto } from './dto/admin-add-xp.dto';
 import { UserService } from './user.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -187,17 +188,22 @@ export class UserController {
   @Roles(Role.Admin)
   @ApiOperation({ summary: 'Admin: list all profiles with pagination' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 10 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiOkResponse({ description: 'Admin profiles list fetched successfully' })
   async getAllProfiles(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
+    // Enforce maximum limit for safety (prevents accidental data dumps)
+    const MAX_LIMIT = 100;
+    const safeLimit = Math.min(Math.max(limit, 1), MAX_LIMIT);
+    const safePage = Math.max(page, 1);
+
     const result = await this.userService.getAllProfiles({
-      page,
-      limit: Math.min(limit, 50),
+      page: safePage,
+      limit: safeLimit,
     });
-    await this.audit.logEvent({ type: 'admin.list_profiles', page, limit });
+    await this.audit.logEvent({ type: 'admin.list_profiles', page: safePage, limit: safeLimit });
     return result;
   }
 
@@ -214,17 +220,22 @@ export class UserController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
+    // Enforce maximum limit for safety (prevents accidental data dumps)
+    const MAX_LIMIT = 100;
+    const safeLimit = Math.min(Math.max(limit, 1), MAX_LIMIT);
+    const safePage = Math.max(page, 1);
+
     const result = await this.userService.getPhotoVerificationQueue({
       status,
-      page,
-      limit: Math.min(limit, 50),
+      page: safePage,
+      limit: safeLimit,
     });
 
     await this.audit.logEvent({
       type: 'admin.list_photo_verification_queue',
       status: status ?? 'pending',
-      page,
-      limit,
+      page: safePage,
+      limit: safeLimit,
     });
 
     return result;
@@ -344,6 +355,38 @@ export class UserController {
       body.eventKey,
       body.context ?? {},
     );
+  }
+
+  @Post('admin/profiles/:id/xp/add')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: add XP to user (max 500 per action, auto-ranks up if eligible)' })
+  @ApiParam({ name: 'id', description: 'Profile ID' })
+  @ApiBody({ type: AdminAddXpDto })
+  @ApiOkResponse({ description: 'XP added successfully' })
+  async adminAddXpToProfile(
+    @Param('id') profileId: string,
+    @Body() body: AdminAddXpDto,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.adminAddXpToUser(
+      profileId,
+      body.xpToAdd,
+      adminId,
+      body.reason,
+    );
+
+    await this.audit.logEvent({
+      type: 'admin.add_xp',
+      profileId,
+      adminId,
+      xpAdded: body.xpToAdd,
+      reason: body.reason,
+      autoRankedUp: result.autoRankedUp,
+      newRank: result.newRank,
+    });
+
+    return result;
   }
 
   @Patch('admin/profiles/:id/xp/history/:historyId')

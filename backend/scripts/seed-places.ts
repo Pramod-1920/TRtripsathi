@@ -14,8 +14,10 @@ type ExtraDocument = {
 
 type PlaceCatalogFile = {
   provinces?: Array<{
+    provinceNumber?: number;
     province?: string;
     districts?: string[];
+    places?: Record<string, string[]>;
   }>;
 };
 
@@ -148,8 +150,10 @@ function parsePlaceValue(value?: string | null): { type?: string; province?: str
 
 async function upsertPlaceByMetadata(input: {
   name: string;
-  type: 'province' | 'district';
+  type: 'province' | 'district' | 'place';
   province?: string;
+  district?: string;
+  provinceNumber?: number;
 }) {
   const placeName = input.name.trim();
 
@@ -176,24 +180,46 @@ async function upsertPlaceByMetadata(input: {
       return true;
     }
 
-    return normalizePlaceKey(String(metadata.province ?? '')) === normalizePlaceKey(String(input.province ?? ''));
+    if (input.type === 'district') {
+      return normalizePlaceKey(String(metadata.province ?? '')) === normalizePlaceKey(String(input.province ?? ''));
+    }
+
+    return (
+      normalizePlaceKey(String(metadata.province ?? '')) === normalizePlaceKey(String(input.province ?? ''))
+      && normalizePlaceKey(String(metadata.district ?? '')) === normalizePlaceKey(String(input.district ?? ''))
+    );
   });
 
   if (match) {
     return false;
   }
 
-  const value = input.type === 'province'
-    ? JSON.stringify({ type: 'province' })
-    : JSON.stringify({ type: 'district', province: input.province?.trim() ?? '' });
+  let value = '';
+  let description = '';
+
+  if (input.type === 'province') {
+    value = JSON.stringify({
+      type: 'province',
+      ...(input.provinceNumber ? { provinceNumber: input.provinceNumber } : {}),
+    });
+    description = `Province ${input.provinceNumber ? `#${input.provinceNumber}` : ''} - Seeded from nepal_province_district.json`;
+  } else if (input.type === 'district') {
+    value = JSON.stringify({ type: 'district', province: input.province?.trim() ?? '' });
+    description = `District in ${input.province?.trim() ?? 'Unknown Province'}`;
+  } else {
+    value = JSON.stringify({
+      type: 'place',
+      province: input.province?.trim() ?? '',
+      district: input.district?.trim() ?? '',
+    });
+    description = `${input.name} in ${input.district?.trim() ?? 'Unknown District'}, ${input.province?.trim() ?? 'Unknown Province'}`;
+  }
 
   await ExtraModel.create({
     extraCode: await generateUniqueExtraCode(),
     category: 'places',
     name: placeName,
-    description: input.type === 'province'
-      ? 'Seeded from nepal_province_district.json'
-      : `District in ${input.province?.trim() ?? 'Unknown Province'}`,
+    description,
     value,
     enabled: true,
   });
@@ -213,12 +239,13 @@ async function run() {
 
     for (const provinceRow of catalog) {
       const province = provinceRow.province.trim();
+      const provinceNumber = provinceRow.provinceNumber ?? 0;
 
       if (!province) {
         continue;
       }
 
-      if (await upsertPlaceByMetadata({ name: province, type: 'province' })) {
+      if (await upsertPlaceByMetadata({ name: province, type: 'province', provinceNumber })) {
         created += 1;
       }
 
@@ -243,6 +270,19 @@ async function run() {
           province,
         })) {
           created += 1;
+        }
+
+        // Seed places for this district
+        const places = provinceRow.places?.[district] ?? [];
+        for (const place of places) {
+          if (await upsertPlaceByMetadata({
+            name: place.trim(),
+            type: 'place',
+            province,
+            district,
+          })) {
+            created += 1;
+          }
         }
       }
     }

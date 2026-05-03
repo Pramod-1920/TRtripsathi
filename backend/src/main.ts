@@ -11,6 +11,7 @@ import { adminHeadersMiddleware } from './security/headers.middleware';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common/pipes/validation.pipe';
 import { Connection } from 'mongoose';
+import { HttpExceptionFilter } from './http-exception.filter';
 
 function getPortFromEnv(): number {
   const envPort = process.env.PORT;
@@ -137,6 +138,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // Global exception filter for consistent error handling
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   // Setup Swagger documentation
   const config = new DocumentBuilder()
