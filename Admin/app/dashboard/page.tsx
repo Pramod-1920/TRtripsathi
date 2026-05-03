@@ -12,6 +12,7 @@ type DashboardProfile = {
   profileCompleted?: boolean;
   experienceLevel?: string | null;
   xp?: number | null;
+  totalXp?: number | null;
   level?: number | null;
   location?: string | null;
   createdAt?: string;
@@ -82,8 +83,8 @@ export default function DashboardPage() {
 
   const topXpProfiles = [...profiles]
     .sort((left, right) => {
-      const leftXp = Number(left.xp ?? 0);
-      const rightXp = Number(right.xp ?? 0);
+      const leftXp = Number(left.totalXp ?? left.xp ?? 0);
+      const rightXp = Number(right.totalXp ?? right.xp ?? 0);
 
       if (rightXp !== leftXp) {
         return rightXp - leftXp;

@@ -132,6 +132,13 @@ Admin UI supports:
 - Add bonuses
 - Set rarity
 - Toggle repeat penalty
+- Create and edit ranks
+- Set level ranges per rank
+- Define and reorder sub-ranks
+- Set XP per level
+- Edit rank requirements for hikes, treks, temples, routes, unique locations, and difficult routes
+- Toggle hidden ranks on or off
+- Adjust difficulty globally without redeploying code
 - Save rule
 
 XP Simulator:
@@ -162,18 +169,64 @@ XP Rule shape:
 }
 ```
 
+Level config shape:
+
+```ts
+{
+  levelNumber,
+  xpRequired,
+  formula: {
+    baseXP,
+    multiplier,
+    overrideEnabled,
+    manualOverrideXP
+  },
+  active
+}
+```
+
+Rank config shape:
+
+```ts
+{
+  name,
+  code,
+  minLevel,
+  maxLevel,
+  subRanks: [
+    { name, order }
+  ],
+  requirements: {
+    hikes,
+    treks,
+    temples,
+    routes,
+    uniqueLocations,
+    difficultRoutes,
+    achievements
+  },
+  isHidden,
+  unlockConditions,
+  active
+}
+```
+
 User XP Record shape:
 
 ```ts
 {
   userId,
-  totalXP,
-  level,
+  currentXP,
+  currentLevel,
   rank,
+  subRank,
   stats: {
     hikes,
     treks,
-    discoveries
+    temples,
+    routes,
+    uniqueLocations,
+    difficultRoutes
   },
   xpHistory: [
     {
@@ -189,33 +242,74 @@ User XP Record shape:
 
 ## 10. LEVEL SYSTEM (1 -> 100)
 
-| Level Range | XP Requirement |
-| ----------- | -------------- |
-| 1-10 | 100 XP |
-| 11-30 | 200 XP |
-| 31-60 | 400 XP |
-| 61-90 | 800 XP |
-| 91-100 | 1500 XP |
+Levels are fully configurable in MongoDB and can be adjusted by admin without redeploying code.
 
-## 11. RANK SYSTEM (F -> SSS)
+Default formula:
 
-| Rank | XP Required |
-| ---- | ----------- |
-| F | 0 |
-| E | 300 |
-| D | 1000 |
-| C | 2500 |
-| B | 6000 |
-| A | 15000 |
-| S | 35000 |
-| SS | 70000 |
-| SSS | 120000 |
+```text
+XP_needed = baseXP + (level × multiplier)
+```
 
-Rank up requires:
+Rules:
 
-- Minimum XP
-- Activity count
-- Exploration diversity
+- Each level stores its own `xpRequired`
+- Admin can manually override a single level or the full formula
+- Global difficulty tuning can modify the curve for all future progression checks
+- XP progression never resets on rank change
+
+Recommended level curve:
+
+| Level Range | Progression Type |
+| ----------- | ---------------- |
+| 1-10 | Fast onboarding |
+| 11-20 | Controlled ramp |
+| 21-40 | Steady grind |
+| 41-60 | High effort |
+| 61-85 | Elite progression |
+| 86-99 | Hidden endgame |
+| 100 | Final capstone |
+
+## 11. RANK & SUB-RANK SYSTEM
+
+Rank is determined by level, but rank-up is locked unless both XP and activity requirements are satisfied.
+
+| Rank Code | Rank Name | Level Range | Visibility |
+| --------- | --------- | ----------- | --------- |
+| E | Novice Wanderer | 1-10 | Visible |
+| D | Trail Hunter | 11-20 | Visible |
+| C | Ridge Slayer | 21-30 | Visible |
+| B | Summit Conqueror | 31-40 | Visible |
+| A | Himalayan Elite | 41-50 | Visible |
+| S | Peak Sovereign | 51-60 | Visible |
+| SS | Everest Legend | 61-70 | Visible |
+| SSS | Nepal Hike God | 71-85 | Visible |
+| ??? | Himalayan Deity | 86-99 | Hidden |
+| Ultimate | Nepal Conqueror | 100 | Visible |
+
+Each rank has 3 sub-ranks that are mapped automatically from the user’s position inside the level band:
+
+- E: Spark, Path, Rise
+- D: Track, Hunt, Stalk
+- C: Edge, Strike, Slay
+- B: Climb, Break, Conquer
+- A: Frost, Storm, Crown
+- S: Cloud, Thunder, Sovereign
+- SS: Myth, Legend, Eternal
+- SSS: Divine, Ascend, God
+- Himalayan Deity: Awakened, Transcendent, Infinite
+- Nepal Conqueror: Mythic, Eternal, Supreme
+
+Rank-up gates:
+
+- Minimum XP for the target level range
+- Required activities for that rank
+- Required exploration stats such as hikes, treks, temples, routes, unique locations, or difficult routes
+- Hidden ranks remain locked until unlock conditions are met
+
+Hidden rank behavior:
+
+- Himalayan Deity stays hidden until the user reaches SSS and satisfies advanced achievements and special conditions
+- Nepal Conqueror is the extreme endgame rank at level 100 and should feel like a final boss completion state
 
 ## 12. SYSTEM FLOW
 
@@ -225,10 +319,13 @@ User Action
 -> Rule Matching
 -> Bonus Calculation
 -> Penalty Check
--> Final XP
--> Update User XP
--> Level Update
--> Rank Check
+-> Add XP
+-> Check Level Progression
+-> Update Level
+-> Determine Rank from Level
+-> Validate Rank Requirements
+-> Assign Sub-Rank
+-> Trigger Rank-Up Event
 -> Save History
 ```
 

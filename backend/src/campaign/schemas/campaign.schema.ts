@@ -108,6 +108,36 @@ export class Campaign {
   @Prop({ type: Boolean, default: false })
   completed!: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  hostVerified!: boolean;
+
+  @Prop({
+    type: [
+      {
+        url: String,
+        publicId: String,
+        caption: String,
+      },
+    ],
+    default: [],
+  })
+  verificationPhotos!: CampaignPhoto[];
+
+  @Prop({ type: Date, default: null })
+  verificationDeadline?: Date | null;
+
+  @Prop({ type: Boolean, default: false })
+  awaitingVerification!: boolean;
+
+  @Prop({ type: Date, default: null })
+  verifiedAt?: Date | null;
+
+  @Prop({ type: Boolean, default: false })
+  failed!: boolean;
+
+  @Prop({ type: Date, default: null })
+  failedAt?: Date | null;
+
   @Prop({ type: String, enum: ['draft', 'submitted', 'approved', 'rejected'], default: 'draft', index: true })
   approvalStatus!: CampaignApprovalStatus;
 

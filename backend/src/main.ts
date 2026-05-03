@@ -80,6 +80,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const frontendUrl = getFrontendUrlFromEnv();
 
+  // Enable CORS first (before other middleware that may affect headers)
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true,
+  });
+
   app.use(helmet());
   app.use(cookieParser());
   // ensure body parsing for sendBeacon JSON payloads (small bodies)
@@ -124,11 +130,6 @@ async function bootstrap() {
 
   // CSRF middleware for state-changing endpoints (double-submit cookie)
   app.use(csrfMiddleware);
-
-  app.enableCors({
-    origin: frontendUrl,
-    credentials: true,
-  });
 
   app.useGlobalPipes(
     new ValidationPipe({

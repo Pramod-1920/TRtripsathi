@@ -33,6 +33,61 @@ const LANGUAGE_OPTIONS = [
 
 const OTHER_LANGUAGE_VALUE = 'Other';
 
+const RANK_TIERS = [
+  { code: 'E', name: 'Novice Wanderer', minLevel: 1, maxLevel: 10, subRanks: ['Spark', 'Path', 'Rise'] },
+  { code: 'D', name: 'Trail Hunter', minLevel: 11, maxLevel: 20, subRanks: ['Track', 'Hunt', 'Stalk'] },
+  { code: 'C', name: 'Ridge Slayer', minLevel: 21, maxLevel: 30, subRanks: ['Edge', 'Strike', 'Slay'] },
+  { code: 'B', name: 'Summit Conqueror', minLevel: 31, maxLevel: 40, subRanks: ['Climb', 'Break', 'Conquer'] },
+  { code: 'A', name: 'Himalayan Elite', minLevel: 41, maxLevel: 50, subRanks: ['Frost', 'Storm', 'Crown'] },
+  { code: 'S', name: 'Peak Sovereign', minLevel: 51, maxLevel: 60, subRanks: ['Cloud', 'Thunder', 'Sovereign'] },
+  { code: 'SS', name: 'Everest Legend', minLevel: 61, maxLevel: 70, subRanks: ['Myth', 'Legend', 'Eternal'] },
+  { code: 'SSS', name: 'Nepal Hike God', minLevel: 71, maxLevel: 85, subRanks: ['Divine', 'Ascend', 'God'] },
+  { code: '???', name: 'Himalayan Deity', minLevel: 86, maxLevel: 99, subRanks: ['Awakened', 'Transcendent', 'Infinite'], hidden: true },
+  { code: 'Ultimate', name: 'Nepal Conqueror', minLevel: 100, maxLevel: 100, subRanks: ['Mythic', 'Eternal', 'Supreme'] },
+] as const;
+
+function getRankTier(level?: number | null) {
+  const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
+
+  return RANK_TIERS.find((tier) => safeLevel >= tier.minLevel && safeLevel <= tier.maxLevel) ?? RANK_TIERS[0];
+}
+
+function getSubRank(level?: number | null) {
+  const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
+  const tier = getRankTier(safeLevel);
+
+  if (tier.subRanks.length === 0) {
+    return tier.code;
+  }
+
+  if (tier.minLevel === tier.maxLevel) {
+    return tier.subRanks[tier.subRanks.length - 1];
+  }
+
+  const span = Math.max(1, tier.maxLevel - tier.minLevel + 1);
+  const progress = Math.min(0.999, Math.max(0, (safeLevel - tier.minLevel) / span));
+  const index = Math.min(tier.subRanks.length - 1, Math.floor(progress * tier.subRanks.length));
+
+  return tier.subRanks[index];
+}
+
+function getRankProgress(profile: Profile | null) {
+  const nextRankProgress = profile?.nextRankProgress ?? null;
+  const currentRankXp = Math.max(0, Number(nextRankProgress?.currentRankXp ?? 0));
+  const progressPercentage = nextRankProgress?.progressPercentage ?? 0;
+  const totalRemainingXp = Math.max(
+    0,
+    Number(nextRankProgress?.xpToNextRank ?? nextRankProgress?.remainingXp ?? 0),
+  );
+
+  return {
+    nextRankProgress,
+    currentRankXp,
+    progressPercentage,
+    totalRemainingXp,
+  };
+}
+
 type Profile = {
   _id: string;
   firstName?: string | null;
@@ -53,6 +108,9 @@ type Profile = {
   gender?: Gender | null;
   languagesKnown?: string[] | null;
   xp?: number;
+  totalXp?: number;
+  level?: number;
+  subRank?: string | null;
   badge?: string;
   isProfilePublic?: boolean;
   profileCompleted?: boolean;
@@ -61,6 +119,11 @@ type Profile = {
     nextRank?: string;
     requiredXp?: number;
     remainingXp?: number;
+    currentXp?: number;
+    currentRankRequiredXp?: number;
+    currentRankXp?: number;
+    xpToNextRank?: number;
+    progressPercentage?: number;
     requiredAchievements?: Record<string, number>;
     remainingAchievements?: Record<string, number>;
     nextRankHidden?: boolean;
@@ -120,6 +183,7 @@ export default function UserDetailPage() {
     historyId: string;
   } | null>(null);
   const [xpActionProcessing, setXpActionProcessing] = useState(false);
+  const rankProgress = getRankProgress(formData);
 
   function getCompletionToken(entry: { key: string; completedAt?: string }) {
     return `${entry.key}::${entry.completedAt ?? ''}`;
@@ -949,9 +1013,14 @@ export default function UserDetailPage() {
           </div>
 
           <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">XP History Manager</h2>
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <h2 className="text-lg font-semibold text-slate-900">XP History Manager</h2>
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                Rank resets at level-up
+              </span>
+            </div>
             <p className="text-sm text-slate-600 mb-4">
-              Admins can correct or remove awarded XP entries. Total XP, level, and rank are recalculated automatically.
+              Admins can correct or remove awarded XP entries. Total XP is kept separately, while the current XP bar resets on each rank-up.
             </p>
 
             {(formData.xpHistory ?? []).length === 0 ? (
@@ -1056,8 +1125,28 @@ export default function UserDetailPage() {
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Account Stats</h3>
             <div className="space-y-4">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Experience Points</p>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank XP</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">{formData.xp ?? 0}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Lifetime XP: {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Level</p>
+                <p className="text-lg font-semibold text-slate-900 mt-1">{formData.level ?? 1}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rank</p>
+                <p className="text-lg font-semibold text-slate-900 mt-1">
+                  {formData.experienceLevel ?? getRankTier(formData.level).code}
+                </p>
+                <p className="text-xs text-slate-500">{getRankTier(formData.level).name}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Sub-Rank</p>
+                <p className="text-lg font-semibold text-blue-700 mt-1">
+                  {formData.subRank ?? getSubRank(formData.level)}
+                </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Badge</p>
@@ -1080,6 +1169,32 @@ export default function UserDetailPage() {
 
           <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Rank Progress</h3>
+            {formData.nextRankProgress && !formData.nextRankProgress.nextRankHidden ? (
+              <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rank Progress</p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {rankProgress.currentRankXp.toLocaleString()} XP in this rank
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Next: {formData.nextRankProgress.nextRank || 'N/A'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-linear-to-r from-emerald-500 via-cyan-500 to-blue-500 transition-all duration-500"
+                    style={{ width: `${Math.max(0, Math.min(100, rankProgress.progressPercentage))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
             {formData.nextRankProgress ? (
               <div className="space-y-3 text-sm text-slate-700">
                 {formData.nextRankProgress.nextRankHidden ? (

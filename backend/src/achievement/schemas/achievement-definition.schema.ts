@@ -82,7 +82,6 @@ export const AchievementDefinitionSchema =
   SchemaFactory.createForClass(AchievementDefinition);
 
 // Indexes
-AchievementDefinitionSchema.index({ code: 1 }, { unique: true });
 AchievementDefinitionSchema.index({ isActive: 1 });
 AchievementDefinitionSchema.index({ category: 1 });
 AchievementDefinitionSchema.index({ isActive: 1, category: 1 });

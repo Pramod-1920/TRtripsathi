@@ -89,6 +89,16 @@ export class CampaignController {
     return this.service.submitCampaign(id, requesterId, isAdmin);
   }
 
+  @Post(':id/verify')
+  @UseGuards(JwtAuthGuard)
+  async verify(
+    @Param('id') id: string,
+    @Body() body: { url?: string; publicId?: string | null; caption?: string | null },
+    @GetCurrentUser('userId') requesterId: string,
+  ) {
+    return this.service.verifyCampaignCompletion(id, requesterId, body?.url ? { url: body.url, publicId: body.publicId ?? null, caption: body.caption ?? null } : undefined);
+  }
+
   @Post(':id/approve')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)

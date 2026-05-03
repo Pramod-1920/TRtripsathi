@@ -14,6 +14,9 @@ export class User extends Document {
   @Prop({ type: Number, default: 0 })
   xp!: number;
 
+  @Prop({ type: Number, default: 0 })
+  totalXp!: number;
+
   @Prop({ type: Number, default: 1 })
   level!: number;
 
@@ -22,6 +25,8 @@ export class User extends Document {
       hikes: { type: Number, default: 0 },
       treks: { type: Number, default: 0 },
       temples: { type: Number, default: 0 },
+      routes: { type: Number, default: 0 },
+      uniqueLocations: { type: Number, default: 0 },
       difficultRoutes: { type: Number, default: 0 },
       legendaryRoutes: { type: Number, default: 0 },
       questChains: { type: Number, default: 0 },
@@ -32,6 +37,8 @@ export class User extends Document {
     hikes?: number;
     treks?: number;
     temples?: number;
+    routes?: number;
+    uniqueLocations?: number;
     difficultRoutes?: number;
     legendaryRoutes?: number;
     questChains?: number;

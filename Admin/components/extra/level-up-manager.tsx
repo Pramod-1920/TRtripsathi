@@ -13,6 +13,10 @@ import {
 
 type LevelUpValuePayload = {
   requiredXp: number;
+  minLevel?: number;
+  maxLevel?: number;
+  subRanks?: string[];
+  displayName?: string;
   title?: string;
   feeling?: string;
   requireRank?: string;
@@ -21,40 +25,57 @@ type LevelUpValuePayload = {
     hikes?: number;
     treks?: number;
     temples?: number;
+    routes?: number;
+    uniqueLocations?: number;
     difficultRoutes?: number;
     legendaryRoutes?: number;
     questChains?: number;
+    achievements?: number;
   };
 };
 
 type LevelUpFormState = {
   rankCode: string;
+  displayName: string;
   title: string;
   feeling: string;
   requiredXp: string;
+  minLevel: string;
+  maxLevel: string;
+  subRanks: string;
   requireRank: string;
   hikes: string;
   treks: string;
   temples: string;
+  routes: string;
+  uniqueLocations: string;
   difficultRoutes: string;
   legendaryRoutes: string;
   questChains: string;
+  achievements: string;
   hidden: boolean;
   enabled: boolean;
 };
 
 const defaultFormState: LevelUpFormState = {
   rankCode: '',
+  displayName: '',
   title: '',
   feeling: '',
   requiredXp: '',
+  minLevel: '',
+  maxLevel: '',
+  subRanks: '',
   requireRank: '',
   hikes: '',
   treks: '',
   temples: '',
+  routes: '',
+  uniqueLocations: '',
   difficultRoutes: '',
   legendaryRoutes: '',
   questChains: '',
+  achievements: '',
   hidden: false,
   enabled: true,
 };
@@ -74,6 +95,19 @@ function parseLevelUpValue(rawValue?: string | null): LevelUpValuePayload | null
 
     return {
       requiredXp,
+      ...(parsed.minLevel !== undefined ? { minLevel: Number(parsed.minLevel) } : {}),
+      ...(parsed.maxLevel !== undefined ? { maxLevel: Number(parsed.maxLevel) } : {}),
+      ...(Array.isArray(parsed.subRanks)
+        ? { subRanks: parsed.subRanks.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0) }
+        : typeof parsed.subRanks === 'string'
+          ? {
+              subRanks: String(parsed.subRanks)
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter((entry) => entry.length > 0),
+            }
+          : {}),
+      ...(parsed.displayName ? { displayName: String(parsed.displayName) } : {}),
       ...(parsed.title ? { title: String(parsed.title) } : {}),
       ...(parsed.feeling ? { feeling: String(parsed.feeling) } : {}),
       ...(parsed.requireRank ? { requireRank: String(parsed.requireRank) } : {}),
@@ -100,6 +134,34 @@ function buildLevelUpValue(form: LevelUpFormState) {
 
   const requirements: LevelUpValuePayload['requirements'] = {};
 
+  const minLevel = Number(form.minLevel);
+  const maxLevel = Number(form.maxLevel);
+
+  if (form.minLevel.trim()) {
+    if (!Number.isFinite(minLevel) || minLevel < 1 || minLevel > 100) {
+      throw new Error('Minimum level must be between 1 and 100.');
+    }
+  }
+
+  if (form.maxLevel.trim()) {
+    if (!Number.isFinite(maxLevel) || maxLevel < 1 || maxLevel > 100) {
+      throw new Error('Maximum level must be between 1 and 100.');
+    }
+  }
+
+  if (
+    form.minLevel.trim()
+    && form.maxLevel.trim()
+    && minLevel > maxLevel
+  ) {
+    throw new Error('Minimum level cannot be greater than maximum level.');
+  }
+
+  const subRanks = form.subRanks
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
   const hikes = Number(form.hikes);
   if (Number.isFinite(hikes) && hikes > 0) {
     requirements.hikes = Math.floor(hikes);
@@ -113,6 +175,16 @@ function buildLevelUpValue(form: LevelUpFormState) {
   const temples = Number(form.temples);
   if (Number.isFinite(temples) && temples > 0) {
     requirements.temples = Math.floor(temples);
+  }
+
+  const routes = Number(form.routes);
+  if (Number.isFinite(routes) && routes > 0) {
+    requirements.routes = Math.floor(routes);
+  }
+
+  const uniqueLocations = Number(form.uniqueLocations);
+  if (Number.isFinite(uniqueLocations) && uniqueLocations > 0) {
+    requirements.uniqueLocations = Math.floor(uniqueLocations);
   }
 
   const difficultRoutes = Number(form.difficultRoutes);
@@ -130,8 +202,17 @@ function buildLevelUpValue(form: LevelUpFormState) {
     requirements.questChains = Math.floor(questChains);
   }
 
+  const achievements = Number(form.achievements);
+  if (Number.isFinite(achievements) && achievements > 0) {
+    requirements.achievements = Math.floor(achievements);
+  }
+
   const payload: LevelUpValuePayload = {
     requiredXp: Math.floor(requiredXp),
+    ...(form.minLevel.trim() ? { minLevel: Math.floor(minLevel) } : {}),
+    ...(form.maxLevel.trim() ? { maxLevel: Math.floor(maxLevel) } : {}),
+    ...(subRanks.length > 0 ? { subRanks } : {}),
+    ...(form.displayName.trim() ? { displayName: form.displayName.trim() } : {}),
     ...(form.title.trim() ? { title: form.title.trim() } : {}),
     ...(form.feeling.trim() ? { feeling: form.feeling.trim() } : {}),
     ...(form.requireRank.trim() ? { requireRank: form.requireRank.trim() } : {}),
@@ -194,9 +275,13 @@ export function LevelUpManager() {
     setEditId(item._id);
     setForm({
       rankCode: item.name ?? '',
+      displayName: parsed?.displayName ?? parsed?.title ?? '',
       title: parsed?.title ?? '',
       feeling: parsed?.feeling ?? '',
       requiredXp: parsed?.requiredXp !== undefined ? String(parsed.requiredXp) : '',
+      minLevel: parsed?.minLevel !== undefined ? String(parsed.minLevel) : '',
+      maxLevel: parsed?.maxLevel !== undefined ? String(parsed.maxLevel) : '',
+      subRanks: Array.isArray(parsed?.subRanks) ? parsed.subRanks.join(', ') : '',
       requireRank: parsed?.requireRank ?? '',
       hikes: parsed?.requirements?.hikes !== undefined
         ? String(parsed.requirements.hikes)
@@ -207,6 +292,12 @@ export function LevelUpManager() {
       temples: parsed?.requirements?.temples !== undefined
         ? String(parsed.requirements.temples)
         : '',
+      routes: parsed?.requirements?.routes !== undefined
+        ? String(parsed.requirements.routes)
+        : '',
+      uniqueLocations: parsed?.requirements?.uniqueLocations !== undefined
+        ? String(parsed.requirements.uniqueLocations)
+        : '',
       difficultRoutes: parsed?.requirements?.difficultRoutes !== undefined
         ? String(parsed.requirements.difficultRoutes)
         : '',
@@ -215,6 +306,9 @@ export function LevelUpManager() {
         : '',
       questChains: parsed?.requirements?.questChains !== undefined
         ? String(parsed.requirements.questChains)
+        : '',
+      achievements: parsed?.requirements?.achievements !== undefined
+        ? String(parsed.requirements.achievements)
         : '',
       hidden: parsed?.hidden ?? false,
       enabled: item.enabled !== false,
@@ -346,12 +440,52 @@ export function LevelUpManager() {
           </div>
 
           <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Display Name</label>
+            <input
+              value={form.displayName}
+              onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Novice Wanderer"
+            />
+          </div>
+
+          <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Required XP</label>
             <input
               value={form.requiredXp}
               onChange={(event) => setForm((current) => ({ ...current, requiredXp: event.target.value }))}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. 300"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Minimum Level</label>
+            <input
+              value={form.minLevel}
+              onChange={(event) => setForm((current) => ({ ...current, minLevel: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. 1"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Maximum Level</label>
+            <input
+              value={form.maxLevel}
+              onChange={(event) => setForm((current) => ({ ...current, maxLevel: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. 10"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Sub-Ranks</label>
+            <input
+              value={form.subRanks}
+              onChange={(event) => setForm((current) => ({ ...current, subRanks: event.target.value }))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Spark, Path, Rise"
             />
           </div>
 
@@ -418,6 +552,24 @@ export function LevelUpManager() {
               />
             </div>
             <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Routes</label>
+              <input
+                value={form.routes}
+                onChange={(event) => setForm((current) => ({ ...current, routes: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 8"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Unique Locations</label>
+              <input
+                value={form.uniqueLocations}
+                onChange={(event) => setForm((current) => ({ ...current, uniqueLocations: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 12"
+              />
+            </div>
+            <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Difficult Routes</label>
               <input
                 value={form.difficultRoutes}
@@ -442,6 +594,15 @@ export function LevelUpManager() {
                 onChange={(event) => setForm((current) => ({ ...current, questChains: event.target.value }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="e.g. 1"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Achievements</label>
+              <input
+                value={form.achievements}
+                onChange={(event) => setForm((current) => ({ ...current, achievements: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. 25"
               />
             </div>
           </div>
@@ -482,7 +643,9 @@ export function LevelUpManager() {
           <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
               <th className="px-4 py-3 font-semibold">Rank</th>
-              <th className="px-4 py-3 font-semibold">Title</th>
+              <th className="px-4 py-3 font-semibold">Display Name</th>
+              <th className="px-4 py-3 font-semibold">Level Range</th>
+              <th className="px-4 py-3 font-semibold">Sub-Ranks</th>
               <th className="px-4 py-3 font-semibold">Feeling</th>
               <th className="px-4 py-3 font-semibold text-right">Required XP</th>
               <th className="px-4 py-3 font-semibold">Requirements</th>
@@ -493,13 +656,13 @@ export function LevelUpManager() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={7}>
+                <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
                   Loading level-up rules...
                 </td>
               </tr>
             ) : parsedRows.length === 0 ? (
               <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={7}>
+                <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
                   No level-up rules found.
                 </td>
               </tr>
@@ -507,7 +670,15 @@ export function LevelUpManager() {
               parsedRows.map(({ item, parsed }) => (
                 <tr key={item._id} className="text-slate-700">
                   <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
-                  <td className="px-4 py-3">{parsed?.title ?? '-'}</td>
+                  <td className="px-4 py-3">{parsed?.displayName ?? parsed?.title ?? '-'}</td>
+                  <td className="px-4 py-3">
+                    {parsed?.minLevel !== undefined || parsed?.maxLevel !== undefined
+                      ? `${parsed?.minLevel ?? '?'} - ${parsed?.maxLevel ?? '?'}`
+                      : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600">
+                    {parsed?.subRanks?.length ? parsed.subRanks.join(', ') : '-'}
+                  </td>
                   <td className="px-4 py-3">{parsed?.feeling ?? '-'}</td>
                   <td className="px-4 py-3 text-right">{parsed?.requiredXp ?? '-'}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">

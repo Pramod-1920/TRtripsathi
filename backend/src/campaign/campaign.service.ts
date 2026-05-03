@@ -267,80 +267,169 @@ export class CampaignService {
     }
 
     if (toClose.length > 0) {
-      await this.campaignModel.updateMany(
-        { _id: { $in: toClose.map((item) => item._id) } },
-        { $set: { completed: true } },
-      );
+      // mark campaigns as completed and open a 24h verification window for host
+      const updates = toClose.map((item) => ({
+        updateOne: {
+          filter: { _id: item._id },
+          update: {
+            $set: {
+              completed: true,
+              awaitingVerification: true,
+              verificationDeadline: new Date(
+                // set deadline to campaign end time + 24 hours
+                (item.endDate ? new Date(item.endDate).getTime() : Date.now()) + 24 * 60 * 60 * 1000,
+              ),
+            },
+          },
+        },
+      }));
+
+      await this.campaignModel.bulkWrite(updates);
 
       for (const campaign of toClose) {
-        const campaignId = campaign._id.toString();
-        const normalizedDifficulty = campaign.difficulty?.trim().toLowerCase();
-        const normalizedDistrict = campaign.district?.trim().toLowerCase()
-          ?? campaign.location?.trim().toLowerCase();
-        const locationKey = (campaign.placeName ?? campaign.location ?? campaign.district ?? '')
-          .trim()
-          .toLowerCase();
-        const activityType = this.inferActivityTypeFromCampaign(campaign);
-        const acceptedParticipants = (campaign.participants ?? []).filter(
-          (participant) => participant.status === 'accepted',
-        );
-        const participantCount = acceptedParticipants.length;
-
-        await this.userService.awardXpForEvent(
-          campaign.hostId.toString(),
-          'host_campaign_completed',
-          {
-            campaignId,
-            difficulty: normalizedDifficulty,
-            district: normalizedDistrict,
-            locationKey,
-            activityType,
-            hostOnly: true,
-          },
-        );
-
-        for (const participant of acceptedParticipants) {
-          await this.userService.awardXpForEvent(
-            participant.userId.toString(),
-            'campaign_completed',
-            {
-              campaignId,
-              difficulty: normalizedDifficulty,
-              district: normalizedDistrict,
-              locationKey,
-              activityType,
-              solo: participantCount <= 1,
-              hostOnly: false,
-            },
-          );
-
-          await this.userService.recordAchievementEvent(
-            participant.userId.toString(),
-            {
-              subcategory: this.getCampaignCompletionSubcategory(campaign.difficulty),
-              count: 1,
-            },
-          );
-
-          await this.userService.awardXpForEvent(
-            participant.userId.toString(),
-            'first_trek_new_district',
-            {
-              campaignId,
-              difficulty: normalizedDifficulty,
-              district: normalizedDistrict,
-              locationKey,
-              activityType,
-              solo: participantCount <= 1,
-            },
-          );
-
-          await this.userService.applyReferralCompletionAwardForUser(
-            participant.userId.toString(),
-          );
-        }
+        await this.audit.logEvent({
+          type: 'campaign.auto_complete',
+          campaignId: campaign._id.toString(),
+          hostId: campaign.hostId.toString(),
+        });
       }
     }
+  }
+
+  private async processVerificationDeadlines() {
+    const now = new Date();
+    const expired = await this.campaignModel.find({
+      awaitingVerification: true,
+      verificationDeadline: { $ne: null, $lte: now },
+      deletedByAdmin: false,
+    }).lean();
+
+    if (expired.length === 0) return;
+
+    const ids = expired.map((c) => c._id);
+    await this.campaignModel.updateMany(
+      { _id: { $in: ids } },
+      { $set: { failed: true, awaitingVerification: false, failedAt: new Date() } },
+    );
+
+    for (const campaign of expired) {
+      await this.audit.logEvent({
+        type: 'campaign.verification_failed',
+        campaignId: campaign._id.toString(),
+        hostId: (campaign.hostId as Types.ObjectId).toString(),
+      });
+    }
+  }
+
+  // public wrapper for scheduled jobs
+  async runVerificationHousekeeping() {
+    await this.autoCloseExpiredCampaigns();
+    await this.processVerificationDeadlines();
+  }
+
+  async verifyCampaignCompletion(id: string, requesterId: string, photo?: { url: string; publicId?: string | null; caption?: string | null }) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign || campaign.deletedByAdmin) throw new NotFoundException('Campaign not found');
+
+    if (campaign.hostId.toString() !== requesterId) {
+      throw new ForbiddenException('Only the host can verify campaign completion');
+    }
+
+    if (!campaign.completed || !campaign.awaitingVerification) {
+      throw new BadRequestException('Campaign is not awaiting verification');
+    }
+
+    const now = new Date();
+    if (!campaign.verificationDeadline || now.getTime() > new Date(campaign.verificationDeadline).getTime()) {
+      throw new BadRequestException('Verification window has expired');
+    }
+
+    if (photo && photo.url) {
+      campaign.verificationPhotos = campaign.verificationPhotos || [];
+      campaign.verificationPhotos.push({
+        url: photo.url,
+        publicId: photo.publicId ?? null,
+        caption: photo.caption ?? null,
+      } as any);
+    }
+
+    campaign.hostVerified = true;
+    campaign.verifiedAt = new Date();
+    campaign.awaitingVerification = false;
+
+    await campaign.save();
+
+    // award xp now (host + participants)
+    const campaignId = campaign._id.toString();
+    const normalizedDifficulty = (campaign.difficulty as string | undefined)?.trim().toLowerCase();
+    const normalizedDistrict = (campaign.district as string | undefined)?.trim().toLowerCase()
+      ?? (campaign.location as string | undefined)?.trim().toLowerCase();
+    const locationKey = ((campaign.placeName as string | undefined) ?? (campaign.location as string | undefined) ?? (campaign.district as string | undefined) ?? '')
+      .trim()
+      .toLowerCase();
+    const activityType = this.inferActivityTypeFromCampaign(campaign as any);
+    const acceptedParticipants = (campaign.participants ?? []).filter(
+      (participant) => (participant as any).status === 'accepted',
+    );
+    const participantCount = acceptedParticipants.length;
+
+    await this.userService.awardXpForEvent(
+      campaign.hostId.toString(),
+      'host_campaign_completed',
+      {
+        campaignId,
+        difficulty: normalizedDifficulty,
+        district: normalizedDistrict,
+        locationKey,
+        activityType,
+        hostOnly: true,
+      },
+    );
+
+    for (const participant of acceptedParticipants) {
+      await this.userService.awardXpForEvent(
+        (participant as any).userId.toString(),
+        'campaign_completed',
+        {
+          campaignId,
+          difficulty: normalizedDifficulty,
+          district: normalizedDistrict,
+          locationKey,
+          activityType,
+          solo: participantCount <= 1,
+          hostOnly: false,
+        },
+      );
+
+      await this.userService.recordAchievementEvent(
+        (participant as any).userId.toString(),
+        {
+          subcategory: this.getCampaignCompletionSubcategory(campaign.difficulty),
+          count: 1,
+        },
+      );
+
+      await this.userService.awardXpForEvent(
+        (participant as any).userId.toString(),
+        'first_trek_new_district',
+        {
+          campaignId,
+          difficulty: normalizedDifficulty,
+          district: normalizedDistrict,
+          locationKey,
+          activityType,
+          solo: participantCount <= 1,
+        },
+      );
+
+      await this.userService.applyReferralCompletionAwardForUser(
+        (participant as any).userId.toString(),
+      );
+    }
+
+    await this.audit.logEvent({ type: 'campaign.verified_completion', campaignId, hostId: requesterId });
+
+    return this.getCampaignById(id);
   }
 
   private buildCreatorName(profile?: Partial<User> | null, fallback?: string) {
@@ -506,6 +595,7 @@ export class CampaignService {
 
   async listCampaigns(page = 1, limit = 20, includeFuture = false) {
     await this.autoCloseExpiredCampaigns();
+    await this.processVerificationDeadlines();
 
     const skip = (page - 1) * limit;
     const now = new Date();
@@ -548,6 +638,7 @@ export class CampaignService {
 
   async getCampaignById(id: string) {
     await this.autoCloseExpiredCampaigns();
+    await this.processVerificationDeadlines();
 
     const item = await this.campaignModel.findById(id).lean();
     if (!item || item.deletedByAdmin)
@@ -569,6 +660,10 @@ export class CampaignService {
 
     if (!isAdmin && campaign.hostId.toString() !== requesterId) {
       throw new ForbiddenException('Not allowed to edit this campaign');
+    }
+
+    if (campaign.failed && !isAdmin) {
+      throw new ForbiddenException('Failed campaigns cannot be edited');
     }
 
     if (!isAdmin && !this.canUserEditCampaign(campaign.approvalStatus)) {

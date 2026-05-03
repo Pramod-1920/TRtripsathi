@@ -30,12 +30,17 @@ type Profile = {
   landmark?: string | null;
   experienceLevel?: string | null;
   xp?: number | null;
+  totalXp?: number | null;
   level?: number | null;
   nextRankProgress?: {
     nextRank?: string | null;
     requiredXp?: number | null;
     remainingXp?: number | null;
     currentXp?: number | null;
+    currentRankRequiredXp?: number | null;
+    currentRankXp?: number | null;
+    xpToNextRank?: number | null;
+    progressPercentage?: number | null;
   } | null;
   gender?: Gender | null;
   languagesKnown?: string[] | null;
@@ -96,6 +101,23 @@ function calculateAgeFromDob(dob: string) {
   return age;
 }
 
+function getRankProgress(profile: Profile | null) {
+  const nextRankProgress = profile?.nextRankProgress ?? null;
+  const currentRankXp = Math.max(0, Number(nextRankProgress?.currentRankXp ?? 0));
+  const progressPercentage = nextRankProgress?.progressPercentage ?? 0;
+  const totalRemainingXp = Math.max(
+    0,
+    Number(nextRankProgress?.xpToNextRank ?? nextRankProgress?.remainingXp ?? 0),
+  );
+
+  return {
+    nextRankProgress,
+    currentRankXp,
+    progressPercentage,
+    totalRemainingXp,
+  };
+}
+
 export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
   const setSession = useAuthStore((state) => state.setSession);
@@ -110,6 +132,7 @@ export default function ProfilePage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [customOtherLanguage, setCustomOtherLanguage] = useState('');
+  const rankProgress = getRankProgress(formData);
   useEffect(() => {
     let active = true;
 
@@ -134,6 +157,7 @@ export default function ProfilePage() {
             email: profile.email ?? user?.email ?? null,
             dateOfBirth: profile.dateOfBirth ? profile.dateOfBirth.slice(0, 10) : null,
             xp: profile.xp ?? 0,
+              totalXp: profile.totalXp ?? profile.xp ?? 0,
             level: profile.level ?? 1,
             nextRankProgress: profile.nextRankProgress ?? null,
             languagesKnown:
@@ -402,6 +426,7 @@ export default function ProfilePage() {
         ...updatedProfile,
         dateOfBirth: updatedProfile.dateOfBirth ? updatedProfile.dateOfBirth.slice(0, 10) : null,
         xp: updatedProfile.xp ?? 0,
+        totalXp: updatedProfile.totalXp ?? updatedProfile.xp ?? 0,
         level: updatedProfile.level ?? 1,
         nextRankProgress: updatedProfile.nextRankProgress ?? null,
         languagesKnown: Array.isArray(updatedProfile.languagesKnown)
@@ -505,13 +530,47 @@ export default function ProfilePage() {
           <p className="mt-2 text-2xl font-bold text-slate-900">{formData.experienceLevel || 'Unranked'}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">XP</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{Number(formData.xp ?? 0).toLocaleString()}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current Rank XP</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{rankProgress.currentRankXp.toLocaleString()}</p>
+          <p className="mt-1 text-sm text-slate-500">Total XP: {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">XP Needed for Next Level</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{formData.nextRankProgress?.remainingXp ?? 0}</p>
-          <p className="mt-1 text-sm text-slate-500">Next: {formData.nextRankProgress?.nextRank || 'N/A'}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Next Rank</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">
+            {formData.nextRankProgress?.nextRank || 'Max Rank'}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            XP to next: {rankProgress.totalRemainingXp.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rank Progress</p>
+            <p className="mt-1 text-sm text-slate-600">
+              {rankProgress.currentRankXp.toLocaleString()} XP in this rank
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-semibold text-slate-900">
+              Next: {formData.nextRankProgress?.nextRank || 'N/A'}
+            </p>
+            <p className="text-xs text-slate-500">
+              {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full rounded-full bg-linear-to-r from-amber-500 via-orange-500 to-rose-500 transition-all duration-500"
+            style={{ width: `${Math.max(0, Math.min(100, rankProgress.progressPercentage))}%` }}
+          />
+        </div>
+        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+          <span>{rankProgress.progressPercentage}% to the next rank</span>
+          <span>XP resets visually at each rank-up</span>
         </div>
       </div>
 

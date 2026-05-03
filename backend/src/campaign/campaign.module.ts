@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Campaign, CampaignSchema } from './schemas/campaign.schema';
 import { CampaignService } from './campaign.service';
+import { CampaignScheduler } from './campaign.scheduler';
 import { CampaignController } from './campaign.controller';
 import { AuditService } from '../audit/audit.service';
 import { UserModule } from '../user/user.module';
@@ -11,6 +13,7 @@ import { ExtraModule } from '../extra/extra.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: Campaign.name, schema: CampaignSchema },
       { name: User.name, schema: UserSchema },
@@ -20,7 +23,7 @@ import { ExtraModule } from '../extra/extra.module';
     ExtraModule,
   ],
   controllers: [CampaignController],
-  providers: [CampaignService, AuditService],
+  providers: [CampaignService, AuditService, CampaignScheduler],
   exports: [CampaignService],
 })
 export class CampaignModule {}
