@@ -56,10 +56,6 @@ function getSubRank(level?: number | null) {
   const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
   const tier = getRankTier(safeLevel);
 
-  if (tier.subRanks.length === 0) {
-    return tier.code;
-  }
-
   if (tier.minLevel === tier.maxLevel) {
     return tier.subRanks[tier.subRanks.length - 1];
   }
@@ -71,21 +67,158 @@ function getSubRank(level?: number | null) {
   return tier.subRanks[index];
 }
 
-function getRankProgress(profile: Profile | null) {
-  const nextRankProgress = profile?.nextRankProgress ?? null;
-  const currentRankXp = Math.max(0, Number(nextRankProgress?.currentRankXp ?? 0));
-  const progressPercentage = nextRankProgress?.progressPercentage ?? 0;
-  const totalRemainingXp = Math.max(
-    0,
-    Number(nextRankProgress?.xpToNextRank ?? nextRankProgress?.remainingXp ?? 0),
-  );
+function normalizeRankCode(value?: string | null) {
+  const raw = String(value ?? '').trim().toUpperCase();
+
+  if (!raw) {
+    return '';
+  }
+
+  const inParens = raw.match(/\(([A-Z]{1,3})\)/);
+  const candidate = inParens?.[1] ?? raw;
+  const supported = new Set(['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'MYTHIC']);
+
+  if (supported.has(candidate)) {
+    return candidate === 'MYTHIC' ? 'Mythic' : candidate;
+  }
+
+  if (candidate.includes('NOVICE')) return 'E';
+  if (candidate.includes('TRAIL')) return 'D';
+  if (candidate.includes('RIDGE')) return 'C';
+  if (candidate.includes('SUMMIT')) return 'B';
+  if (candidate.includes('ELITE')) return 'A';
+  if (candidate.includes('SOVEREIGN')) return 'S';
+  if (candidate.includes('EVEREST')) return 'SS';
+  if (candidate.includes('GOD')) return 'SSS';
+  if (candidate.includes('DEITY') || candidate.includes('ULTIMATE')) return 'Mythic';
+
+  return '';
+}
+
+function formatRankLabel(rank?: string | null, fallbackLevel?: number | null) {
+  const normalized = normalizeRankCode(rank) || getRankTier(fallbackLevel).code;
+  const tier = RANK_TIERS.find((item) => item.code === normalized);
+
+  if (!tier) {
+    return normalized;
+  }
+
+  return `${tier.name} (${tier.code})`;
+}
+
+function getSubRankBands(level?: number | null) {
+  const tier = getRankTier(level);
+  const levelSpan = Math.max(1, tier.maxLevel - tier.minLevel + 1);
+
+  return tier.subRanks.map((name, index) => {
+    const fromOffset = Math.floor((index * levelSpan) / tier.subRanks.length);
+    const toOffset = Math.floor(((index + 1) * levelSpan) / tier.subRanks.length) - 1;
+    const fromLevel = tier.minLevel + fromOffset;
+    const toLevel = Math.min(tier.maxLevel, tier.minLevel + Math.max(fromOffset, toOffset));
+
+    return {
+      name,
+      fromLevel,
+      toLevel,
+    };
+  });
+}
+
+function getNextSubRankTarget(level: number, totalXp: number) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+  const tier = getRankTier(safeLevel);
+  const bands = getSubRankBands(safeLevel);
+  const currentIndex = bands.findIndex((band) => safeLevel >= band.fromLevel && safeLevel <= band.toLevel);
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const currentBand = bands[safeIndex];
+
+  if (safeIndex < bands.length - 1) {
+    const nextBand = bands[safeIndex + 1];
+    const startXp = getXpThresholdForLevel(currentBand.fromLevel);
+    const targetXp = getXpThresholdForLevel(nextBand.fromLevel);
+    const spanXp = Math.max(1, targetXp - startXp);
+    const earnedXp = Math.max(0, totalXp - startXp);
+
+    return {
+      hasNextTarget: true,
+      targetLabel: nextBand.name,
+      targetSubtitle: `Next sub-rank in ${tier.name} (${tier.code})`,
+      currentRankXp: Math.min(spanXp, earnedXp),
+      totalRemainingXp: Math.max(0, targetXp - totalXp),
+      progressPercentage: Math.max(0, Math.min(100, Math.round((earnedXp / spanXp) * 100))),
+    };
+  }
+
+  const nextTier = RANK_TIERS.find((item) => item.minLevel === tier.maxLevel + 1);
+
+  if (nextTier) {
+    const startXp = getXpThresholdForLevel(currentBand.fromLevel);
+    const targetXp = getXpThresholdForLevel(nextTier.minLevel);
+    const spanXp = Math.max(1, targetXp - startXp);
+    const earnedXp = Math.max(0, totalXp - startXp);
+
+    return {
+      hasNextTarget: true,
+      targetLabel: `${nextTier.name} (${nextTier.code}) • ${nextTier.subRanks[0]}`,
+      targetSubtitle: 'Next rank promotion target',
+      currentRankXp: Math.min(spanXp, earnedXp),
+      totalRemainingXp: Math.max(0, targetXp - totalXp),
+      progressPercentage: Math.max(0, Math.min(100, Math.round((earnedXp / spanXp) * 100))),
+    };
+  }
 
   return {
-    nextRankProgress,
-    currentRankXp,
-    progressPercentage,
-    totalRemainingXp,
+    hasNextTarget: false,
+    targetLabel: 'Max Sub-Rank',
+    targetSubtitle: 'Highest progression reached',
+    currentRankXp: 0,
+    totalRemainingXp: 0,
+    progressPercentage: 100,
   };
+}
+
+function getXpThresholdForLevel(level: number) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+
+  if (safeLevel <= 1) {
+    return 0;
+  }
+
+  let requiredXp = 0;
+
+  for (let step = 2; step <= safeLevel; step += 1) {
+    requiredXp += 80 + (step - 2) * 35;
+  }
+
+  return requiredXp;
+}
+
+function getLevelFromTotalXp(totalXp: number) {
+  const safeXp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  let level = 1;
+
+  for (let nextLevel = 2; nextLevel <= 100; nextLevel += 1) {
+    if (safeXp >= getXpThresholdForLevel(nextLevel)) {
+      level = nextLevel;
+    } else {
+      break;
+    }
+  }
+
+  return level;
+}
+
+function getEffectiveLevel(profile: Profile | null) {
+  const totalXp = Math.max(0, Math.floor(Number(profile?.totalXp ?? profile?.xp ?? 0)));
+  const calculatedLevel = getLevelFromTotalXp(totalXp);
+  const persistedLevel = Math.max(1, Math.floor(Number(profile?.level ?? 1)));
+  return Math.max(calculatedLevel, persistedLevel);
+}
+
+function getRankProgress(profile: Profile | null) {
+  const level = getEffectiveLevel(profile);
+  const totalXp = Math.max(0, Math.floor(Number(profile?.totalXp ?? profile?.xp ?? 0)));
+  return getNextSubRankTarget(level, totalXp);
 }
 
 type Profile = {
@@ -184,6 +317,7 @@ export default function UserDetailPage() {
   } | null>(null);
   const [xpActionProcessing, setXpActionProcessing] = useState(false);
   const [xpToAddAmount, setXpToAddAmount] = useState('');
+  const effectiveLevel = getEffectiveLevel(formData);
   const rankProgress = getRankProgress(formData);
 
   function getCompletionToken(entry: { key: string; completedAt?: string }) {
@@ -1195,27 +1329,38 @@ export default function UserDetailPage() {
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Account Stats</h3>
             <div className="space-y-4">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank XP</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">{formData.xp ?? 0}</p>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total XP</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">
+                  {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}
+                </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Lifetime XP: {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}
+                  Current Rank XP: {Number(formData.xp ?? 0).toLocaleString()}
                 </p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Level</p>
-                <p className="text-lg font-semibold text-slate-900 mt-1">{formData.level ?? 1}</p>
+                <p className="text-lg font-semibold text-slate-900 mt-1">{effectiveLevel}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rank</p>
                 <p className="text-lg font-semibold text-slate-900 mt-1">
-                  {formData.experienceLevel ?? getRankTier(formData.level).code}
+                  {formatRankLabel(formData.experienceLevel, effectiveLevel)}
                 </p>
-                <p className="text-xs text-slate-500">{getRankTier(formData.level).name}</p>
+                <p className="text-xs text-slate-500">{getRankTier(effectiveLevel).name}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Sub-Rank</p>
                 <p className="text-lg font-semibold text-blue-700 mt-1">
-                  {formData.subRank ?? getSubRank(formData.level)}
+                  {formData.subRank ?? getSubRank(effectiveLevel)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {getSubRankBands(effectiveLevel).map((band) => `${band.name} (${band.fromLevel}-${band.toLevel})`).join(' • ')}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank Band</p>
+                <p className="text-sm font-semibold text-slate-900 mt-1">
+                  Levels {getRankTier(effectiveLevel).minLevel}-{getRankTier(effectiveLevel).maxLevel}
                 </p>
               </div>
               <div>
@@ -1238,20 +1383,24 @@ export default function UserDetailPage() {
           </div>
 
           <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Rank Progress</h3>
-            {formData.nextRankProgress && !formData.nextRankProgress.nextRankHidden ? (
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Target Progress</h3>
+            {rankProgress.hasNextTarget ? (
               <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rank Progress</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub-Rank Progress</p>
                     <p className="mt-1 text-sm text-slate-700">
                       {rankProgress.currentRankXp.toLocaleString()} XP in this rank
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Rank XP is band-based and resets on rank-up; Total XP never resets.
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-slate-900">
-                      Next: {formData.nextRankProgress.nextRank || 'N/A'}
+                      Next: {rankProgress.targetLabel}
                     </p>
+                    <p className="text-xs text-slate-500">{rankProgress.targetSubtitle}</p>
                     <p className="text-xs text-slate-500">
                       {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
                     </p>
@@ -1264,44 +1413,41 @@ export default function UserDetailPage() {
                   />
                 </div>
               </div>
-            ) : null}
-            {formData.nextRankProgress ? (
+            ) : (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                This user is currently at the highest sub-rank.
+              </p>
+            )}
+            {rankProgress.hasNextTarget ? (
               <div className="space-y-3 text-sm text-slate-700">
-                {formData.nextRankProgress.nextRankHidden ? (
-                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                    The next rank is hidden until the profile meets the eligibility requirements.
-                  </p>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Target Rank</span>
-                      <span className="font-semibold text-slate-900">{formData.nextRankProgress.nextRank || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Remaining</span>
-                      <span className="font-semibold text-slate-900">{formData.nextRankProgress.remainingXp ?? 0}</span>
-                    </div>
-                    {formData.nextRankProgress.remainingAchievements &&
-                    Object.keys(formData.nextRankProgress.remainingAchievements).length > 0 ? (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Remaining Achievements</p>
-                        <div className="space-y-1">
-                          {Object.entries(formData.nextRankProgress.remainingAchievements).map(([key, value]) => (
-                            <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                              <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                              <span className="font-semibold text-slate-900">{value}</span>
-                            </div>
-                          ))}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Next Target</span>
+                  <span className="font-semibold text-slate-900">{rankProgress.targetLabel}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Remaining</span>
+                  <span className="font-semibold text-slate-900">{rankProgress.totalRemainingXp}</span>
+                </div>
+                {formData.nextRankProgress?.remainingAchievements
+                && Object.keys(formData.nextRankProgress.remainingAchievements).length > 0
+                && rankProgress.totalRemainingXp === 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Remaining Achievements</p>
+                    <div className="space-y-1">
+                      {Object.entries(formData.nextRankProgress.remainingAchievements).map(([key, value]) => (
+                        <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
+                          <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                          <span className="font-semibold text-slate-900">{value}</span>
                         </div>
-                      </div>
-                    ) : (
-                      <p className="text-slate-500">No achievement requirements for the next rank.</p>
-                    )}
-                  </>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-slate-500">Progress updates automatically for sub-rank, then rank promotion.</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-slate-500">No next-rank data is available for this profile yet.</p>
+              <p className="text-sm text-slate-500">No further sub-rank progression available.</p>
             )}
           </div>
 

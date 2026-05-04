@@ -648,6 +648,92 @@ export class CampaignService {
     return enriched;
   }
 
+  async joinCampaign(id: string, userId: string) {
+    await this.autoCloseExpiredCampaigns();
+    await this.processVerificationDeadlines();
+
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign || campaign.deletedByAdmin) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.approvalStatus !== 'approved') {
+      throw new BadRequestException('Only approved campaigns can be joined');
+    }
+
+    if (campaign.completed || campaign.failed || campaign.awaitingVerification) {
+      throw new BadRequestException('Campaign is closed');
+    }
+
+    const now = new Date();
+    if (campaign.joinOpenDate && campaign.joinOpenDate.getTime() > now.getTime()) {
+      throw new BadRequestException('Campaign is not open for enrollment yet');
+    }
+
+    if (campaign.endDate && campaign.endDate.getTime() <= now.getTime()) {
+      throw new BadRequestException('Campaign enrollment is closed');
+    }
+
+    if (campaign.hostId.toString() === userId) {
+      throw new BadRequestException('Host cannot enroll in their own campaign');
+    }
+
+    const participants = campaign.participants ?? [];
+    const existingParticipant = participants.find(
+      (participant) => participant.userId.toString() === userId,
+    );
+
+    if (existingParticipant?.status === 'accepted') {
+      throw new BadRequestException('You are already enrolled in this campaign');
+    }
+
+    if (existingParticipant?.status === 'pending') {
+      throw new BadRequestException('Your request is already pending for this campaign');
+    }
+
+    const acceptedCount = participants.filter(
+      (participant) => participant.status === 'accepted',
+    ).length;
+
+    const maxParticipants = Math.max(1, Number(campaign.maxParticipants ?? 1));
+    if (acceptedCount >= maxParticipants) {
+      throw new BadRequestException('Campaign is full');
+    }
+
+    const nextStatus = campaign.joinMode === 'open' ? 'accepted' : 'pending';
+
+    if (existingParticipant) {
+      existingParticipant.status = nextStatus;
+      existingParticipant.verified = false;
+      existingParticipant.completionDays = null;
+    } else {
+      participants.push({
+        userId: new Types.ObjectId(userId),
+        status: nextStatus,
+        verified: false,
+        completionDays: null,
+      });
+    }
+
+    campaign.participants = participants;
+    await campaign.save();
+
+    await this.audit.logEvent({
+      type: 'campaign.join',
+      campaignId: id,
+      userId,
+      status: nextStatus,
+      joinMode: campaign.joinMode,
+    });
+
+    return {
+      message: nextStatus === 'accepted'
+        ? 'Successfully enrolled in campaign'
+        : 'Campaign join request submitted',
+      campaign: await this.getCampaignById(id),
+    };
+  }
+
   async updateCampaign(
     id: string,
     dto: UpdateCampaignDto,

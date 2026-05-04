@@ -46,7 +46,10 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/users', label: 'Users', icon: FiUsers },
     { href: '/photo-verification-queue', label: 'Photo Queue', icon: FiShield },
     { href: '/analytics', label: 'Analytics', icon: FiBarChart2 },
-    { href: '/profile', label: 'My Profile', icon: FiUser },
+  ];
+  const myItems = [
+    { href: '/profile', label: 'My Profile' },
+    { href: '/my-campaign', label: 'My Campaign' },
   ];
   const campaignItems = [
     { href: '/campaigns/add', label: 'Add Campaign' },
@@ -65,9 +68,17 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
   const isCampaignSectionActive = pathname.startsWith('/campaigns');
   const sidebarWidthClass = collapsed ? 'md:w-20' : 'md:w-72';
+  const isMySectionActive = pathname === '/profile' || pathname.startsWith('/my-campaign');
   const isExtraSectionActive = pathname.startsWith('/extra');
+  const [myOpen, setMyOpen] = useState(isMySectionActive);
   const [campaignOpen, setCampaignOpen] = useState(isCampaignSectionActive);
   const [extraOpen, setExtraOpen] = useState(isExtraSectionActive);
+
+  useEffect(() => {
+    if (isMySectionActive) {
+      setMyOpen(true);
+    }
+  }, [isMySectionActive]);
 
   useEffect(() => {
     if (isExtraSectionActive) {
@@ -140,6 +151,51 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               </Link>
             );
           })}
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setMyOpen((current) => !current)}
+              title={collapsed ? 'MY' : undefined}
+              className={clsx(
+                'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
+                collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
+                isMySectionActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              )}
+            >
+              <span className="flex items-center gap-3">
+                <FiUser size={20} className="shrink-0" />
+                <span className={collapsed ? 'md:hidden' : 'block'}>MY</span>
+              </span>
+              <span className={collapsed ? 'md:hidden' : 'block'}>
+                {myOpen ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
+              </span>
+            </button>
+
+            <div className={clsx('space-y-1 py-1', myOpen ? 'block' : 'hidden', collapsed ? 'md:hidden' : 'block')}>
+              {myItems.map((item) => {
+                const active = item.href === '/my-campaign'
+                  ? pathname.startsWith('/my-campaign')
+                  : pathname === item.href;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={clsx(
+                      'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
+                      active
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    )}
+                  >
+                    <FiCircle size={8} className="shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="mt-2">
             <button

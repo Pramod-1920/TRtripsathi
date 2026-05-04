@@ -10,6 +10,15 @@ export type CampaignPhoto = {
   caption?: string;
 };
 
+export type CampaignParticipantStatus = 'pending' | 'accepted' | 'rejected';
+
+export type CampaignParticipant = {
+  userId: string;
+  status?: CampaignParticipantStatus;
+  verified?: boolean;
+  completionDays?: number | null;
+};
+
 export type Campaign = {
   _id: string;
   campaignCode?: string;
@@ -38,7 +47,11 @@ export type Campaign = {
   rejectedBy?: string | null;
   approvalNote?: string | null;
   photos?: CampaignPhoto[];
+  hostId?: string;
+  participants?: CampaignParticipant[];
   completed?: boolean;
+  failed?: boolean;
+  awaitingVerification?: boolean;
   creator?: {
     name?: string;
     role?: 'admin' | 'user';
@@ -253,4 +266,9 @@ export async function rejectCampaign(id: string, reason: string) {
     reason: reason.trim(),
   });
   return response.data as Campaign;
+}
+
+export async function joinCampaign(id: string) {
+  const response = await apiClient.post(`/campaigns/${id}/join`);
+  return response.data as { message?: string; campaign?: Campaign };
 }

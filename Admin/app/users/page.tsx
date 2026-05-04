@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FiEdit, FiTrash2, FiSearch, FiPlus } from 'react-icons/fi';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
@@ -27,6 +27,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'complete' | 'incomplete'>('all');
   const [users, setUsers] = useState<User[]>([]);
@@ -34,22 +35,52 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [searchInput]);
 
   useEffect(() => {
     let active = true;
 
     async function loadUsers() {
+      setLoading(true);
+      setError('');
+
       try {
         const response = await apiClient.get('/user/admin/profiles', {
-          params: { page: 1, limit: 50 },
+          params: {
+            page,
+            limit,
+            q: searchQuery || undefined,
+            status: filterStatus,
+          },
         });
 
         if (active) {
-          setUsers(response.data?.items ?? []);
+          const items = response.data?.items ?? [];
+          const pagination = response.data?.pagination;
+          setUsers(items);
+          setTotal(Number(pagination?.total ?? items.length));
+          setTotalPages(Math.max(1, Number(pagination?.totalPages ?? 1)));
         }
       } catch {
         if (active) {
           setError('Failed to load user profiles from the backend.');
+          setUsers([]);
+          setTotal(0);
+          setTotalPages(1);
         }
       } finally {
         if (active) {
@@ -63,22 +94,7 @@ export default function UsersPage() {
     return () => {
       active = false;
     };
-  }, []);
-
-  const filteredUsers = useMemo(() => users.filter((user) => {
-    const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
-    const matchesSearch =
-      fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.location ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.province ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.district ?? '').toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus =
-      filterStatus === 'all' ||
-      (filterStatus === 'complete' ? user.profileCompleted : !user.profileCompleted);
-
-    return matchesSearch && matchesStatus;
-  }), [filterStatus, searchQuery, users]);
+  }, [page, limit, searchQuery, filterStatus, refreshKey]);
 
   const getStatusBadge = (profileCompleted: boolean) => {
     return profileCompleted ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700';
@@ -96,7 +112,11 @@ export default function UsersPage() {
 
     try {
       await apiClient.delete(`/user/admin/profiles/${userId}`);
-      setUsers((currentUsers) => currentUsers.filter((user) => user._id !== userId));
+      if (users.length === 1 && page > 1) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+      } else {
+        setRefreshKey((current) => current + 1);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete user';
       setDeleteError(errorMessage);
@@ -116,7 +136,7 @@ export default function UsersPage() {
         <h1 className="text-3xl font-bold text-slate-900">Users Management</h1>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => setRefreshKey((current) => current + 1)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <FiPlus size={20} />
@@ -154,19 +174,25 @@ export default function UsersPage() {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <FiSearch className="absolute left-3 top-3 text-slate-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search by name, phone, or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-            className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
+              <input
+                type="text"
+                placeholder="Search by name, phone, or email..."
+                value={searchInput}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value as typeof filterStatus);
+                setPage(1);
+              }}
+              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
             <option value="all">All Profiles</option>
             <option value="complete">Completed</option>
             <option value="incomplete">Incomplete</option>
@@ -188,7 +214,7 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {filteredUsers.map((user) => (
+            {users.map((user) => (
               <tr key={user._id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4">
                   <div>
@@ -237,7 +263,7 @@ export default function UsersPage() {
       </div>
 
       {/* Empty State */}
-      {filteredUsers.length === 0 && (
+      {users.length === 0 && !loading && (
         <div className="bg-white rounded-lg border border-slate-200 py-12 text-center">
           <p className="text-slate-500">No users found</p>
         </div>
@@ -245,11 +271,31 @@ export default function UsersPage() {
 
       {/* Pagination */}
       <div className="mt-6 flex items-center justify-between">
-        <p className="text-sm text-slate-600">Showing {filteredUsers.length} of {users.length} profiles</p>
+        <p className="text-sm text-slate-600">
+          Showing {total === 0 ? 0 : (page - 1) * limit + 1}
+          -
+          {Math.min(page * limit, total)} of {total} profiles
+        </p>
         <div className="flex gap-2">
-          <button className="px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Previous</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">1</button>
-          <button className="px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Next</button>
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+            className="px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <button type="button" className="px-3 py-2 bg-blue-600 text-white rounded-lg">
+            {page}
+          </button>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
+            className="px-3 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
         </div>
       </div>
     </div>

@@ -66,6 +66,15 @@ export class CampaignController {
     return this.service.getCampaignById(id);
   }
 
+  @Post(':id/join')
+  @UseGuards(JwtAuthGuard)
+  async joinCampaign(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') userId: string,
+  ) {
+    return this.service.joinCampaign(id, userId);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   async update(

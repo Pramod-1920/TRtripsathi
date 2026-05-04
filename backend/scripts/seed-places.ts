@@ -21,6 +21,20 @@ type PlaceCatalogFile = {
   }>;
 };
 
+type PlaceCatalogRow = {
+  provinceNumber: number;
+  province: string;
+  districts: string[];
+  places: Record<string, string[]>;
+};
+
+type PlaceMetadata = {
+  type?: string;
+  province?: string;
+  district?: string;
+  provinceNumber?: number;
+};
+
 const extraSchema = new Schema<ExtraDocument>(
   {
     extraCode: { type: String, required: true, unique: true, index: true },
@@ -107,12 +121,30 @@ function readCatalogFile() {
     throw new Error('Invalid place JSON format: expected provinces array');
   }
 
-  return parsed.provinces.map((item) => ({
-    province: String(item.province ?? '').trim(),
-    districts: Array.isArray(item.districts)
-      ? item.districts.map((district) => String(district).trim()).filter(Boolean)
-      : [],
-  }));
+  return parsed.provinces.map<PlaceCatalogRow>((item) => {
+    const places = Object.entries(item.places ?? {}).reduce<Record<string, string[]>>((acc, [district, rawPlaces]) => {
+      const districtName = String(district).trim();
+
+      if (!districtName) {
+        return acc;
+      }
+
+      acc[districtName] = Array.isArray(rawPlaces)
+        ? rawPlaces.map((place) => String(place).trim()).filter(Boolean)
+        : [];
+
+      return acc;
+    }, {});
+
+    return {
+      provinceNumber: Number(item.provinceNumber ?? 0),
+      province: String(item.province ?? '').trim(),
+      districts: Array.isArray(item.districts)
+        ? item.districts.map((district) => String(district).trim()).filter(Boolean)
+        : [],
+      places,
+    };
+  });
 }
 
 async function generateUniqueExtraCode() {
@@ -136,13 +168,13 @@ async function generateUniqueExtraCode() {
   throw new Error('Unable to generate unique extra code for places seed');
 }
 
-function parsePlaceValue(value?: string | null): { type?: string; province?: string } | null {
+function parsePlaceValue(value?: string | null): PlaceMetadata | null {
   if (!value || !value.trim()) {
     return null;
   }
 
   try {
-    return JSON.parse(value) as { type?: string; province?: string };
+    return JSON.parse(value) as PlaceMetadata;
   } catch {
     return null;
   }

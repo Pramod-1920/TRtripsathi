@@ -187,8 +187,8 @@ export default function DashboardPage() {
 
         {/* Top XP Leaderboard */}
         <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Top 100 XP Leaders</h2>
-          <div className="mb-6 grid grid-cols-1 items-end gap-4 md:grid-cols-3 md:items-end">
+          <h2 className="text-lg font-semibold text-slate-900 mb-14 center">Top 10 XP Leaders</h2>
+          <div className="mb-7 grid grid-cols-1 items-end gap- md:grid-cols-3 md:items-end">
             {podiumProfiles.map((profile, index) => {
               const name = profile.firstName || profile.lastName
                 ? `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim()

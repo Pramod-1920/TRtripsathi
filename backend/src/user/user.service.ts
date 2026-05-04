@@ -41,6 +41,7 @@ type LevelUpRule = {
 };
 
 type LevelUpRuleValue = {
+  rankCode?: string;
   requiredXp: number;
   minLevel?: number;
   maxLevel?: number;
@@ -172,6 +173,11 @@ type XpBreakdown = {
   repeatCountForLocation: number;
 };
 
+type RankProgressProfile = Pick<
+  User,
+  'experienceLevel' | 'level' | 'xp' | 'totalXp' | 'achievementStats' | 'achievementProgress'
+>;
+
 @Injectable()
 export class UserService {
   private logger = new Logger(UserService.name);
@@ -213,10 +219,10 @@ export class UserService {
     rankCode?: string,
   ) {
     const sortedRules = [...rules].sort((first, second) => first.requiredXp - second.requiredXp);
-    const normalizedRankCode = this.normalizeKey(String(rankCode ?? profile.experienceLevel ?? ''));
+    const normalizedRankCode = this.normalizeRankCode(String(rankCode ?? profile.experienceLevel ?? ''));
 
     const exactRule = sortedRules.find(
-      (rule) => this.normalizeKey(rule.rankCode) === normalizedRankCode,
+      (rule) => this.normalizeRankCode(rule.rankCode) === normalizedRankCode,
     );
 
     if (exactRule) {
@@ -368,6 +374,7 @@ export class UserService {
           : undefined;
 
       return {
+        ...(parsed.rankCode ? { rankCode: String(parsed.rankCode).trim() } : {}),
         requiredXp: Math.floor(requiredXp),
         ...(parsed.minLevel !== undefined ? { minLevel: Math.max(1, Math.floor(Number(parsed.minLevel))) } : {}),
         ...(parsed.maxLevel !== undefined ? { maxLevel: Math.max(1, Math.floor(Number(parsed.maxLevel))) } : {}),
@@ -400,6 +407,71 @@ export class UserService {
 
   private normalizeKey(value?: string | null) {
     return value?.trim().toLowerCase() ?? '';
+  }
+
+  private normalizeRankCode(value?: string | null) {
+    const normalized = this.normalizeKey(value);
+
+    if (!normalized) {
+      return '';
+    }
+
+    const exactMap: Record<string, string> = {
+      e: 'E',
+      d: 'D',
+      c: 'C',
+      b: 'B',
+      a: 'A',
+      s: 'S',
+      ss: 'SS',
+      sss: 'SSS',
+      mythic: 'Mythic',
+      ultimate: 'Mythic',
+      f: 'E',
+      novice: 'E',
+    };
+
+    if (exactMap[normalized]) {
+      return exactMap[normalized];
+    }
+
+    if (/\(\s*sss\s*\)/i.test(normalized) || normalized.includes('nepal hike god')) {
+      return 'SSS';
+    }
+
+    if (/\(\s*ss\s*\)/i.test(normalized) || normalized.includes('everest legend')) {
+      return 'SS';
+    }
+
+    if (/\(\s*s\s*\)/i.test(normalized) || normalized.includes('peak sovereign')) {
+      return 'S';
+    }
+
+    if (/\(\s*a\s*\)/i.test(normalized) || normalized.includes('himalayan elite')) {
+      return 'A';
+    }
+
+    if (/\(\s*b\s*\)/i.test(normalized) || normalized.includes('summit conqueror')) {
+      return 'B';
+    }
+
+    if (/\(\s*c\s*\)/i.test(normalized) || normalized.includes('ridge slayer')) {
+      return 'C';
+    }
+
+    if (/\(\s*d\s*\)/i.test(normalized) || normalized.includes('trail hunter')) {
+      return 'D';
+    }
+
+    if (/\(\s*e\s*\)/i.test(normalized) || normalized.includes('novice wanderer')) {
+      return 'E';
+    }
+
+    if (normalized.includes('himalayan deity') || normalized.includes('nepal conqueror')) {
+      return 'Mythic';
+    }
+
+    return '';
   }
 
   private normalizeDifficulty(value?: string | null) {
@@ -1163,11 +1235,13 @@ export class UserService {
     return items
       .map((item) => {
         const parsed = this.parseLevelUpRuleValue(item.value);
-        const rankCode = item.name?.trim();
+        const rawRankCode = parsed?.rankCode?.trim() || item.name?.trim();
 
-        if (!parsed || !rankCode) {
+        if (!parsed || !rawRankCode) {
           return null;
         }
+
+        const rankCode = this.normalizeRankCode(rawRankCode) || rawRankCode;
 
         return {
           rankCode,
@@ -1183,7 +1257,7 @@ export class UserService {
       .sort((first, second) => first.requiredXp - second.requiredXp);
   }
 
-  private getAchievementStats(profile: User) {
+  private getAchievementStats(profile: RankProgressProfile) {
     const completedAchievements = (profile.achievementProgress ?? []).filter(
       (entry) => Boolean(entry.completedAt),
     ).length;
@@ -1215,7 +1289,7 @@ export class UserService {
     return true;
   }
 
-  private meetsLevelUpRequirements(rule: LevelUpRule, profile: User) {
+  private meetsLevelUpRequirements(rule: LevelUpRule, profile: RankProgressProfile) {
     if (!rule.requirements) {
       return true;
     }
@@ -1279,21 +1353,22 @@ export class UserService {
       return true;
     }
 
-    return rule.requireRank.trim().toLowerCase() === currentRank.trim().toLowerCase();
+    return this.normalizeRankCode(rule.requireRank) === this.normalizeRankCode(currentRank);
   }
 
-  private async buildNextRankProgress(profile: User, rules?: LevelUpRule[]) {
+  private async buildNextRankProgress(profile: RankProgressProfile, rules?: LevelUpRule[]) {
     const rulesList = rules ?? await this.getLevelUpRules();
-
-    const normalizedCurrentRank = this.normalizeKey(String(profile.experienceLevel ?? ''));
+    const totalXp = this.getTotalXp(profile);
+    const level = this.getLevelFromXp(totalXp);
+    const effectiveCurrentRank = this.resolveRankByRulesOrFallback(profile, rulesList, level);
+    const normalizedCurrentRank = this.normalizeRankCode(effectiveCurrentRank);
     const sortedRules = [...rulesList].sort((first, second) => first.requiredXp - second.requiredXp);
     const currentIndex = sortedRules.findIndex(
-      (rule) => this.normalizeKey(rule.rankCode) === normalizedCurrentRank,
+      (rule) => this.normalizeRankCode(rule.rankCode) === normalizedCurrentRank,
     );
-    const totalXp = this.getTotalXp(profile);
     const currentRankRule = currentIndex >= 0
       ? sortedRules[currentIndex]
-      : this.getCurrentRankRule(profile, sortedRules, totalXp);
+      : this.getCurrentRankRule(profile, sortedRules, totalXp, effectiveCurrentRank);
     const nextRule = currentIndex >= 0
       ? sortedRules[currentIndex + 1]
       : sortedRules.find((rule) => rule.requiredXp > totalXp);
@@ -1302,7 +1377,9 @@ export class UserService {
       return null;
     }
 
-    const currentRankCode = String(profile.experienceLevel ?? currentRankRule?.rankCode ?? sortedRules[0]?.rankCode ?? 'F');
+    const currentRankCode = this.normalizeRankCode(effectiveCurrentRank)
+      || this.normalizeRankCode(String(currentRankRule?.rankCode ?? sortedRules[0]?.rankCode ?? ExperienceLevel.E))
+      || ExperienceLevel.E;
     const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
     const currentRankXp = Math.max(0, totalXp - currentRankRequiredXp);
     const rankBandSize = Math.max(1, nextRule.requiredXp - currentRankRequiredXp);
@@ -1384,7 +1461,7 @@ export class UserService {
     };
   }
 
-  private async buildRankProgress(profile: User, rules?: LevelUpRule[]) {
+  private async buildRankProgress(profile: RankProgressProfile, rules?: LevelUpRule[]) {
     return this.buildNextRankProgress(profile, rules);
   }
 
@@ -1420,59 +1497,79 @@ export class UserService {
   }
 
   private getFallbackRankForLevel(level: number) {
-    if (level >= 95) {
+    if (level >= 71) {
       return 'SSS';
     }
 
-    if (level >= 80) {
+    if (level >= 61) {
       return 'SS';
     }
 
-    if (level >= 65) {
+    if (level >= 51) {
       return 'S';
     }
 
-    if (level >= 50) {
+    if (level >= 41) {
       return 'A';
     }
 
-    if (level >= 35) {
+    if (level >= 31) {
       return 'B';
     }
 
-    if (level >= 20) {
+    if (level >= 21) {
       return 'C';
     }
 
-    if (level >= 10) {
+    if (level >= 11) {
       return 'D';
     }
 
-    return 'F';
+    return ExperienceLevel.E;
   }
 
-  private resolveRankByRulesOrFallback(profile: User, rules: LevelUpRule[], level: number) {
-    // For automatic XP-based progression, always use fallback (level-based rank assignment)
-    // Rank gates are only for achievement-based progression, not automatic progression
+  private resolveRankByRulesOrFallback(
+    profile: RankProgressProfile,
+    rules: LevelUpRule[],
+    level: number,
+  ) {
+    void profile;
+    void rules;
+    // Current rank must always match the level band (E:1-10, D:11-20, ...).
+    // Rule requirements are used for next-rank eligibility/progress, not for current rank assignment.
     return this.getFallbackRankForLevel(level);
+  }
+
+  private resolveProgressionSnapshot(
+    profile: RankProgressProfile,
+    rules: LevelUpRule[],
+  ) {
+    const totalXp = this.getTotalXp(profile);
+    const level = this.getLevelFromXp(totalXp);
+    const experienceLevel = this.resolveRankByRulesOrFallback(profile, rules, level);
+    const currentRankRule = this.getCurrentRankRule(profile, rules, totalXp, experienceLevel);
+    const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
+    const xp = Math.max(0, totalXp - currentRankRequiredXp);
+
+    return {
+      totalXp,
+      xp,
+      level,
+      experienceLevel,
+    };
   }
 
   private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
     const levelUpRules = rules ?? await this.getLevelUpRules();
-    const totalXp = this.getTotalXp(profile);
-    const nextLevel = this.getLevelFromXp(totalXp);
-    const nextRankCode = this.resolveRankByRulesOrFallback(profile, levelUpRules, nextLevel);
-    const currentRankRule = this.getCurrentRankRule(profile, levelUpRules, totalXp, nextRankCode);
-    const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
-    const currentRankXp = Math.max(0, totalXp - currentRankRequiredXp);
+    const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
 
     const currentLevel = profile.level ?? 1;
-    const currentRank = String(profile.experienceLevel ?? '');
-    const normalizedCurrentRank = this.normalizeKey(currentRank);
-    const normalizedNextRank = this.normalizeKey(nextRankCode);
-    const levelDiffers = currentLevel !== nextLevel;
+    const currentRank = this.normalizeRankCode(String(profile.experienceLevel ?? ''));
+    const normalizedCurrentRank = this.normalizeRankCode(currentRank);
+    const normalizedNextRank = this.normalizeRankCode(snapshot.experienceLevel);
+    const levelDiffers = currentLevel !== snapshot.level;
     const rankDiffers = normalizedCurrentRank !== normalizedNextRank;
-    const xpDiffers = Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== currentRankXp;
+    const xpDiffers = Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== snapshot.xp;
 
     const shouldUpdate = levelDiffers || rankDiffers || xpDiffers;
 
@@ -1481,13 +1578,13 @@ export class UserService {
       return profile;
     }
 
-    this.logger.log(`⚡ Updating profile ${profile._id}: level ${currentLevel}→${nextLevel}, rank ${currentRank}→${nextRankCode}, xp ${profile.xp}→${currentRankXp}`);
+    this.logger.log(`⚡ Updating profile ${profile._id}: level ${currentLevel}→${snapshot.level}, rank ${currentRank}→${snapshot.experienceLevel}, xp ${profile.xp}→${snapshot.xp}`);
 
     const updateData = {
-      totalXp,
-      xp: currentRankXp,
-      level: nextLevel,
-      experienceLevel: nextRankCode,
+      totalXp: snapshot.totalXp,
+      xp: snapshot.xp,
+      level: snapshot.level,
+      experienceLevel: snapshot.experienceLevel,
     };
 
     this.logger.log(`  Update payload:`, updateData);
@@ -2533,7 +2630,7 @@ export class UserService {
     }
 
     const levelUpRules = await this.getLevelUpRules();
-    const syncedProfile = await this.applyLevelProgression(profile);
+    const syncedProfile = await this.applyLevelProgression(profile, levelUpRules);
     return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
@@ -2596,8 +2693,9 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
-    const syncedProfile = await this.applyLevelProgression(updatedProfile);
-    return this.attachAuthContactInfo(syncedProfile);
+    const levelUpRules = await this.getLevelUpRules();
+    const syncedProfile = await this.applyLevelProgression(updatedProfile, levelUpRules);
+    return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
   async deleteOwnProfile(authId: string) {
@@ -2684,23 +2782,61 @@ export class UserService {
     };
   }
 
-  async getAllProfiles(pagination: { page: number; limit: number }) {
+  async getAllProfiles(pagination: {
+    page: number;
+    limit: number;
+    q?: string;
+    status?: 'all' | 'complete' | 'incomplete';
+  }) {
     const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 10;
     const skip = (page - 1) * limit;
+    const search = pagination.q?.trim();
+    const status = pagination.status ?? 'all';
+    const filter: Record<string, unknown> = {};
+
+    if (status === 'complete') {
+      filter.profileCompleted = true;
+    } else if (status === 'incomplete') {
+      filter.profileCompleted = false;
+    }
+
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const queryRegex = new RegExp(escaped, 'i');
+      filter.$or = [
+        { firstName: queryRegex },
+        { lastName: queryRegex },
+        { location: queryRegex },
+        { province: queryRegex },
+        { district: queryRegex },
+      ];
+    }
 
     const [items, total] = await Promise.all([
-      this.userModel.find().skip(skip).limit(limit).sort({ createdAt: -1 }),
-      this.userModel.countDocuments(),
+      this.userModel
+        .find(filter)
+        .select('-xpHistory -receivedRatings -photoVerificationRequests -adminFlags -profilePhotoPublicId -__v')
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 }),
+      this.userModel.countDocuments(filter),
     ]);
 
     const levelUpRules = await this.getLevelUpRules();
     const syncedItems = await Promise.all(
       items.map(async (item) => {
-        const syncedItem = await this.applyLevelProgression(item, levelUpRules);
+        const snapshot = this.resolveProgressionSnapshot(item, levelUpRules);
+        const syncedItem = {
+          ...item.toObject(),
+          totalXp: snapshot.totalXp,
+          xp: snapshot.xp,
+          level: snapshot.level,
+          experienceLevel: snapshot.experienceLevel,
+        };
 
         return {
-          ...syncedItem.toObject(),
+          ...syncedItem,
           nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
         };
       }),
@@ -2863,17 +2999,31 @@ export class UserService {
   }
 
   private async attachAuthContactInfo(profile: User, rules?: LevelUpRule[]) {
+    const levelUpRules = rules ?? await this.getLevelUpRules();
+    const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
     const auth = await this.authModel
       .findById(profile.authId)
       .select('phoneNumber email');
-    const nextRankProgress = await this.buildRankProgress(profile, rules);
+    const nextRankProgress = await this.buildRankProgress(
+      {
+        experienceLevel: snapshot.experienceLevel,
+        level: snapshot.level,
+        xp: snapshot.xp,
+        totalXp: snapshot.totalXp,
+        achievementStats: profile.achievementStats,
+        achievementProgress: profile.achievementProgress,
+      },
+      levelUpRules,
+    );
 
     return {
       ...profile.toObject(),
       phoneNumber: auth?.phoneNumber ?? null,
       email: auth?.email ?? null,
-      level: profile.level ?? 1,
-      experienceLevel: profile.experienceLevel ?? ExperienceLevel.E,
+      totalXp: snapshot.totalXp,
+      xp: snapshot.xp,
+      level: snapshot.level,
+      experienceLevel: snapshot.experienceLevel ?? ExperienceLevel.E,
       subRank: (profile as User & { subRank?: string }).subRank ?? null,
       nextRankProgress,
     };

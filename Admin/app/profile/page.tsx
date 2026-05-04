@@ -83,6 +83,19 @@ type CloudinaryUploadResponse = {
   public_id: string;
 };
 
+const RANK_TIERS = [
+  { code: 'E', name: 'Novice Wanderer', minLevel: 1, maxLevel: 10, subRanks: ['Spark', 'Path', 'Rise'] },
+  { code: 'D', name: 'Trail Hunter', minLevel: 11, maxLevel: 20, subRanks: ['Track', 'Hunt', 'Stalk'] },
+  { code: 'C', name: 'Ridge Slayer', minLevel: 21, maxLevel: 30, subRanks: ['Edge', 'Strike', 'Slay'] },
+  { code: 'B', name: 'Summit Conqueror', minLevel: 31, maxLevel: 40, subRanks: ['Climb', 'Break', 'Conquer'] },
+  { code: 'A', name: 'Himalayan Elite', minLevel: 41, maxLevel: 50, subRanks: ['Frost', 'Storm', 'Crown'] },
+  { code: 'S', name: 'Peak Sovereign', minLevel: 51, maxLevel: 60, subRanks: ['Cloud', 'Thunder', 'Sovereign'] },
+  { code: 'SS', name: 'Everest Legend', minLevel: 61, maxLevel: 70, subRanks: ['Myth', 'Legend', 'Eternal'] },
+  { code: 'SSS', name: 'Nepal Hike God', minLevel: 71, maxLevel: 85, subRanks: ['Divine', 'Ascend', 'God'] },
+  { code: 'HIMALAYAN_DEITY', name: 'Himalayan Deity', minLevel: 86, maxLevel: 99, subRanks: ['Awakened', 'Transcendent', 'Infinite'] },
+  { code: 'ULTIMATE', name: 'Nepal Conqueror', minLevel: 100, maxLevel: 100, subRanks: ['Mythic', 'Eternal', 'Supreme'] },
+] as const;
+
 function calculateAgeFromDob(dob: string) {
   const birthDate = new Date(dob);
 
@@ -101,20 +114,127 @@ function calculateAgeFromDob(dob: string) {
   return age;
 }
 
-function getRankProgress(profile: Profile | null) {
-  const nextRankProgress = profile?.nextRankProgress ?? null;
-  const currentRankXp = Math.max(0, Number(nextRankProgress?.currentRankXp ?? 0));
-  const progressPercentage = nextRankProgress?.progressPercentage ?? 0;
-  const totalRemainingXp = Math.max(
-    0,
-    Number(nextRankProgress?.xpToNextRank ?? nextRankProgress?.remainingXp ?? 0),
-  );
+function getRankTier(level?: number | null) {
+  const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
+  return RANK_TIERS.find((tier) => safeLevel >= tier.minLevel && safeLevel <= tier.maxLevel) ?? RANK_TIERS[0];
+}
+
+function getSubRankBands(level?: number | null) {
+  const tier = getRankTier(level);
+  const levelSpan = Math.max(1, tier.maxLevel - tier.minLevel + 1);
+
+  return tier.subRanks.map((name, index) => {
+    const fromOffset = Math.floor((index * levelSpan) / tier.subRanks.length);
+    const toOffset = Math.floor(((index + 1) * levelSpan) / tier.subRanks.length) - 1;
+    const fromLevel = tier.minLevel + fromOffset;
+    const toLevel = Math.min(tier.maxLevel, tier.minLevel + Math.max(fromOffset, toOffset));
+
+    return { name, fromLevel, toLevel };
+  });
+}
+
+function getXpThresholdForLevel(level: number) {
+  const safeLevel = Math.max(1, Math.floor(Number(level) || 1));
+
+  if (safeLevel <= 1) {
+    return 0;
+  }
+
+  let requiredXp = 0;
+
+  for (let step = 2; step <= safeLevel; step += 1) {
+    requiredXp += 80 + (step - 2) * 35;
+  }
+
+  return requiredXp;
+}
+
+function getLevelFromTotalXp(totalXp: number) {
+  const safeXp = Math.max(0, Math.floor(Number(totalXp) || 0));
+  let level = 1;
+
+  for (let nextLevel = 2; nextLevel <= 100; nextLevel += 1) {
+    if (safeXp >= getXpThresholdForLevel(nextLevel)) {
+      level = nextLevel;
+    } else {
+      break;
+    }
+  }
+
+  return level;
+}
+
+function getCurrentSubRank(level?: number | null) {
+  const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
+  const bands = getSubRankBands(safeLevel);
+  return bands.find((band) => safeLevel >= band.fromLevel && safeLevel <= band.toLevel)?.name ?? bands[0]?.name ?? 'Unranked';
+}
+
+function getNextSubRankTarget(level: number, totalXp: number) {
+  const safeLevel = Math.max(1, Math.floor(Number(level ?? 1)));
+  const tier = getRankTier(safeLevel);
+  const bands = getSubRankBands(safeLevel);
+  const currentIndex = bands.findIndex((band) => safeLevel >= band.fromLevel && safeLevel <= band.toLevel);
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const currentBand = bands[safeIndex];
+
+  if (safeIndex < bands.length - 1) {
+    const nextBand = bands[safeIndex + 1];
+    const startXp = getXpThresholdForLevel(currentBand.fromLevel);
+    const targetXp = getXpThresholdForLevel(nextBand.fromLevel);
+    const spanXp = Math.max(1, targetXp - startXp);
+    const earnedXp = Math.max(0, totalXp - startXp);
+
+    return {
+      label: nextBand.name,
+      subtitle: `Next sub-rank in ${tier.name} (${tier.code})`,
+      currentRankXp: Math.min(spanXp, earnedXp),
+      totalRemainingXp: Math.max(0, targetXp - totalXp),
+      progressPercentage: Math.max(0, Math.min(100, Math.round((earnedXp / spanXp) * 100))),
+    };
+  }
+
+  const nextTier = RANK_TIERS.find((item) => item.minLevel === tier.maxLevel + 1);
+
+  if (nextTier) {
+    const startXp = getXpThresholdForLevel(currentBand.fromLevel);
+    const targetXp = getXpThresholdForLevel(nextTier.minLevel);
+    const spanXp = Math.max(1, targetXp - startXp);
+    const earnedXp = Math.max(0, totalXp - startXp);
+
+    return {
+      label: `${nextTier.subRanks[0]} (${nextTier.code})`,
+      subtitle: `Next rank: ${nextTier.name}`,
+      currentRankXp: Math.min(spanXp, earnedXp),
+      totalRemainingXp: Math.max(0, targetXp - totalXp),
+      progressPercentage: Math.max(0, Math.min(100, Math.round((earnedXp / spanXp) * 100))),
+    };
+  }
 
   return {
-    nextRankProgress,
-    currentRankXp,
-    progressPercentage,
-    totalRemainingXp,
+    label: 'Max Sub-Rank',
+    subtitle: 'You reached the highest rank',
+    currentRankXp: 0,
+    totalRemainingXp: 0,
+    progressPercentage: 100,
+  };
+}
+
+function getEffectiveLevel(profile: Profile | null) {
+  const totalXp = Math.max(0, Math.floor(Number(profile?.totalXp ?? profile?.xp ?? 0)));
+  const calculatedLevel = getLevelFromTotalXp(totalXp);
+  const persistedLevel = Math.max(1, Math.floor(Number(profile?.level ?? 1)));
+  return Math.max(calculatedLevel, persistedLevel);
+}
+
+function getRankProgress(profile: Profile | null) {
+  const totalXp = Math.max(0, Math.floor(Number(profile?.totalXp ?? profile?.xp ?? 0)));
+  const level = getEffectiveLevel(profile);
+  const target = getNextSubRankTarget(level, totalXp);
+  return {
+    currentRankXp: target.currentRankXp,
+    progressPercentage: target.progressPercentage,
+    totalRemainingXp: target.totalRemainingXp,
   };
 }
 
@@ -132,6 +252,13 @@ export default function ProfilePage() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [selectedImagePreview, setSelectedImagePreview] = useState<string | null>(null);
   const [customOtherLanguage, setCustomOtherLanguage] = useState('');
+  const effectiveLevel = getEffectiveLevel(formData);
+  const currentTier = getRankTier(effectiveLevel);
+  const currentSubRank = getCurrentSubRank(effectiveLevel);
+  const nextSubRankTarget = getNextSubRankTarget(
+    effectiveLevel,
+    Math.max(0, Math.floor(Number(formData?.totalXp ?? formData?.xp ?? 0))),
+  );
   const rankProgress = getRankProgress(formData);
   useEffect(() => {
     let active = true;
@@ -526,8 +653,9 @@ export default function ProfilePage() {
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rank</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{formData.experienceLevel || 'Unranked'}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub-Rank</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{currentSubRank}</p>
+          <p className="mt-1 text-sm text-slate-500">{currentTier.name} ({currentTier.code})</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Current Rank XP</p>
@@ -535,12 +663,15 @@ export default function ProfilePage() {
           <p className="mt-1 text-sm text-slate-500">Total XP: {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Next Rank</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Next Sub-Rank</p>
           <p className="mt-2 text-2xl font-bold text-slate-900">
-            {formData.nextRankProgress?.nextRank || 'Max Rank'}
+            {nextSubRankTarget.label}
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            XP to next: {rankProgress.totalRemainingXp.toLocaleString()}
+            {nextSubRankTarget.subtitle}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            XP to target: {rankProgress.totalRemainingXp.toLocaleString()}
           </p>
         </div>
       </div>
@@ -555,7 +686,7 @@ export default function ProfilePage() {
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-slate-900">
-              Next: {formData.nextRankProgress?.nextRank || 'N/A'}
+              Next: {nextSubRankTarget.label}
             </p>
             <p className="text-xs text-slate-500">
               {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
@@ -569,8 +700,8 @@ export default function ProfilePage() {
           />
         </div>
         <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-          <span>{rankProgress.progressPercentage}% to the next rank</span>
-          <span>XP resets visually at each rank-up</span>
+          <span>{rankProgress.progressPercentage}% to the next target</span>
+          <span>Automatically tracks sub-rank, then rank promotion</span>
         </div>
       </div>
 
