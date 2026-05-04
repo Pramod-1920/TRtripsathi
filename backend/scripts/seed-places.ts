@@ -112,6 +112,8 @@ function readCatalogFile() {
     districts: Array.isArray(item.districts)
       ? item.districts.map((district) => String(district).trim()).filter(Boolean)
       : [],
+    provinceNumber: item.provinceNumber ?? 0,
+    places: item.places ?? {},
   }));
 }
 
@@ -136,13 +138,13 @@ async function generateUniqueExtraCode() {
   throw new Error('Unable to generate unique extra code for places seed');
 }
 
-function parsePlaceValue(value?: string | null): { type?: string; province?: string } | null {
+function parsePlaceValue(value?: string | null): { type?: string; province?: string; district?: string } | null {
   if (!value || !value.trim()) {
     return null;
   }
 
   try {
-    return JSON.parse(value) as { type?: string; province?: string };
+    return JSON.parse(value) as { type?: string; province?: string; district?: string };
   } catch {
     return null;
   }

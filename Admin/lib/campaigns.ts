@@ -39,6 +39,7 @@ export type Campaign = {
   approvalNote?: string | null;
   photos?: CampaignPhoto[];
   completed?: boolean;
+  hostId?: string;
   creator?: {
     name?: string;
     role?: 'admin' | 'user';

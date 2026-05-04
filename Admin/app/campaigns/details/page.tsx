@@ -30,6 +30,7 @@ import { ConfirmModal } from '@/components/ui/confirm-modal';
 type SearchScope = 'all' | 'id' | 'title' | 'location' | 'creator';
 type TimingStatus = 'active' | 'upcoming' | 'closed';
 type ApprovalFilter = 'all' | CampaignApprovalStatus;
+type ViewType = 'all' | 'open' | 'closed';
 
 function getCampaignTimingStatus(campaign: Campaign): TimingStatus {
   if (campaign.completed) {
@@ -81,6 +82,7 @@ export default function CampaignDetailsPage() {
   const [search, setSearch] = useState('');
   const [searchScope, setSearchScope] = useState<SearchScope>('all');
   const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
+  const [viewType, setViewType] = useState<ViewType>('all');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -112,6 +114,7 @@ export default function CampaignDetailsPage() {
 
   const filteredCampaigns = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const userId = user?._id ?? '';
 
     return campaigns.filter((campaign) => {
       const matchesSearch = !query || (() => {
@@ -143,9 +146,16 @@ export default function CampaignDetailsPage() {
       const approvalStatus = campaign.approvalStatus ?? 'draft';
       const matchesApproval = approvalFilter === 'all' || approvalStatus === approvalFilter;
 
-      return matchesSearch && matchesApproval;
+      let matchesView = true;
+      if (viewType === 'open') {
+        matchesView = campaign.hikeType === 'group' && campaign.approvalStatus === 'approved';
+      } else if (viewType === 'closed') {
+        matchesView = campaign.hostId === userId && campaign.completed;
+      }
+
+      return matchesSearch && matchesApproval && matchesView;
     });
-  }, [campaigns, search, searchScope, approvalFilter]);
+  }, [campaigns, search, searchScope, approvalFilter, viewType, user?._id]);
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
@@ -281,64 +291,102 @@ export default function CampaignDetailsPage() {
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Search campaigns"
-          />
-          <select
-            value={searchScope}
-            onChange={(event) => setSearchScope(event.target.value as SearchScope)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All fields</option>
-            <option value="id">Campaign ID</option>
-            <option value="title">Title</option>
-            <option value="location">Location</option>
-            <option value="creator">Creator</option>
-          </select>
-          <select
-            value={approvalFilter}
-            onChange={(event) => setApprovalFilter(event.target.value as ApprovalFilter)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Approval</option>
-            <option value="draft">Draft</option>
-            <option value="submitted">Submitted</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
-          <select
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-50 text-slate-600"
-            disabled
-            defaultValue="all"
-          >
-            <option value="all">Timing badges in table</option>
-            <option value="active">Active</option>
-            <option value="closed">Closed</option>
-          </select>
-          <div className="flex items-center gap-2">
-            <label htmlFor="page-size" className="text-sm text-slate-600 whitespace-nowrap">
-              Rows per page
-            </label>
+        <div className="flex flex-col gap-4">
+          <div className="flex gap-2 border-b border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewType('all')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                viewType === 'all'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Campaigns
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewType('open')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                viewType === 'open'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Open (Group)
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewType('closed')}
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                viewType === 'closed'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              My Closed
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Search campaigns"
+            />
             <select
-              id="page-size"
-              value={limit}
-              onChange={(event) => {
-                const nextLimit = Number(event.target.value);
-                setLimit(nextLimit);
-                setPage(1);
-              }}
+              value={searchScope}
+              onChange={(event) => setSearchScope(event.target.value as SearchScope)}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
+              <option value="all">All fields</option>
+              <option value="id">Campaign ID</option>
+              <option value="title">Title</option>
+              <option value="location">Location</option>
+              <option value="creator">Creator</option>
             </select>
+            <select
+              value={approvalFilter}
+              onChange={(event) => setApprovalFilter(event.target.value as ApprovalFilter)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Approval</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Submitted</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <select
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-50 text-slate-600"
+              disabled
+              defaultValue="all"
+            >
+              <option value="all">Timing badges in table</option>
+              <option value="active">Active</option>
+              <option value="closed">Closed</option>
+            </select>
+            <div className="flex items-center gap-2">
+              <label htmlFor="page-size" className="text-sm text-slate-600 whitespace-nowrap">
+                Rows per page
+              </label>
+              <select
+                id="page-size"
+                value={limit}
+                onChange={(event) => {
+                  const nextLimit = Number(event.target.value);
+                  setLimit(nextLimit);
+                  setPage(1);
+                }}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>

@@ -20,4 +20,8 @@ export class CreateExtraDto {
   @IsBoolean()
   @IsOptional()
   enabled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  adminApprovalRequired?: boolean;
 }

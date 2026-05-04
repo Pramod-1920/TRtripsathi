@@ -51,6 +51,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
   const campaignItems = [
     { href: '/campaigns/add', label: 'Add Campaign' },
     { href: '/campaigns/details', label: 'Campaign Details' },
+    { href: '/campaigns/approval', label: 'Campaign Approval' },
   ];
 
   const extraItems = [
