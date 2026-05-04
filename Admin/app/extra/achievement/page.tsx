@@ -1,7 +1,5 @@
-'use client';
-
-import { AchievementManager } from '@/components/extra/achievement-manager';
+import { redirect } from 'next/navigation';
 
 export default function ExtraAchievementPage() {
-  return <AchievementManager />;
+  redirect('/extra/achievement/view');
 }

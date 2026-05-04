@@ -50,9 +50,8 @@ type AchievementDefinition = {
   description?: string;
   subcategory: string;
   targetCount: number;
+  rewardXp: number;
   hidden?: boolean;
-  rewardXp?: number;
-  badge?: string;
 };
 
 type XpRuleRepeatMode =
@@ -335,12 +334,12 @@ export class UserService {
       const requirements = parsed.requirements
         ? Object.fromEntries(
             Object.entries(parsed.requirements)
-              .map(([key, rawValue]) => [
+              .map(([key, rawValue]): [string, number] => [
                 this.normalizeAchievementSubcategory(key),
                 Number(rawValue),
               ])
               .filter(([key, value]) => key.length > 0 && Number.isFinite(value) && value > 0)
-              .map(([key, value]) => [key, Math.floor(value)]),
+              .map(([key, value]): [string, number] => [key, Math.floor(value)]),
           )
         : undefined;
 
@@ -845,16 +844,26 @@ export class UserService {
         targetCount: number;
         hidden?: boolean;
         rewardXp?: number;
-        badge?: string;
       }>;
 
-      if (!parsed.key || !parsed.subcategory || parsed.targetCount === undefined) {
+      if (
+        !parsed.key
+        || !parsed.subcategory
+        || parsed.targetCount === undefined
+        || parsed.rewardXp === undefined
+      ) {
         return null;
       }
 
       const targetCount = Number(parsed.targetCount);
+      const rewardXp = Number(parsed.rewardXp);
 
-      if (!Number.isFinite(targetCount) || targetCount < 1) {
+      if (
+        !Number.isFinite(targetCount)
+        || targetCount < 1
+        || !Number.isFinite(rewardXp)
+        || rewardXp < 1
+      ) {
         return null;
       }
 
@@ -862,11 +871,8 @@ export class UserService {
         key: String(parsed.key).trim(),
         subcategory: String(parsed.subcategory).trim(),
         targetCount: Math.floor(targetCount),
+        rewardXp: Math.floor(rewardXp),
         ...(parsed.hidden ? { hidden: true } : {}),
-        ...(parsed.rewardXp !== undefined && Number.isFinite(Number(parsed.rewardXp)) && Number(parsed.rewardXp) > 0
-          ? { rewardXp: Math.floor(Number(parsed.rewardXp)) }
-          : {}),
-        ...(parsed.badge?.trim() ? { badge: String(parsed.badge).trim() } : {}),
       };
     } catch {
       return null;
@@ -892,9 +898,8 @@ export class UserService {
           description: item.description ?? undefined,
           subcategory: parsed.subcategory,
           targetCount: parsed.targetCount,
+          rewardXp: parsed.rewardXp,
           ...(parsed.hidden ? { hidden: true } : {}),
-          ...(parsed.rewardXp !== undefined ? { rewardXp: parsed.rewardXp } : {}),
-          ...(parsed.badge ? { badge: parsed.badge } : {}),
         };
       })
       .filter(Boolean) as AchievementDefinition[];
@@ -902,6 +907,143 @@ export class UserService {
 
   private normalizeAchievementSubcategory(value: string) {
     return this.normalizeKey(value).replace(/\s+/g, '_');
+  }
+
+  private buildAutomaticAchievementEventPayloads(
+    eventKey: string,
+    context: XpEventContext,
+    options?: {
+      rankUnlocked?: boolean;
+      newRank?: string;
+    },
+  ): Array<{ subcategory: string; count: number }> {
+    const normalizedEventKey = this.normalizeAchievementSubcategory(eventKey);
+    const normalizedActivityType = this.normalizeAchievementSubcategory(
+      String(context.activityType ?? ''),
+    );
+    const normalizedDifficulty = this.normalizeDifficulty(
+      String(context.difficulty ?? ''),
+    );
+    const locationKey = this.resolveLocationKey(context);
+    const payloadCounts = new Map<string, number>();
+
+    const addSubcategory = (rawSubcategory: string, count = 1) => {
+      const subcategory = this.normalizeAchievementSubcategory(rawSubcategory);
+      if (!subcategory || count <= 0) {
+        return;
+      }
+
+      payloadCounts.set(
+        subcategory,
+        (payloadCounts.get(subcategory) ?? 0) + count,
+      );
+    };
+
+    addSubcategory(normalizedEventKey);
+    addSubcategory(normalizedActivityType);
+
+    if (normalizedEventKey.includes('hike')) {
+      addSubcategory('hikes');
+    }
+
+    if (normalizedEventKey.includes('trek')) {
+      addSubcategory('treks');
+    }
+
+    if (normalizedEventKey.includes('temple')) {
+      addSubcategory('temples');
+    }
+
+    if (normalizedEventKey.includes('route')) {
+      addSubcategory('routes');
+    }
+
+    if (normalizedEventKey.includes('quest')) {
+      addSubcategory('quest_chains');
+    }
+
+    if (locationKey) {
+      addSubcategory('routes');
+    }
+
+    if (context.firstVisit === true) {
+      addSubcategory('unique_locations');
+    }
+
+    if (normalizedDifficulty === 'hard' || normalizedDifficulty === 'extreme') {
+      addSubcategory('difficult_routes');
+    }
+
+    if (normalizedDifficulty === 'extreme') {
+      addSubcategory('legendary_routes');
+    }
+
+    if (normalizedDifficulty) {
+      addSubcategory('difficulty_completed');
+      addSubcategory(`difficulty_${normalizedDifficulty}_completed`);
+    }
+
+    if (options?.rankUnlocked) {
+      addSubcategory('rank_up');
+      const normalizedRank = this.normalizeAchievementSubcategory(
+        String(options.newRank ?? ''),
+      );
+      if (normalizedRank) {
+        addSubcategory(`rank_${normalizedRank}`);
+      }
+    }
+
+    return Array.from(payloadCounts.entries()).map(
+      ([subcategory, count]): { subcategory: string; count: number } => ({
+        subcategory,
+        count,
+      }),
+    );
+  }
+
+  private async recordAutomaticAchievementEvents(
+    authId: string,
+    eventKey: string,
+    context: XpEventContext,
+    options?: {
+      rankUnlocked?: boolean;
+      newRank?: string;
+    },
+  ) {
+    const payloads = this.buildAutomaticAchievementEventPayloads(
+      eventKey,
+      context,
+      options,
+    );
+
+    if (payloads.length === 0) {
+      return {
+        payloads: [],
+        unlocked: [],
+        rankUnlocked: false,
+      };
+    }
+
+    const unlockedMap = new Map<
+      string,
+      { key: string; title: string; rewardXp: number }
+    >();
+    let rankUnlocked = false;
+
+    for (const payload of payloads) {
+      const result = await this.recordAchievementEvent(authId, payload);
+      rankUnlocked = rankUnlocked || Boolean(result.rankUnlocked);
+
+      for (const unlocked of result.unlocked) {
+        unlockedMap.set(unlocked.key, unlocked);
+      }
+    }
+
+    return {
+      payloads,
+      unlocked: Array.from(unlockedMap.values()),
+      rankUnlocked,
+    };
   }
 
   async recordAchievementEvent(
@@ -936,9 +1078,9 @@ export class UserService {
 
     const stats = Object.fromEntries(
       Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
-        .map(([key, value]) => [key, Number(value)])
+        .map(([key, value]): [string, number] => [key, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value >= 0)
-        .map(([key, value]) => [key, Math.floor(value)]),
+        .map(([key, value]): [string, number] => [key, Math.floor(value)]),
     ) as Record<string, number>;
 
     const legacyStatMap: Record<string, string> = {
@@ -958,7 +1100,7 @@ export class UserService {
     }
 
     const progress = [...(profile.achievementProgress ?? [])];
-    const unlocked: Array<{ key: string; title: string; rewardXp: number; badge?: string }> = [];
+    const unlocked: Array<{ key: string; title: string; rewardXp: number }> = [];
 
     for (const definition of filtered) {
       const index = progress.findIndex(
@@ -976,6 +1118,21 @@ export class UserService {
             rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
             hidden: definition.hidden ?? false,
           };
+
+      if (existing.completedAt) {
+        // One-time objective: once completed, keep it completed and skip re-activation logic.
+        if (index >= 0) {
+          progress[index] = {
+            ...existing,
+            title: definition.title,
+            subcategory: definition.subcategory,
+            target: definition.targetCount,
+            rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
+            hidden: definition.hidden ?? false,
+          };
+        }
+        continue;
+      }
 
       const nextCount = Math.min(
         definition.targetCount,
@@ -1009,22 +1166,16 @@ export class UserService {
           key: definition.key,
           title: definition.title,
           rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
-          ...(definition.badge?.trim() ? { badge: definition.badge.trim() } : {}),
         });
       }
     }
 
     const bonusXp = unlocked.reduce((total, entry) => total + entry.rewardXp, 0);
-    const rewardBadge = [...unlocked]
-      .reverse()
-      .map((entry) => entry.badge?.trim())
-      .find((badge): badge is string => Boolean(badge));
 
     const updates: Record<string, unknown> = {
       $set: {
         achievementStats: stats,
         achievementProgress: progress,
-        ...(rewardBadge ? { badge: rewardBadge } : {}),
       },
       ...(bonusXp > 0 ? { $inc: { totalXp: bonusXp } } : {}),
     };
@@ -1337,9 +1488,9 @@ export class UserService {
 
     const dynamicStats = Object.fromEntries(
       Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
-        .map(([key, value]) => [key, Number(value)])
+        .map(([key, value]): [string, number] => [key, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value >= 0)
-        .map(([key, value]) => [key, Math.floor(value)]),
+        .map(([key, value]): [string, number] => [key, Math.floor(value)]),
     ) as Record<string, number>;
 
     return {
@@ -1827,7 +1978,27 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
-    return this.evaluateXpForProfile(profile, eventKey, context);
+    const xpResult = await this.evaluateXpForProfile(profile, eventKey, context);
+    const rankUnlocked =
+      'rankUnlocked' in xpResult && xpResult.rankUnlocked === true;
+    const newRank =
+      'newRank' in xpResult && typeof xpResult.newRank === 'string'
+        ? xpResult.newRank
+        : undefined;
+    const autoAchievement = await this.recordAutomaticAchievementEvents(
+      authId,
+      eventKey,
+      context,
+      {
+        rankUnlocked,
+        newRank,
+      },
+    );
+
+    return {
+      ...xpResult,
+      autoAchievement,
+    };
   }
 
   async simulateXpForProfileEvent(

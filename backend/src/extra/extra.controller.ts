@@ -9,20 +9,25 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiOkResponse, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiOkResponse, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/constants/roles.enum';
 import { CreateExtraDto } from './dto/create-extra.dto';
+import { BulkSeedPlacesDto, PatchPlacesDto } from './dto/places.dto';
 import { UpdateExtraDto } from './dto/update-extra.dto';
 import { ExtraCategory } from './constants/extra-category.enum';
 import { ExtraService } from './extra.service';
+import { PlacesService } from './places.service';
 
 @ApiTags('extra')
 @Controller('extra')
 export class ExtraController {
-  constructor(private readonly extraService: ExtraService) {}
+  constructor(
+    private readonly extraService: ExtraService,
+    private readonly placesService: PlacesService,
+  ) {}
 
   // PUBLIC ENDPOINTS (no auth required)
   @Get('places')
@@ -69,12 +74,34 @@ export class ExtraController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: get places hierarchy (province + district + place)' })
-  @ApiQuery({ name: 'includeDisabled', required: false, example: false })
+  @ApiOperation({ summary: 'Admin: get places hierarchy (province + district + municipality)' })
+  @ApiQuery({ name: 'includeDeleted', required: false, example: false })
   @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
-  getPlacesHierarchy(@Query('includeDisabled') includeDisabled = 'false') {
-    const shouldIncludeDisabled = includeDisabled === 'true' || includeDisabled === '1';
-    return this.extraService.getPlaceHierarchy({ includeDisabled: shouldIncludeDisabled });
+  getPlacesHierarchy(@Query('includeDeleted') includeDeleted = 'false') {
+    const shouldIncludeDeleted = includeDeleted === 'true' || includeDeleted === '1';
+    return this.placesService.getHierarchy({ includeDeleted: shouldIncludeDeleted });
+  }
+
+  @Post('places/bulk-seed')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: replace full places hierarchy via bulk seed' })
+  @ApiBody({ type: BulkSeedPlacesDto })
+  @ApiOkResponse({ description: 'Places hierarchy seeded successfully' })
+  bulkSeedPlaces(@Body() dto: BulkSeedPlacesDto) {
+    return this.placesService.bulkSeed(dto);
+  }
+
+  @Patch('places')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: patch places hierarchy with atomic operations' })
+  @ApiBody({ type: PatchPlacesDto })
+  @ApiOkResponse({ description: 'Places hierarchy updated successfully' })
+  patchPlaces(@Body() dto: PatchPlacesDto) {
+    return this.placesService.patchHierarchy(dto.operations);
   }
 
   @Get(':id')

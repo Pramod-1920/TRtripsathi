@@ -4,6 +4,7 @@ import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
 import { ExtraController } from './extra.controller';
 import { PlaceCatalogController } from './place-catalog.controller';
 import { ExtraService } from './extra.service';
+import { PlacesService } from './places.service';
 import { ExtraItem, ExtraSchema } from './schemas/extra.schema';
 
 @Module({
@@ -14,7 +15,7 @@ import { ExtraItem, ExtraSchema } from './schemas/extra.schema';
     ]),
   ],
   controllers: [ExtraController, PlaceCatalogController],
-  providers: [ExtraService],
-  exports: [ExtraService],
+  providers: [ExtraService, PlacesService],
+  exports: [ExtraService, PlacesService],
 })
 export class ExtraModule {}

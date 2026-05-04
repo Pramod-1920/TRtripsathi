@@ -122,12 +122,6 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
           </button>
         </div>
 
-        <div className={clsx('border-b border-slate-200 px-4 py-4 md:block', collapsed ? 'md:px-2' : 'md:px-4')}>
-          <div className={clsx('rounded-2xl bg-slate-100 p-3 text-sm text-slate-600', collapsed ? 'md:hidden' : 'block')}>
-            Use the hamburger button to expand or collapse the sidebar.
-          </div>
-        </div>
-
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3">
           {menuItems.map(({ href, label, icon: Icon }) => {

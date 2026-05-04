@@ -65,6 +65,38 @@ export type PlaceCatalogResponse = {
   };
 };
 
+export type PlaceMunicipalityNode = {
+  id: string;
+  name: string;
+  deleted?: boolean;
+};
+
+export type PlaceDistrictNode = {
+  id: string;
+  name: string;
+  municipalities: PlaceMunicipalityNode[];
+  deleted?: boolean;
+};
+
+export type PlaceProvinceNode = {
+  id: string;
+  name: string;
+  districts: PlaceDistrictNode[];
+  deleted?: boolean;
+};
+
+export type PlacesHierarchyResponse = {
+  provinces: PlaceProvinceNode[];
+};
+
+export type PlacePatchOperation = {
+  op: 'add' | 'rename' | 'delete' | 'restore';
+  type?: 'province' | 'district' | 'municipality';
+  parentId?: string;
+  id?: string;
+  name?: string;
+};
+
 export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
   if (typeof data === 'object' && data !== null) {
     const asRecord = data as {
@@ -141,12 +173,32 @@ export async function fetchPlaceCatalog() {
   return response.data as PlaceCatalogResponse;
 }
 
-export async function fetchAdminPlaceHierarchy(params?: { includeDisabled?: boolean }) {
+export async function fetchAdminPlaceHierarchy(params?: { includeDeleted?: boolean }) {
   const response = await apiClient.get('/extra/places/hierarchy', {
     params: {
-      includeDisabled: params?.includeDisabled ?? true,
+      includeDeleted: params?.includeDeleted ?? false,
     },
   });
 
-  return response.data as PlaceCatalogResponse;
+  return response.data as PlacesHierarchyResponse;
+}
+
+export async function fetchPlacesHierarchy(params?: { includeDeleted?: boolean }) {
+  const response = await apiClient.get('/extra/places/hierarchy', {
+    params: {
+      includeDeleted: params?.includeDeleted ?? false,
+    },
+  });
+
+  return response.data as PlacesHierarchyResponse;
+}
+
+export async function bulkSeedPlaces(payload: PlacesHierarchyResponse) {
+  const response = await apiClient.post('/extra/places/bulk-seed', payload);
+  return response.data as PlacesHierarchyResponse;
+}
+
+export async function patchPlaces(operations: PlacePatchOperation[]) {
+  const response = await apiClient.patch('/extra/places', { operations });
+  return response.data as PlacesHierarchyResponse;
 }
