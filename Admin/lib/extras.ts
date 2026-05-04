@@ -17,6 +17,7 @@ export type ExtraItem = {
   description?: string | null;
   value?: string | null;
   enabled?: boolean;
+  adminApprovalRequired?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -27,6 +28,7 @@ export type ExtraPayload = {
   description?: string;
   value?: string;
   enabled?: boolean;
+  adminApprovalRequired?: boolean;
 };
 
 export type ExtraListPagination = {

@@ -19,6 +19,7 @@ type ExtraManagerProps = {
   itemLabel: string;
   showValueField?: boolean;
   showDescriptionField?: boolean;
+  showApprovalField?: boolean;
   valueLabel?: string;
   valuePlaceholder?: string;
   valueColumnLabel?: string;
@@ -31,6 +32,7 @@ type ExtraFormState = {
   description: string;
   value: string;
   enabled: boolean;
+  adminApprovalRequired: boolean;
 };
 
 const defaultFormState: ExtraFormState = {
@@ -38,6 +40,7 @@ const defaultFormState: ExtraFormState = {
   description: '',
   value: '',
   enabled: true,
+  adminApprovalRequired: false,
 };
 
 export function ExtraManager({
@@ -47,6 +50,7 @@ export function ExtraManager({
   itemLabel,
   showValueField = true,
   showDescriptionField = true,
+  showApprovalField = false,
   valueLabel = 'Value',
   valuePlaceholder = 'Optional value',
   valueColumnLabel = 'Value',
@@ -119,6 +123,7 @@ export function ExtraManager({
       description: item.description ?? '',
       value: item.value ?? '',
       enabled: item.enabled ?? true,
+      adminApprovalRequired: item.adminApprovalRequired ?? false,
     });
   }
 
@@ -158,6 +163,7 @@ export function ExtraManager({
         ...(showValueField
           ? (form.value.trim() ? { value: form.value.trim() } : {})
           : (editId ? { value: '' } : {})),
+        ...(showApprovalField ? { adminApprovalRequired: form.adminApprovalRequired } : {}),
         enabled: form.enabled,
       };
 
@@ -281,6 +287,18 @@ export function ExtraManager({
             />
             Enabled
           </label>
+
+          {showApprovalField && (
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.adminApprovalRequired}
+                onChange={(event) => setForm((current) => ({ ...current, adminApprovalRequired: event.target.checked }))}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              Admin Approval Required
+            </label>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -353,6 +371,9 @@ export function ExtraManager({
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">{valueColumnLabel}</th>
               )}
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
+              {showApprovalField && (
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Approval Required</th>
+              )}
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Created</th>
               <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">Actions</th>
             </tr>
@@ -360,7 +381,7 @@ export function ExtraManager({
           <tbody className="divide-y divide-slate-200">
             {loading && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showValueField ? 6 : 5}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showApprovalField ? (showValueField ? 7 : 6) : (showValueField ? 6 : 5)}>
                   Loading {title.toLowerCase()}...
                 </td>
               </tr>
@@ -368,7 +389,7 @@ export function ExtraManager({
 
             {!loading && filteredItems.length === 0 && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showValueField ? 6 : 5}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showApprovalField ? (showValueField ? 7 : 6) : (showValueField ? 6 : 5)}>
                   No {title.toLowerCase()} found.
                 </td>
               </tr>
@@ -410,6 +431,13 @@ export function ExtraManager({
                     {item.enabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </td>
+                {showApprovalField && (
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${item.adminApprovalRequired ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                      {item.adminApprovalRequired ? 'Required' : 'Not Required'}
+                    </span>
+                  </td>
+                )}
                 <td className="px-6 py-4 text-sm text-slate-700">
                   {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'}
                 </td>

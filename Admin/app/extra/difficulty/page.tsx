@@ -11,6 +11,7 @@ export default function ExtraDifficultyPage() {
       itemLabel="Difficulty"
       showValueField={false}
       showDescriptionField={false}
+      showApprovalField={true}
     />
   );
 }

@@ -121,6 +121,7 @@ function readCatalogFile() {
     throw new Error('Invalid place JSON format: expected provinces array');
   }
 
+<<<<<<< HEAD
   return parsed.provinces.map<PlaceCatalogRow>((item) => {
     const places = Object.entries(item.places ?? {}).reduce<Record<string, string[]>>((acc, [district, rawPlaces]) => {
       const districtName = String(district).trim();
@@ -145,6 +146,16 @@ function readCatalogFile() {
       places,
     };
   });
+=======
+  return parsed.provinces.map((item) => ({
+    province: String(item.province ?? '').trim(),
+    districts: Array.isArray(item.districts)
+      ? item.districts.map((district) => String(district).trim()).filter(Boolean)
+      : [],
+    provinceNumber: item.provinceNumber ?? 0,
+    places: item.places ?? {},
+  }));
+>>>>>>> d41db78a9a973145bd2adb83e1a3fd0a8cf7fb95
 }
 
 async function generateUniqueExtraCode() {
@@ -168,13 +179,21 @@ async function generateUniqueExtraCode() {
   throw new Error('Unable to generate unique extra code for places seed');
 }
 
+<<<<<<< HEAD
 function parsePlaceValue(value?: string | null): PlaceMetadata | null {
+=======
+function parsePlaceValue(value?: string | null): { type?: string; province?: string; district?: string } | null {
+>>>>>>> d41db78a9a973145bd2adb83e1a3fd0a8cf7fb95
   if (!value || !value.trim()) {
     return null;
   }
 
   try {
+<<<<<<< HEAD
     return JSON.parse(value) as PlaceMetadata;
+=======
+    return JSON.parse(value) as { type?: string; province?: string; district?: string };
+>>>>>>> d41db78a9a973145bd2adb83e1a3fd0a8cf7fb95
   } catch {
     return null;
   }

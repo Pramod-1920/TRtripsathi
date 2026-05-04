@@ -136,6 +136,7 @@ export class ExtraService {
       description: normalizeText(dto.description),
       value: normalizeText(dto.value),
       enabled: dto.enabled ?? true,
+      adminApprovalRequired: dto.adminApprovalRequired ?? false,
     });
 
     return extra;
@@ -201,6 +202,10 @@ export class ExtraService {
 
     if (dto.enabled !== undefined) {
       extra.enabled = dto.enabled;
+    }
+
+    if (dto.adminApprovalRequired !== undefined) {
+      extra.adminApprovalRequired = dto.adminApprovalRequired;
     }
 
     await extra.save();

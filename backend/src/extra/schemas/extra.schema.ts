@@ -23,6 +23,9 @@ export class ExtraItem {
 
   @Prop({ type: Boolean, default: true })
   enabled!: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  adminApprovalRequired!: boolean;
 }
 
 export const ExtraSchema = SchemaFactory.createForClass(ExtraItem);

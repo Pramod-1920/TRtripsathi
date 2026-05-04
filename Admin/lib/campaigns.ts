@@ -50,8 +50,12 @@ export type Campaign = {
   hostId?: string;
   participants?: CampaignParticipant[];
   completed?: boolean;
+<<<<<<< HEAD
   failed?: boolean;
   awaitingVerification?: boolean;
+=======
+  hostId?: string;
+>>>>>>> d41db78a9a973145bd2adb83e1a3fd0a8cf7fb95
   creator?: {
     name?: string;
     role?: 'admin' | 'user';

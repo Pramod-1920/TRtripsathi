@@ -501,6 +501,24 @@ export class CampaignService {
     return status === 'draft' || status === 'rejected';
   }
 
+  private async getDifficultyApprovalRequirement(difficulty?: string | null): Promise<boolean> {
+    if (!difficulty || !difficulty.trim()) {
+      return false;
+    }
+
+    const difficultyItems = await this.extraService.listExtras({
+      category: ExtraCategory.Difficulty,
+      page: 1,
+      limit: 100,
+    });
+
+    const matched = difficultyItems.items.find(
+      (item) => item.name.toLowerCase() === difficulty.trim().toLowerCase(),
+    );
+
+    return matched?.adminApprovalRequired ?? false;
+  }
+
   async createCampaign(dto: CreateCampaignDto, hostId: string, isAdmin = false) {
     const campaignCode = await this.createUniqueCampaignCode();
     const scheduleType = dto.scheduleType ?? 'scheduled';
@@ -563,6 +581,9 @@ export class CampaignService {
     const normalizedLocation = this.normalizeLocationPart(location)
       ?? this.buildDisplayLocation(normalizedProvince, normalizedDistrict, normalizedPlaceName);
 
+    const difficultyRequiresApproval = !isAdmin && await this.getDifficultyApprovalRequirement(dto.difficulty);
+    const approvalStatus: CampaignApprovalStatus = isAdmin ? 'approved' : (difficultyRequiresApproval ? 'draft' : 'approved');
+
     const created = await this.campaignModel.create({
       campaignCode,
       ...rest,
@@ -577,7 +598,7 @@ export class CampaignService {
       endDate: resolvedEndDate,
       joinOpenDate,
       hostId: new Types.ObjectId(hostId),
-      approvalStatus: isAdmin ? 'approved' : 'draft',
+      approvalStatus,
       submittedAt: isAdmin ? new Date() : null,
       approvedAt: isAdmin ? new Date() : null,
       approvedBy: isAdmin ? new Types.ObjectId(hostId) : null,
