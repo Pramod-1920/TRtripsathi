@@ -70,7 +70,7 @@ export class CreateProfileDto {
 
   @ApiProperty({
     enum: ExperienceLevel,
-    example: ExperienceLevel.E,
+    example: ExperienceLevel.F,
     description: 'User experience level',
   })
   @IsEnum(ExperienceLevel)

@@ -122,6 +122,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$key::$completedAt';
   }
 
+  List<Map<String, dynamic>> _extractRankBadges(Map<String, dynamic> data) {
+    final raw = data['rankBadges'];
+
+    if (raw is! List<dynamic>) {
+      return const [];
+    }
+
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .where((badge) =>
+            (badge['imageUrl']?.toString().trim().isNotEmpty ?? false) &&
+            (badge['rankCode']?.toString().trim().isNotEmpty ?? false))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -202,6 +217,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Builder(
+                  builder: (context) {
+                    final rankBadges = _extractRankBadges(data);
+
+                    if (rankBadges.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Rank Badges',
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: rankBadges.map((badge) {
+                                final rankCode =
+                                    badge['rankCode']?.toString() ?? '';
+                                final imageUrl =
+                                    badge['imageUrl']?.toString() ?? '';
+                                final isCurrentRank =
+                                    badge['isCurrentRank'] == true;
+
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: isCurrentRank
+                                              ? Colors.blueAccent
+                                              : Colors.black12,
+                                          width: isCurrentRank ? 2 : 1,
+                                        ),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Image.network(
+                                          imageUrl,
+                                          width: 54,
+                                          height: 54,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              const SizedBox.shrink(),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      rankCode,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: isCurrentRank
+                                            ? Colors.blueAccent
+                                            : Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 Text('Name: \\${data['firstName'] ?? data['fullName'] ?? '—'}',

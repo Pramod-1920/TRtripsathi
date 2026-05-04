@@ -1,4 +1,5 @@
 export enum ExperienceLevel {
+  F = 'F',
   E = 'E',
   D = 'D',
   C = 'C',
@@ -8,4 +9,5 @@ export enum ExperienceLevel {
   SS = 'SS',
   SSS = 'SSS',
   Mythic = 'Mythic',
+  Heroic = 'Heroic',
 }

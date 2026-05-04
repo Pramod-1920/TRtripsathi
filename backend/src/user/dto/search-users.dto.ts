@@ -14,7 +14,7 @@ export class SearchUsersDto {
 
   @ApiPropertyOptional({
     enum: ExperienceLevel,
-    example: ExperienceLevel.E,
+    example: ExperienceLevel.F,
   })
   @IsOptional()
   @IsEnum(ExperienceLevel)

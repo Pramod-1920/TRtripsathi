@@ -10,221 +10,38 @@ import {
   fetchExtras,
   updateExtra,
 } from '@/lib/extras';
+import type { LevelUpFormState } from './level-up-manager.types';
+import {
+  buildLevelUpEditForm,
+  buildLevelUpValue,
+  formatLevelUpRequirements,
+  getDefaultLevelUpFormState,
+  parseLevelUpValue,
+} from './level-up-manager.utils';
 
-type LevelUpValuePayload = {
-  requiredXp: number;
-  minLevel?: number;
-  maxLevel?: number;
-  subRanks?: string[];
-  displayName?: string;
-  title?: string;
-  feeling?: string;
-  requireRank?: string;
-  hidden?: boolean;
-  requirements?: {
-    hikes?: number;
-    treks?: number;
-    temples?: number;
-    routes?: number;
-    uniqueLocations?: number;
-    difficultRoutes?: number;
-    legendaryRoutes?: number;
-    questChains?: number;
-    achievements?: number;
-  };
-};
+const RANK_OPTIONS = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Mythic', 'Heroic'] as const;
 
-type LevelUpFormState = {
-  rankCode: string;
-  displayName: string;
-  title: string;
-  feeling: string;
-  requiredXp: string;
-  minLevel: string;
-  maxLevel: string;
-  subRanks: string;
-  requireRank: string;
-  hikes: string;
-  treks: string;
-  temples: string;
-  routes: string;
-  uniqueLocations: string;
-  difficultRoutes: string;
-  legendaryRoutes: string;
-  questChains: string;
-  achievements: string;
-  hidden: boolean;
-  enabled: boolean;
-};
-
-const defaultFormState: LevelUpFormState = {
-  rankCode: '',
-  displayName: '',
-  title: '',
-  feeling: '',
-  requiredXp: '',
-  minLevel: '',
-  maxLevel: '',
-  subRanks: '',
-  requireRank: '',
-  hikes: '',
-  treks: '',
-  temples: '',
-  routes: '',
-  uniqueLocations: '',
-  difficultRoutes: '',
-  legendaryRoutes: '',
-  questChains: '',
-  achievements: '',
-  hidden: false,
-  enabled: true,
-};
-
-function parseLevelUpValue(rawValue?: string | null): LevelUpValuePayload | null {
-  if (!rawValue?.trim()) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as Partial<LevelUpValuePayload>;
-    const requiredXp = Number(parsed.requiredXp);
-
-    if (!Number.isFinite(requiredXp)) {
-      return null;
-    }
-
-    return {
-      requiredXp,
-      ...(parsed.minLevel !== undefined ? { minLevel: Number(parsed.minLevel) } : {}),
-      ...(parsed.maxLevel !== undefined ? { maxLevel: Number(parsed.maxLevel) } : {}),
-      ...(Array.isArray(parsed.subRanks)
-        ? { subRanks: parsed.subRanks.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0) }
-        : typeof parsed.subRanks === 'string'
-          ? {
-              subRanks: String(parsed.subRanks)
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter((entry) => entry.length > 0),
-            }
-          : {}),
-      ...(parsed.displayName ? { displayName: String(parsed.displayName) } : {}),
-      ...(parsed.title ? { title: String(parsed.title) } : {}),
-      ...(parsed.feeling ? { feeling: String(parsed.feeling) } : {}),
-      ...(parsed.requireRank ? { requireRank: String(parsed.requireRank) } : {}),
-      ...(parsed.hidden ? { hidden: true } : {}),
-      ...(parsed.requirements ? { requirements: parsed.requirements } : {}),
-    };
-  } catch {
-    const requiredXp = Number(rawValue);
-
-    if (!Number.isFinite(requiredXp)) {
-      return null;
-    }
-
-    return { requiredXp };
-  }
+function normalizeActivityKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, '_');
 }
 
-function buildLevelUpValue(form: LevelUpFormState) {
-  const requiredXp = Number(form.requiredXp);
+function normalizeRankInput(value: string) {
+  const normalized = value.trim().toLowerCase();
 
-  if (!Number.isFinite(requiredXp) || requiredXp < 0) {
-    throw new Error('Required XP must be a number greater than or equal to 0.');
+  if (normalized === 'mythic' || normalized === 'ultimate') {
+    return 'Mythic';
   }
 
-  const requirements: LevelUpValuePayload['requirements'] = {};
-
-  const minLevel = Number(form.minLevel);
-  const maxLevel = Number(form.maxLevel);
-
-  if (form.minLevel.trim()) {
-    if (!Number.isFinite(minLevel) || minLevel < 1 || minLevel > 100) {
-      throw new Error('Minimum level must be between 1 and 100.');
-    }
+  if (normalized === 'heroic') {
+    return 'Heroic';
   }
 
-  if (form.maxLevel.trim()) {
-    if (!Number.isFinite(maxLevel) || maxLevel < 1 || maxLevel > 100) {
-      throw new Error('Maximum level must be between 1 and 100.');
-    }
-  }
-
-  if (
-    form.minLevel.trim()
-    && form.maxLevel.trim()
-    && minLevel > maxLevel
-  ) {
-    throw new Error('Minimum level cannot be greater than maximum level.');
-  }
-
-  const subRanks = form.subRanks
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-  const hikes = Number(form.hikes);
-  if (Number.isFinite(hikes) && hikes > 0) {
-    requirements.hikes = Math.floor(hikes);
-  }
-
-  const treks = Number(form.treks);
-  if (Number.isFinite(treks) && treks > 0) {
-    requirements.treks = Math.floor(treks);
-  }
-
-  const temples = Number(form.temples);
-  if (Number.isFinite(temples) && temples > 0) {
-    requirements.temples = Math.floor(temples);
-  }
-
-  const routes = Number(form.routes);
-  if (Number.isFinite(routes) && routes > 0) {
-    requirements.routes = Math.floor(routes);
-  }
-
-  const uniqueLocations = Number(form.uniqueLocations);
-  if (Number.isFinite(uniqueLocations) && uniqueLocations > 0) {
-    requirements.uniqueLocations = Math.floor(uniqueLocations);
-  }
-
-  const difficultRoutes = Number(form.difficultRoutes);
-  if (Number.isFinite(difficultRoutes) && difficultRoutes > 0) {
-    requirements.difficultRoutes = Math.floor(difficultRoutes);
-  }
-
-  const legendaryRoutes = Number(form.legendaryRoutes);
-  if (Number.isFinite(legendaryRoutes) && legendaryRoutes > 0) {
-    requirements.legendaryRoutes = Math.floor(legendaryRoutes);
-  }
-
-  const questChains = Number(form.questChains);
-  if (Number.isFinite(questChains) && questChains > 0) {
-    requirements.questChains = Math.floor(questChains);
-  }
-
-  const achievements = Number(form.achievements);
-  if (Number.isFinite(achievements) && achievements > 0) {
-    requirements.achievements = Math.floor(achievements);
-  }
-
-  const payload: LevelUpValuePayload = {
-    requiredXp: Math.floor(requiredXp),
-    ...(form.minLevel.trim() ? { minLevel: Math.floor(minLevel) } : {}),
-    ...(form.maxLevel.trim() ? { maxLevel: Math.floor(maxLevel) } : {}),
-    ...(subRanks.length > 0 ? { subRanks } : {}),
-    ...(form.displayName.trim() ? { displayName: form.displayName.trim() } : {}),
-    ...(form.title.trim() ? { title: form.title.trim() } : {}),
-    ...(form.feeling.trim() ? { feeling: form.feeling.trim() } : {}),
-    ...(form.requireRank.trim() ? { requireRank: form.requireRank.trim() } : {}),
-    ...(form.hidden ? { hidden: true } : {}),
-    ...(Object.keys(requirements).length > 0 ? { requirements } : {}),
-  };
-
-  return JSON.stringify(payload);
+  return normalized.toUpperCase();
 }
 
 export function LevelUpManager() {
   const [items, setItems] = useState<ExtraItem[]>([]);
+  const [activityOptions, setActivityOptions] = useState<Array<{ key: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -233,15 +50,31 @@ export function LevelUpManager() {
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ExtraItem | null>(null);
-  const [form, setForm] = useState<LevelUpFormState>(defaultFormState);
+  const [form, setForm] = useState<LevelUpFormState>(getDefaultLevelUpFormState());
 
   async function loadRules() {
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetchExtras('level-up', { page: 1, limit: 200 });
-      setItems(response.items);
+      const [levelUpResponse, activitiesResponse] = await Promise.all([
+        fetchExtras('level-up', { page: 1, limit: 200 }),
+        fetchExtras('activities', { page: 1, limit: 200 }),
+      ]);
+      setItems(levelUpResponse.items);
+      setActivityOptions(
+        activitiesResponse.items
+          .filter((item) => item.enabled !== false)
+          .map((item) => {
+            const label = item.name?.trim() ?? '';
+            return {
+              key: normalizeActivityKey(label),
+              label,
+            };
+          })
+          .filter((item) => item.key.length > 0 && item.label.length > 0)
+          .sort((first, second) => first.label.localeCompare(second.label)),
+      );
     } catch {
       setError('Failed to load level-up rules. Please verify backend API and admin session.');
     } finally {
@@ -253,6 +86,27 @@ export function LevelUpManager() {
     void loadRules();
   }, []);
 
+  useEffect(() => {
+    if (activityOptions.length === 0) {
+      return;
+    }
+
+    setForm((current) => {
+      const nextRequirements = { ...current.activityRequirements };
+
+      for (const activity of activityOptions) {
+        if (nextRequirements[activity.key] === undefined) {
+          nextRequirements[activity.key] = '';
+        }
+      }
+
+      return {
+        ...current,
+        activityRequirements: nextRequirements,
+      };
+    });
+  }, [activityOptions]);
+
   const parsedRows = useMemo(() => {
     return items.map((item) => {
       const parsed = parseLevelUpValue(item.value);
@@ -261,58 +115,83 @@ export function LevelUpManager() {
         item,
         parsed,
       };
+    }).sort((first, second) => {
+      const firstXp = Number(first.parsed?.requiredXp ?? Number.MAX_SAFE_INTEGER);
+      const secondXp = Number(second.parsed?.requiredXp ?? Number.MAX_SAFE_INTEGER);
+      return firstXp - secondXp;
     });
   }, [items]);
 
+  const enabledRulesCount = useMemo(
+    () => parsedRows.filter((row) => row.item.enabled !== false).length,
+    [parsedRows],
+  );
+  const hiddenRulesCount = useMemo(
+    () => parsedRows.filter((row) => row.parsed?.hidden).length,
+    [parsedRows],
+  );
+  const rankOptions = useMemo(() => {
+    const collected = new Map<string, number>();
+
+    for (const [index, rank] of RANK_OPTIONS.entries()) {
+      collected.set(rank, index);
+    }
+
+    for (const item of items) {
+      const normalizedRank = normalizeRankInput(item.name ?? '');
+      if (!normalizedRank) {
+        continue;
+      }
+
+      if (!collected.has(normalizedRank)) {
+        collected.set(normalizedRank, Number.MAX_SAFE_INTEGER);
+      }
+    }
+
+    return Array.from(collected.entries())
+      .sort((first, second) => first[1] - second[1] || first[0].localeCompare(second[0]))
+      .map(([rank]) => rank);
+  }, [items]);
+
+  function updateFormField<Key extends keyof LevelUpFormState>(key: Key, value: LevelUpFormState[Key]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
   function resetForm() {
-    setForm(defaultFormState);
+    setForm({
+      ...getDefaultLevelUpFormState(),
+      activityRequirements: Object.fromEntries(
+        activityOptions.map((activity) => [activity.key, '']),
+      ),
+    });
     setEditId(null);
   }
 
   function startEdit(item: ExtraItem) {
-    const parsed = parseLevelUpValue(item.value);
-
     setEditId(item._id);
+    const nextForm = buildLevelUpEditForm(item);
+    const mergedRequirements = { ...nextForm.activityRequirements };
+
+    for (const activity of activityOptions) {
+      if (mergedRequirements[activity.key] === undefined) {
+        mergedRequirements[activity.key] = '';
+      }
+    }
+
     setForm({
-      rankCode: item.name ?? '',
-      displayName: parsed?.displayName ?? parsed?.title ?? '',
-      title: parsed?.title ?? '',
-      feeling: parsed?.feeling ?? '',
-      requiredXp: parsed?.requiredXp !== undefined ? String(parsed.requiredXp) : '',
-      minLevel: parsed?.minLevel !== undefined ? String(parsed.minLevel) : '',
-      maxLevel: parsed?.maxLevel !== undefined ? String(parsed.maxLevel) : '',
-      subRanks: Array.isArray(parsed?.subRanks) ? parsed.subRanks.join(', ') : '',
-      requireRank: parsed?.requireRank ?? '',
-      hikes: parsed?.requirements?.hikes !== undefined
-        ? String(parsed.requirements.hikes)
-        : '',
-      treks: parsed?.requirements?.treks !== undefined
-        ? String(parsed.requirements.treks)
-        : '',
-      temples: parsed?.requirements?.temples !== undefined
-        ? String(parsed.requirements.temples)
-        : '',
-      routes: parsed?.requirements?.routes !== undefined
-        ? String(parsed.requirements.routes)
-        : '',
-      uniqueLocations: parsed?.requirements?.uniqueLocations !== undefined
-        ? String(parsed.requirements.uniqueLocations)
-        : '',
-      difficultRoutes: parsed?.requirements?.difficultRoutes !== undefined
-        ? String(parsed.requirements.difficultRoutes)
-        : '',
-      legendaryRoutes: parsed?.requirements?.legendaryRoutes !== undefined
-        ? String(parsed.requirements.legendaryRoutes)
-        : '',
-      questChains: parsed?.requirements?.questChains !== undefined
-        ? String(parsed.requirements.questChains)
-        : '',
-      achievements: parsed?.requirements?.achievements !== undefined
-        ? String(parsed.requirements.achievements)
-        : '',
-      hidden: parsed?.hidden ?? false,
-      enabled: item.enabled !== false,
+      ...nextForm,
+      activityRequirements: mergedRequirements,
     });
+  }
+
+  function updateActivityRequirement(activityKey: string, value: string) {
+    setForm((current) => ({
+      ...current,
+      activityRequirements: {
+        ...current.activityRequirements,
+        [activityKey]: value,
+      },
+    }));
   }
 
   function openDeleteModal(item: ExtraItem) {
@@ -334,18 +213,32 @@ export function LevelUpManager() {
     setError('');
     setSuccess('');
 
-    if (!form.rankCode.trim()) {
+    const normalizedRankCode = normalizeRankInput(form.rankCode);
+
+    if (!normalizedRankCode) {
       setError('Rank code is required.');
+      return;
+    }
+
+    if (
+      items.some(
+        (item) => normalizeRankInput(item.name ?? '') === normalizedRankCode && item._id !== editId,
+      )
+    ) {
+      setError(`A rule for rank ${normalizedRankCode} already exists.`);
       return;
     }
 
     setSaving(true);
 
     try {
-      const value = buildLevelUpValue(form);
+      const value = buildLevelUpValue(
+        form,
+        activityOptions.map((activity) => activity.key),
+      );
       const payload = {
         category: 'level-up' as const,
-        name: form.rankCode.trim(),
+        name: normalizedRankCode,
         value,
         enabled: form.enabled,
       };
@@ -389,23 +282,50 @@ export function LevelUpManager() {
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6 p-6 lg:p-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-900 to-slate-800 p-6 text-white shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold lg:text-3xl">Level Up Rules</h1>
+            <p className="mt-2 text-sm text-slate-200">
+              Configure rank progression rules across fixed ranks and requirement gates.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadRules()}
+            className="inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/25"
+          >
+            <FiRefreshCw size={16} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Rules</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{parsedRows.length}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Enabled</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-600">{enabledRulesCount}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Hidden Rules</p>
+          <p className="mt-2 text-2xl font-bold text-amber-600">{hiddenRulesCount}</p>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Level Up</h1>
+          <h2 className="text-xl font-bold text-slate-900">
+            {editId ? 'Edit Level-Up Rule' : 'Create Level-Up Rule'}
+          </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Configure rank progression rules. User level is now computed on a 1-100 XP progression curve.
+            Default users start from rank F. You can add new ranks or edit current rank codes.
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadRules()}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
-        >
-          <FiRefreshCw size={18} />
-          Refresh
-        </button>
       </div>
 
       {error && (
@@ -420,10 +340,10 @@ export function LevelUpManager() {
         </div>
       )}
 
-      <form onSubmit={submitRule} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+      <form onSubmit={submitRule} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <FiPlus size={16} />
-          {editId ? 'Edit Level-Up Rule' : 'Create Level-Up Rule'}
+          Rule details
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -431,19 +351,26 @@ export function LevelUpManager() {
             <label className="mb-1 block text-sm font-medium text-slate-700">Rank Code</label>
             <input
               value={form.rankCode}
-              onChange={(event) => setForm((current) => ({ ...current, rankCode: event.target.value }))}
-                disabled={!!editId}
-                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${editId ? 'bg-slate-100 cursor-not-allowed text-slate-500' : ''}`}
-                title={editId ? 'Rank code cannot be changed after creation' : ''}
-              placeholder="e.g. E, D, C"
+              onChange={(event) => updateFormField('rankCode', event.target.value)}
+              list="level-up-rank-options"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g. F, E, D, Heroic"
             />
+            <datalist id="level-up-rank-options">
+              {rankOptions.map((rank) => (
+                <option key={rank} value={rank} />
+              ))}
+            </datalist>
+            <p className="mt-1 text-xs text-slate-500">
+              Recommended order: F → E → D → C → B → A → S → SS → SSS → Mythic → Heroic
+            </p>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Display Name</label>
             <input
               value={form.displayName}
-              onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))}
+              onChange={(event) => updateFormField('displayName', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Novice Wanderer"
             />
@@ -452,8 +379,10 @@ export function LevelUpManager() {
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Required XP</label>
             <input
+              type="number"
+              min={0}
               value={form.requiredXp}
-              onChange={(event) => setForm((current) => ({ ...current, requiredXp: event.target.value }))}
+              onChange={(event) => updateFormField('requiredXp', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. 300"
             />
@@ -462,8 +391,11 @@ export function LevelUpManager() {
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Minimum Level</label>
             <input
+              type="number"
+              min={1}
+              max={100}
               value={form.minLevel}
-              onChange={(event) => setForm((current) => ({ ...current, minLevel: event.target.value }))}
+              onChange={(event) => updateFormField('minLevel', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. 1"
             />
@@ -472,8 +404,11 @@ export function LevelUpManager() {
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Maximum Level</label>
             <input
+              type="number"
+              min={1}
+              max={100}
               value={form.maxLevel}
-              onChange={(event) => setForm((current) => ({ ...current, maxLevel: event.target.value }))}
+              onChange={(event) => updateFormField('maxLevel', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="e.g. 10"
             />
@@ -483,7 +418,7 @@ export function LevelUpManager() {
             <label className="mb-1 block text-sm font-medium text-slate-700">Sub-Ranks</label>
             <input
               value={form.subRanks}
-              onChange={(event) => setForm((current) => ({ ...current, subRanks: event.target.value }))}
+              onChange={(event) => updateFormField('subRanks', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Spark, Path, Rise"
             />
@@ -491,19 +426,25 @@ export function LevelUpManager() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Requires Rank</label>
-            <input
+            <select
               value={form.requireRank}
-              onChange={(event) => setForm((current) => ({ ...current, requireRank: event.target.value }))}
+              onChange={(event) => updateFormField('requireRank', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. SSS (optional)"
-            />
+            >
+              <option value="">No rank gate</option>
+              {rankOptions.map((rank) => (
+                <option key={rank} value={rank}>
+                  {rank}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
             <input
               value={form.title}
-              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              onChange={(event) => updateFormField('title', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Novice Wanderer"
             />
@@ -513,7 +454,7 @@ export function LevelUpManager() {
             <label className="mb-1 block text-sm font-medium text-slate-700">Feeling</label>
             <input
               value={form.feeling}
-              onChange={(event) => setForm((current) => ({ ...current, feeling: event.target.value }))}
+              onChange={(event) => updateFormField('feeling', event.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Beginner"
             />
@@ -522,125 +463,85 @@ export function LevelUpManager() {
 
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
           <p className="text-sm font-semibold text-slate-900">Achievement requirements (optional)</p>
-          <p className="text-xs text-slate-600">Only promote if the user has these counts in their achievement stats.</p>
+          <p className="text-xs text-slate-600">
+            These requirements are tied to Activities. New activities appear here automatically.
+          </p>
           <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Hikes</label>
-              <input
-                value={form.hikes}
-                onChange={(event) => setForm((current) => ({ ...current, hikes: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 15"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Treks</label>
-              <input
-                value={form.treks}
-                onChange={(event) => setForm((current) => ({ ...current, treks: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 5"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Temples</label>
-              <input
-                value={form.temples}
-                onChange={(event) => setForm((current) => ({ ...current, temples: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 10"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Routes</label>
-              <input
-                value={form.routes}
-                onChange={(event) => setForm((current) => ({ ...current, routes: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 8"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Unique Locations</label>
-              <input
-                value={form.uniqueLocations}
-                onChange={(event) => setForm((current) => ({ ...current, uniqueLocations: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 12"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Difficult Routes</label>
-              <input
-                value={form.difficultRoutes}
-                onChange={(event) => setForm((current) => ({ ...current, difficultRoutes: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 5"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Legendary Routes</label>
-              <input
-                value={form.legendaryRoutes}
-                onChange={(event) => setForm((current) => ({ ...current, legendaryRoutes: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 3"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Quest Chains</label>
-              <input
-                value={form.questChains}
-                onChange={(event) => setForm((current) => ({ ...current, questChains: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 1"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Achievements</label>
-              <input
-                value={form.achievements}
-                onChange={(event) => setForm((current) => ({ ...current, achievements: event.target.value }))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g. 25"
-              />
-            </div>
+            {activityOptions.length === 0 ? (
+              <div className="md:col-span-3 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                No activity found. Add activities in Extra → Activities first.
+              </div>
+            ) : (
+              activityOptions.map((activity) => (
+                <div key={activity.key}>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">{activity.label}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.activityRequirements[activity.key] ?? ''}
+                    onChange={(event) => updateActivityRequirement(activity.key, event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={`Required ${activity.label} count`}
+                  />
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.hidden}
-            onChange={(event) => setForm((current) => ({ ...current, hidden: event.target.checked }))}
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-          />
-          Hidden until eligible
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+          <div className="flex flex-wrap gap-5">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.hidden}
+                onChange={(event) => updateFormField('hidden', event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              Hidden until eligible
+            </label>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(event) => setForm((current) => ({ ...current, enabled: event.target.checked }))}
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-          />
-          Enabled
-        </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={(event) => updateFormField('enabled', event.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              Enabled
+            </label>
+          </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <FiSave size={18} />
-          {saving ? 'Saving...' : editId ? 'Update Rule' : 'Create Rule'}
-        </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {editId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Cancel edit
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FiSave size={18} />
+              {saving ? 'Saving...' : editId ? 'Update Rule' : 'Create Rule'}
+            </button>
+          </div>
+        </div>
       </form>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600">
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-900">Configured rules</h3>
+          <p className="mt-1 text-xs text-slate-600">Rules are sorted by required XP in ascending order.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
               <th className="px-4 py-3 font-semibold">Rank</th>
               <th className="px-4 py-3 font-semibold">Display Name</th>
@@ -652,77 +553,80 @@ export function LevelUpManager() {
               <th className="px-4 py-3 font-semibold">Status</th>
               <th className="px-4 py-3 font-semibold text-right">Actions</th>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
-                  Loading level-up rules...
-                </td>
-              </tr>
-            ) : parsedRows.length === 0 ? (
-              <tr>
-                <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
-                  No level-up rules found.
-                </td>
-              </tr>
-            ) : (
-              parsedRows.map(({ item, parsed }) => (
-                <tr key={item._id} className="text-slate-700">
-                  <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
-                  <td className="px-4 py-3">{parsed?.displayName ?? parsed?.title ?? '-'}</td>
-                  <td className="px-4 py-3">
-                    {parsed?.minLevel !== undefined || parsed?.maxLevel !== undefined
-                      ? `${parsed?.minLevel ?? '?'} - ${parsed?.maxLevel ?? '?'}`
-                      : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">
-                    {parsed?.subRanks?.length ? parsed.subRanks.join(', ') : '-'}
-                  </td>
-                  <td className="px-4 py-3">{parsed?.feeling ?? '-'}</td>
-                  <td className="px-4 py-3 text-right">{parsed?.requiredXp ?? '-'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600">
-                    {parsed?.requirements
-                      ? Object.entries(parsed.requirements)
-                          .filter(([, value]) => value !== undefined)
-                          .map(([key, value]) => `${key}: ${value}`)
-                          .join(', ')
-                      : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {item.enabled === false ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-                        Disabled
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
-                        Enabled
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(item)}
-                        className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDeleteModal(item)}
-                        className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
+                    Loading level-up rules...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : parsedRows.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-slate-500" colSpan={9}>
+                    No level-up rules found.
+                  </td>
+                </tr>
+              ) : (
+                parsedRows.map(({ item, parsed }) => (
+                  <tr key={item._id} className="text-slate-700 hover:bg-slate-50/70">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                    <td className="px-4 py-3">{parsed?.displayName ?? parsed?.title ?? '-'}</td>
+                    <td className="px-4 py-3">
+                      {parsed?.minLevel !== undefined || parsed?.maxLevel !== undefined
+                        ? `${parsed?.minLevel ?? '?'} - ${parsed?.maxLevel ?? '?'}`
+                        : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {parsed?.subRanks?.length ? parsed.subRanks.join(', ') : '-'}
+                    </td>
+                    <td className="px-4 py-3">{parsed?.feeling ?? '-'}</td>
+                    <td className="px-4 py-3 text-right">{parsed?.requiredXp ?? '-'}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {formatLevelUpRequirements(parsed?.requirements)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {item.enabled === false ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                            Disabled
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+                            Enabled
+                          </span>
+                        )}
+                        {parsed?.hidden && (
+                          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                            Hidden
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(item)}
+                          className="rounded-lg border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDeleteModal(item)}
+                          className="rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <ConfirmModal

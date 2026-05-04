@@ -189,7 +189,7 @@ export class User extends Document {
   @Prop({ type: String, default: null })
   landmark?: string | null;
 
-  @Prop({ type: String, default: ExperienceLevel.E })
+  @Prop({ type: String, default: ExperienceLevel.F })
   experienceLevel?: string | null;
 
   @Prop({ type: String, enum: Gender, default: null })

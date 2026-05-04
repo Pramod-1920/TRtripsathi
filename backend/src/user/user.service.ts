@@ -27,17 +27,7 @@ type LevelUpRule = {
   feeling?: string;
   requireRank?: string;
   hidden?: boolean;
-  requirements?: {
-    hikes?: number;
-    treks?: number;
-    temples?: number;
-    routes?: number;
-    uniqueLocations?: number;
-    difficultRoutes?: number;
-    legendaryRoutes?: number;
-    questChains?: number;
-    achievements?: number;
-  };
+  requirements?: Record<string, number>;
 };
 
 type LevelUpRuleValue = {
@@ -51,17 +41,7 @@ type LevelUpRuleValue = {
   feeling?: string;
   requireRank?: string;
   hidden?: boolean;
-  requirements?: {
-    hikes?: number;
-    treks?: number;
-    temples?: number;
-    routes?: number;
-    uniqueLocations?: number;
-    difficultRoutes?: number;
-    legendaryRoutes?: number;
-    questChains?: number;
-    achievements?: number;
-  };
+  requirements?: Record<string, number>;
 };
 
 type AchievementDefinition = {
@@ -178,9 +158,29 @@ type RankProgressProfile = Pick<
   'experienceLevel' | 'level' | 'xp' | 'totalXp' | 'achievementStats' | 'achievementProgress'
 >;
 
+type RankBadgeRuleValue = {
+  imageUrl?: string;
+  iconUrl?: string;
+  url?: string;
+  publicId?: string;
+};
+
+type RankBadgeDefinition = {
+  rankCode: string;
+  imageUrl: string;
+  publicId?: string;
+  name?: string;
+};
+
+type VisibleRankBadge = RankBadgeDefinition & {
+  unlocked: true;
+  isCurrentRank: boolean;
+};
+
 @Injectable()
 export class UserService {
   private logger = new Logger(UserService.name);
+  private readonly rankOrder = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Mythic', 'Heroic'] as const;
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
@@ -333,35 +333,15 @@ export class UserService {
       }
 
       const requirements = parsed.requirements
-        ? {
-            ...(parsed.requirements.hikes !== undefined
-              ? { hikes: Number(parsed.requirements.hikes) }
-              : {}),
-            ...(parsed.requirements.treks !== undefined
-              ? { treks: Number(parsed.requirements.treks) }
-              : {}),
-            ...(parsed.requirements.temples !== undefined
-              ? { temples: Number(parsed.requirements.temples) }
-              : {}),
-            ...(parsed.requirements.routes !== undefined
-              ? { routes: Number(parsed.requirements.routes) }
-              : {}),
-            ...(parsed.requirements.uniqueLocations !== undefined
-              ? { uniqueLocations: Number(parsed.requirements.uniqueLocations) }
-              : {}),
-            ...(parsed.requirements.difficultRoutes !== undefined
-              ? { difficultRoutes: Number(parsed.requirements.difficultRoutes) }
-              : {}),
-            ...(parsed.requirements.legendaryRoutes !== undefined
-              ? { legendaryRoutes: Number(parsed.requirements.legendaryRoutes) }
-              : {}),
-            ...(parsed.requirements.questChains !== undefined
-              ? { questChains: Number(parsed.requirements.questChains) }
-              : {}),
-            ...(parsed.requirements.achievements !== undefined
-              ? { achievements: Number(parsed.requirements.achievements) }
-              : {}),
-          }
+        ? Object.fromEntries(
+            Object.entries(parsed.requirements)
+              .map(([key, rawValue]) => [
+                this.normalizeAchievementSubcategory(key),
+                Number(rawValue),
+              ])
+              .filter(([key, value]) => key.length > 0 && Number.isFinite(value) && value > 0)
+              .map(([key, value]) => [key, Math.floor(value)]),
+          )
         : undefined;
 
       const subRanks = Array.isArray(parsed.subRanks)
@@ -417,6 +397,7 @@ export class UserService {
     }
 
     const exactMap: Record<string, string> = {
+      f: 'F',
       e: 'E',
       d: 'D',
       c: 'C',
@@ -427,8 +408,9 @@ export class UserService {
       sss: 'SSS',
       mythic: 'Mythic',
       ultimate: 'Mythic',
-      f: 'E',
-      novice: 'E',
+      heroic: 'Heroic',
+      legend: 'Heroic',
+      novice: 'F',
     };
 
     if (exactMap[normalized]) {
@@ -467,11 +449,108 @@ export class UserService {
       return 'E';
     }
 
+    if (/\(\s*f\s*\)/i.test(normalized) || normalized.includes('starter')) {
+      return 'F';
+    }
+
+    if (normalized.includes('heroic') || normalized.includes('himalayan hero')) {
+      return 'Heroic';
+    }
+
     if (normalized.includes('himalayan deity') || normalized.includes('nepal conqueror')) {
       return 'Mythic';
     }
 
     return '';
+  }
+
+  private parseRankBadgeValue(value?: string | null): RankBadgeRuleValue | null {
+    if (!value?.trim()) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+
+    try {
+      const parsed = JSON.parse(trimmed) as Partial<RankBadgeRuleValue>;
+      return {
+        ...(parsed.imageUrl?.trim() ? { imageUrl: parsed.imageUrl.trim() } : {}),
+        ...(parsed.iconUrl?.trim() ? { iconUrl: parsed.iconUrl.trim() } : {}),
+        ...(parsed.url?.trim() ? { url: parsed.url.trim() } : {}),
+        ...(parsed.publicId?.trim() ? { publicId: parsed.publicId.trim() } : {}),
+      };
+    } catch {
+      if (/^https?:\/\//i.test(trimmed)) {
+        return { imageUrl: trimmed };
+      }
+
+      return null;
+    }
+  }
+
+  private getRankOrderIndex(rankCode?: string | null): number {
+    const normalizedRank = this.normalizeRankCode(rankCode);
+
+    if (!normalizedRank) {
+      return -1;
+    }
+
+    return this.rankOrder.findIndex((rank) => rank === normalizedRank);
+  }
+
+  private async getRankBadgeDefinitions(): Promise<RankBadgeDefinition[]> {
+    const items = await this.extraModel
+      .find({
+        category: ExtraCategory.Badge,
+        enabled: { $ne: false },
+      })
+      .sort({ createdAt: 1 });
+
+    const byRank = new Map<string, RankBadgeDefinition>();
+
+    for (const item of items) {
+      const rankCode = this.normalizeRankCode(item.name?.trim());
+      const parsedValue = this.parseRankBadgeValue(item.value);
+      const imageUrl = parsedValue?.imageUrl ?? parsedValue?.iconUrl ?? parsedValue?.url;
+
+      if (!rankCode || !imageUrl) {
+        continue;
+      }
+
+      byRank.set(rankCode, {
+        rankCode,
+        imageUrl,
+        ...(parsedValue?.publicId ? { publicId: parsedValue.publicId } : {}),
+        ...(item.name?.trim() ? { name: item.name.trim() } : {}),
+      });
+    }
+
+    return Array.from(byRank.values()).sort(
+      (first, second) => this.getRankOrderIndex(first.rankCode) - this.getRankOrderIndex(second.rankCode),
+    );
+  }
+
+  private getUnlockedRankBadges(
+    currentRankCode: string,
+    definitions: RankBadgeDefinition[],
+  ): VisibleRankBadge[] {
+    const currentRankIndex = this.getRankOrderIndex(currentRankCode);
+
+    if (currentRankIndex < 0) {
+      return [];
+    }
+
+    return definitions
+      .filter((definition) => {
+        const definitionIndex = this.getRankOrderIndex(definition.rankCode);
+        return definitionIndex >= 0 && definitionIndex <= currentRankIndex;
+      })
+      .sort((first, second) => this.getRankOrderIndex(second.rankCode) - this.getRankOrderIndex(first.rankCode))
+      .map((definition) => ({
+        ...definition,
+        unlocked: true as const,
+        isCurrentRank: this.normalizeRankCode(definition.rankCode) === this.normalizeRankCode(currentRankCode),
+      }));
   }
 
   private normalizeDifficulty(value?: string | null) {
@@ -855,22 +934,14 @@ export class UserService {
       return this.normalizeAchievementSubcategory(definition.subcategory) === subcategory;
     });
 
-    const stats = {
-      hikes: profile.achievementStats?.hikes ?? 0,
-      treks: profile.achievementStats?.treks ?? 0,
-      temples: profile.achievementStats?.temples ?? 0,
-      difficultRoutes: profile.achievementStats?.difficultRoutes ?? 0,
-      legendaryRoutes: profile.achievementStats?.legendaryRoutes ?? 0,
-      questChains: profile.achievementStats?.questChains ?? 0,
-    };
+    const stats = Object.fromEntries(
+      Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value >= 0)
+        .map(([key, value]) => [key, Math.floor(value)]),
+    ) as Record<string, number>;
 
-    const statMap: Record<string, keyof typeof stats> = {
-      hikes: 'hikes',
-      hike: 'hikes',
-      treks: 'treks',
-      trek: 'treks',
-      temples: 'temples',
-      temple: 'temples',
+    const legacyStatMap: Record<string, string> = {
       difficult_routes: 'difficultRoutes',
       difficult_route: 'difficultRoutes',
       legendary_routes: 'legendaryRoutes',
@@ -879,9 +950,11 @@ export class UserService {
       quest_chains: 'questChains',
     };
 
-    const statKey = statMap[subcategory];
-    if (statKey) {
-      stats[statKey] += increment;
+    stats[subcategory] = (stats[subcategory] ?? 0) + increment;
+
+    const legacyStatKey = legacyStatMap[subcategory];
+    if (legacyStatKey) {
+      stats[legacyStatKey] = (stats[legacyStatKey] ?? 0) + increment;
     }
 
     const progress = [...(profile.achievementProgress ?? [])];
@@ -965,7 +1038,7 @@ export class UserService {
       },
     );
 
-    const previousRank = profile.experienceLevel ?? ExperienceLevel.E;
+    const previousRank = profile.experienceLevel ?? ExperienceLevel.F;
     const syncedProfile = await this.applyLevelProgression(
       updatedProfile ?? profile,
     );
@@ -1262,15 +1335,15 @@ export class UserService {
       (entry) => Boolean(entry.completedAt),
     ).length;
 
+    const dynamicStats = Object.fromEntries(
+      Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
+        .map(([key, value]) => [key, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value >= 0)
+        .map(([key, value]) => [key, Math.floor(value)]),
+    ) as Record<string, number>;
+
     return {
-      hikes: profile.achievementStats?.hikes ?? 0,
-      treks: profile.achievementStats?.treks ?? 0,
-      temples: profile.achievementStats?.temples ?? 0,
-      routes: profile.achievementStats?.routes ?? 0,
-      uniqueLocations: profile.achievementStats?.uniqueLocations ?? 0,
-      difficultRoutes: profile.achievementStats?.difficultRoutes ?? 0,
-      legendaryRoutes: profile.achievementStats?.legendaryRoutes ?? 0,
-      questChains: profile.achievementStats?.questChains ?? 0,
+      ...dynamicStats,
       achievements: completedAchievements,
     };
   }
@@ -1295,57 +1368,17 @@ export class UserService {
     }
 
     const stats = this.getAchievementStats(profile);
-    const requirements = rule.requirements;
 
-    if (requirements.hikes !== undefined && stats.hikes < requirements.hikes) {
-      return false;
-    }
+    return Object.entries(rule.requirements).every(([rawKey, requiredValue]) => {
+      const requirementKey = this.normalizeAchievementSubcategory(rawKey);
+      const currentValue = Number(
+        stats[requirementKey]
+        ?? stats[rawKey]
+        ?? 0,
+      );
 
-    if (requirements.treks !== undefined && stats.treks < requirements.treks) {
-      return false;
-    }
-
-    if (requirements.temples !== undefined && stats.temples < requirements.temples) {
-      return false;
-    }
-
-    if (requirements.routes !== undefined && stats.routes < requirements.routes) {
-      return false;
-    }
-
-    if (
-      requirements.uniqueLocations !== undefined
-      && stats.uniqueLocations < requirements.uniqueLocations
-    ) {
-      return false;
-    }
-
-    if (
-      requirements.difficultRoutes !== undefined
-      && stats.difficultRoutes < requirements.difficultRoutes
-    ) {
-      return false;
-    }
-
-    if (
-      requirements.legendaryRoutes !== undefined
-      && stats.legendaryRoutes < requirements.legendaryRoutes
-    ) {
-      return false;
-    }
-
-    if (
-      requirements.questChains !== undefined
-      && stats.questChains < requirements.questChains
-    ) {
-      return false;
-    }
-
-    if (requirements.achievements !== undefined && stats.achievements < requirements.achievements) {
-      return false;
-    }
-
-    return true;
+      return currentValue >= Math.max(0, Math.floor(requiredValue));
+    });
   }
 
   private meetsRankGate(rule: LevelUpRule, currentRank: string) {
@@ -1378,8 +1411,8 @@ export class UserService {
     }
 
     const currentRankCode = this.normalizeRankCode(effectiveCurrentRank)
-      || this.normalizeRankCode(String(currentRankRule?.rankCode ?? sortedRules[0]?.rankCode ?? ExperienceLevel.E))
-      || ExperienceLevel.E;
+      || this.normalizeRankCode(String(currentRankRule?.rankCode ?? sortedRules[0]?.rankCode ?? ExperienceLevel.F))
+      || ExperienceLevel.F;
     const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
     const currentRankXp = Math.max(0, totalXp - currentRankRequiredXp);
     const rankBandSize = Math.max(1, nextRule.requiredXp - currentRankRequiredXp);
@@ -1387,52 +1420,18 @@ export class UserService {
     const remainingXp = Math.max(0, nextRule.requiredXp - totalXp);
     const stats = this.getAchievementStats(profile);
     const requirements = nextRule.requirements ?? {};
-    const remainingRequirements = {
-      ...(requirements.hikes !== undefined
-        ? { hikes: Math.max(0, requirements.hikes - stats.hikes) }
-        : {}),
-      ...(requirements.treks !== undefined
-        ? { treks: Math.max(0, requirements.treks - stats.treks) }
-        : {}),
-      ...(requirements.temples !== undefined
-        ? { temples: Math.max(0, requirements.temples - stats.temples) }
-        : {}),
-      ...(requirements.routes !== undefined
-        ? { routes: Math.max(0, requirements.routes - stats.routes) }
-        : {}),
-      ...(requirements.uniqueLocations !== undefined
-        ? {
-            uniqueLocations: Math.max(0, requirements.uniqueLocations - stats.uniqueLocations),
-          }
-        : {}),
-      ...(requirements.difficultRoutes !== undefined
-        ? {
-            difficultRoutes: Math.max(
-              0,
-              requirements.difficultRoutes - stats.difficultRoutes,
-            ),
-          }
-        : {}),
-      ...(requirements.legendaryRoutes !== undefined
-        ? {
-            legendaryRoutes: Math.max(
-              0,
-              requirements.legendaryRoutes - stats.legendaryRoutes,
-            ),
-          }
-        : {}),
-      ...(requirements.questChains !== undefined
-        ? {
-            questChains: Math.max(
-              0,
-              requirements.questChains - stats.questChains,
-            ),
-          }
-        : {}),
-      ...(requirements.achievements !== undefined
-        ? { achievements: Math.max(0, requirements.achievements - stats.achievements) }
-        : {}),
-    };
+    const remainingRequirements = Object.fromEntries(
+      Object.entries(requirements).map(([rawKey, rawRequiredValue]) => {
+        const requirementKey = this.normalizeAchievementSubcategory(rawKey);
+        const requiredValue = Math.max(0, Math.floor(Number(rawRequiredValue) || 0));
+        const currentValue = Math.max(
+          0,
+          Math.floor(Number(stats[requirementKey] ?? stats[rawKey] ?? 0)),
+        );
+
+        return [requirementKey, Math.max(0, requiredValue - currentValue)];
+      }),
+    ) as Record<string, number>;
 
     const eligible =
       remainingXp === 0
@@ -1497,6 +1496,14 @@ export class UserService {
   }
 
   private getFallbackRankForLevel(level: number) {
+    if (level >= 91) {
+      return 'Heroic';
+    }
+
+    if (level >= 81) {
+      return 'Mythic';
+    }
+
     if (level >= 71) {
       return 'SSS';
     }
@@ -1525,7 +1532,11 @@ export class UserService {
       return 'D';
     }
 
-    return ExperienceLevel.E;
+    if (level >= 2) {
+      return ExperienceLevel.E;
+    }
+
+    return ExperienceLevel.F;
   }
 
   private resolveRankByRulesOrFallback(
@@ -1535,7 +1546,7 @@ export class UserService {
   ) {
     void profile;
     void rules;
-    // Current rank must always match the level band (E:1-10, D:11-20, ...).
+    // Current rank always follows fallback level bands.
     // Rule requirements are used for next-rank eligibility/progress, not for current rank assignment.
     return this.getFallbackRankForLevel(level);
   }
@@ -2083,7 +2094,7 @@ export class UserService {
       const previousXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)));
       const previousTotalXp = this.getTotalXp(profile);
       const previousLevel = profile.level ?? 1;
-      const previousRank = profile.experienceLevel ?? 'E';
+      const previousRank = profile.experienceLevel ?? 'F';
 
       this.logger.log(`  Before: level=${previousLevel}, rank=${previousRank}, totalXp=${previousTotalXp}, currentXp=${previousXp}`);
 
@@ -2612,7 +2623,7 @@ export class UserService {
       xp: 0,
       totalXp: 0,
       level: 1,
-      experienceLevel: ExperienceLevel.E,
+      experienceLevel: ExperienceLevel.F,
       badge: '',
       isProfilePublic: true,
     });
@@ -2650,7 +2661,7 @@ export class UserService {
     return {
       ...profile.toObject(),
       level: profile.level ?? 1,
-  experienceLevel: profile.experienceLevel ?? ExperienceLevel.E,
+  experienceLevel: profile.experienceLevel ?? ExperienceLevel.F,
     };
   }
 
@@ -3004,6 +3015,12 @@ export class UserService {
     const auth = await this.authModel
       .findById(profile.authId)
       .select('phoneNumber email');
+    const rankBadgeDefinitions = await this.getRankBadgeDefinitions();
+    const unlockedRankBadges = this.getUnlockedRankBadges(
+      snapshot.experienceLevel ?? ExperienceLevel.F,
+      rankBadgeDefinitions,
+    );
+    const currentRankBadge = unlockedRankBadges.find((badge) => badge.isCurrentRank) ?? null;
     const nextRankProgress = await this.buildRankProgress(
       {
         experienceLevel: snapshot.experienceLevel,
@@ -3023,7 +3040,9 @@ export class UserService {
       totalXp: snapshot.totalXp,
       xp: snapshot.xp,
       level: snapshot.level,
-      experienceLevel: snapshot.experienceLevel ?? ExperienceLevel.E,
+      experienceLevel: snapshot.experienceLevel ?? ExperienceLevel.F,
+      rankBadges: unlockedRankBadges,
+      currentRankBadge,
       subRank: (profile as User & { subRank?: string }).subRank ?? null,
       nextRankProgress,
     };

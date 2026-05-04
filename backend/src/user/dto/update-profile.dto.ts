@@ -105,7 +105,7 @@ export class UpdateProfileDto {
 
   @ApiPropertyOptional({
     enum: ExperienceLevel,
-    example: ExperienceLevel.E,
+    example: ExperienceLevel.F,
     description: 'User experience level',
   })
   @IsOptional()
