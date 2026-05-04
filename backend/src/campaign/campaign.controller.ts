@@ -53,12 +53,24 @@ export class CampaignController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('includeFuture') includeFuture = 'true',
+    @Query('approvalStatus') approvalStatus?: 'draft' | 'submitted' | 'approved' | 'rejected',
   ) {
     return this.service.listCampaigns(
       Number(page),
       Number(limit),
       includeFuture === 'true',
+      approvalStatus,
     );
+  }
+
+  @Get('admin/bin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async adminBinList(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.service.listDeletedCampaigns(Number(page), Number(limit));
   }
 
   @Get(':id')
@@ -144,5 +156,26 @@ export class CampaignController {
       reason,
       this.userModel,
     );
+  }
+
+  @Post(':id/restore')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async restoreDeleted(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    return this.service.restoreDeletedCampaign(id, adminId);
+  }
+
+  @Delete(':id/permanent')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async permanentDelete(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+    @Query('reason') reason?: string,
+  ) {
+    return this.service.hardDeleteCampaign(id, adminId, reason);
   }
 }

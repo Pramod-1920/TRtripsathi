@@ -114,7 +114,7 @@ export default function CampaignDetailsPage() {
 
   const filteredCampaigns = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const userId = user?._id ?? '';
+    const userId = user?.id ?? '';
 
     return campaigns.filter((campaign) => {
       const matchesSearch = !query || (() => {
@@ -150,12 +150,12 @@ export default function CampaignDetailsPage() {
       if (viewType === 'open') {
         matchesView = campaign.hikeType === 'group' && campaign.approvalStatus === 'approved';
       } else if (viewType === 'closed') {
-        matchesView = campaign.hostId === userId && campaign.completed;
+        matchesView = campaign.hostId === userId && Boolean(campaign.completed);
       }
 
       return matchesSearch && matchesApproval && matchesView;
     });
-  }, [campaigns, search, searchScope, approvalFilter, viewType, user?._id]);
+  }, [campaigns, search, searchScope, approvalFilter, viewType, user?.id]);
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];

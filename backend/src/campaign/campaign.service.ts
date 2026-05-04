@@ -215,6 +215,7 @@ export class CampaignService {
       .find({
         deletedByAdmin: false,
         completed: false,
+        approvalStatus: 'approved',
         startDate: { $ne: null },
       })
       .select('_id title description placeName startDate endDate durationDays difficulty location district hostId participants')
@@ -296,6 +297,147 @@ export class CampaignService {
     }
   }
 
+  private isCampaignClosedForApproval(candidate: {
+    completed?: boolean;
+    failed?: boolean;
+    startDate?: Date | string | null;
+    endDate?: Date | string | null;
+    durationDays?: number | null;
+  }) {
+    if (candidate.completed || candidate.failed) {
+      return true;
+    }
+
+    if (!candidate.startDate) {
+      return false;
+    }
+
+    const startTime = new Date(candidate.startDate).getTime();
+    if (!Number.isFinite(startTime)) {
+      return false;
+    }
+
+    const explicitEndTime = candidate.endDate
+      ? new Date(candidate.endDate).getTime()
+      : Number.NaN;
+    const durationDays = Math.max(1, Number(candidate.durationDays ?? 1));
+    const endTime = Number.isFinite(explicitEndTime)
+      ? explicitEndTime
+      : startTime + durationDays * 24 * 60 * 60 * 1000;
+
+    return Date.now() >= endTime;
+  }
+
+  private async autoRejectClosedSubmittedCampaigns() {
+    const pendingApprovalCampaigns = await this.campaignModel
+      .find({
+        deletedByAdmin: false,
+        approvalStatus: { $in: ['submitted', 'draft'] },
+      })
+      .select('_id title hostId startDate endDate durationDays completed failed')
+      .lean();
+
+    if (pendingApprovalCampaigns.length === 0) {
+      return;
+    }
+
+    const now = new Date();
+    const toReject = pendingApprovalCampaigns.filter((campaign) => this.isCampaignClosedForApproval(campaign));
+
+    if (toReject.length === 0) {
+      return;
+    }
+
+    const ids = toReject.map((campaign) => campaign._id);
+    await this.campaignModel.updateMany(
+      { _id: { $in: ids } },
+      {
+        $set: {
+          approvalStatus: 'rejected',
+          rejectedAt: now,
+          rejectedBy: null,
+          approvedAt: null,
+          approvedBy: null,
+          approvalNote: 'Auto-rejected because the campaign was already closed before approval.',
+          awaitingVerification: false,
+          verificationDeadline: null,
+        },
+      },
+    );
+
+    for (const campaign of toReject) {
+      await this.audit.logEvent({
+        type: 'campaign.auto_reject_closed',
+        campaignId: campaign._id.toString(),
+        hostId: (campaign.hostId as Types.ObjectId).toString(),
+      });
+    }
+  }
+
+  private async normalizeDraftApprovalStatuses() {
+    const draftCampaigns = await this.campaignModel
+      .find({
+        deletedByAdmin: false,
+        approvalStatus: 'draft',
+      })
+      .select('_id difficulty startDate endDate durationDays completed failed')
+      .lean();
+
+    if (draftCampaigns.length === 0) {
+      return;
+    }
+
+    const toSubmitted: Types.ObjectId[] = [];
+    const toApproved: Types.ObjectId[] = [];
+
+    for (const campaign of draftCampaigns) {
+      if (this.isCampaignClosedForApproval(campaign)) {
+        continue;
+      }
+
+      const requiresApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+      if (requiresApproval) {
+        toSubmitted.push(campaign._id as Types.ObjectId);
+      } else {
+        toApproved.push(campaign._id as Types.ObjectId);
+      }
+    }
+
+    if (toSubmitted.length > 0) {
+      await this.campaignModel.updateMany(
+        { _id: { $in: toSubmitted } },
+        {
+          $set: {
+            approvalStatus: 'submitted',
+            submittedAt: new Date(),
+            approvedAt: null,
+            approvedBy: null,
+            rejectedAt: null,
+            rejectedBy: null,
+            approvalNote: null,
+          },
+        },
+      );
+    }
+
+    if (toApproved.length > 0) {
+      await this.campaignModel.updateMany(
+        { _id: { $in: toApproved } },
+        {
+          $set: {
+            approvalStatus: 'approved',
+            submittedAt: null,
+            approvedAt: null,
+            approvedBy: null,
+            rejectedAt: null,
+            rejectedBy: null,
+            approvalNote: null,
+          },
+        },
+      );
+    }
+  }
+
   private async processVerificationDeadlines() {
     const now = new Date();
     const expired = await this.campaignModel.find({
@@ -325,6 +467,8 @@ export class CampaignService {
   async runVerificationHousekeeping() {
     await this.autoCloseExpiredCampaigns();
     await this.processVerificationDeadlines();
+    await this.normalizeDraftApprovalStatuses();
+    await this.autoRejectClosedSubmittedCampaigns();
   }
 
   async verifyCampaignCompletion(id: string, requesterId: string, photo?: { url: string; publicId?: string | null; caption?: string | null }) {
@@ -581,8 +725,8 @@ export class CampaignService {
     const normalizedLocation = this.normalizeLocationPart(location)
       ?? this.buildDisplayLocation(normalizedProvince, normalizedDistrict, normalizedPlaceName);
 
-    const difficultyRequiresApproval = !isAdmin && await this.getDifficultyApprovalRequirement(dto.difficulty);
-    const approvalStatus: CampaignApprovalStatus = isAdmin ? 'approved' : (difficultyRequiresApproval ? 'draft' : 'approved');
+    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(dto.difficulty);
+    const approvalStatus: CampaignApprovalStatus = requiresAdminApproval ? 'submitted' : 'approved';
 
     const created = await this.campaignModel.create({
       campaignCode,
@@ -599,9 +743,9 @@ export class CampaignService {
       joinOpenDate,
       hostId: new Types.ObjectId(hostId),
       approvalStatus,
-      submittedAt: isAdmin ? new Date() : null,
-      approvedAt: isAdmin ? new Date() : null,
-      approvedBy: isAdmin ? new Types.ObjectId(hostId) : null,
+      submittedAt: requiresAdminApproval ? new Date() : null,
+      approvedAt: !requiresAdminApproval && isAdmin ? new Date() : null,
+      approvedBy: !requiresAdminApproval && isAdmin ? new Types.ObjectId(hostId) : null,
       rejectedAt: null,
       rejectedBy: null,
       approvalNote: null,
@@ -614,15 +758,26 @@ export class CampaignService {
     return this.getCampaignById(created._id.toString());
   }
 
-  async listCampaigns(page = 1, limit = 20, includeFuture = false) {
+  async listCampaigns(
+    page = 1,
+    limit = 20,
+    includeFuture = false,
+    approvalStatus?: CampaignApprovalStatus,
+  ) {
     await this.autoCloseExpiredCampaigns();
     await this.processVerificationDeadlines();
+    await this.normalizeDraftApprovalStatuses();
+    await this.autoRejectClosedSubmittedCampaigns();
 
     const skip = (page - 1) * limit;
     const now = new Date();
     const filter: Record<string, unknown> = {
       deletedByAdmin: false,
     };
+
+    if (approvalStatus) {
+      filter.approvalStatus = approvalStatus;
+    }
 
     if (!includeFuture) {
       filter.$and = [
@@ -657,9 +812,30 @@ export class CampaignService {
     };
   }
 
+  async listDeletedCampaigns(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
+    const rawItems = await this.campaignModel
+      .find({ deletedByAdmin: true })
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const items = await this.enrichWithCreator(rawItems as Array<Record<string, any>>);
+    const total = await this.campaignModel.countDocuments({ deletedByAdmin: true });
+
+    return {
+      items,
+      pagination: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    };
+  }
+
   async getCampaignById(id: string) {
     await this.autoCloseExpiredCampaigns();
     await this.processVerificationDeadlines();
+    await this.normalizeDraftApprovalStatuses();
+    await this.autoRejectClosedSubmittedCampaigns();
 
     const item = await this.campaignModel.findById(id).lean();
     if (!item || item.deletedByAdmin)
@@ -871,8 +1047,10 @@ export class CampaignService {
     campaign.joinOpenDate = nextJoinOpenDate;
 
     if (!isAdmin) {
-      campaign.approvalStatus = 'draft';
-      campaign.submittedAt = null;
+      const requiresAdminApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+
+      campaign.approvalStatus = requiresAdminApproval ? 'submitted' : 'approved';
+      campaign.submittedAt = requiresAdminApproval ? new Date() : null;
       campaign.approvedAt = null;
       campaign.approvedBy = null;
       campaign.rejectedAt = null;
@@ -998,6 +1176,9 @@ export class CampaignService {
   ) {
     const campaign = await this.campaignModel.findById(id);
     if (!campaign) throw new NotFoundException('Campaign not found');
+    if (campaign.deletedByAdmin) {
+      return { message: 'Campaign is already in bin' };
+    }
 
     campaign.deletedByAdmin = true;
     await campaign.save();
@@ -1038,10 +1219,45 @@ export class CampaignService {
     return { message: 'Campaign deleted by admin' };
   }
 
-  async hardDeleteCampaign(id: string) {
-    // permanently remove
+  async restoreDeletedCampaign(id: string, adminId: string) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (!campaign.deletedByAdmin) {
+      throw new BadRequestException('Campaign is not in bin');
+    }
+
+    campaign.deletedByAdmin = false;
+    await campaign.save();
+
+    await this.audit.logEvent({
+      type: 'campaign.restore_by_admin',
+      campaignId: id,
+      adminId,
+    });
+
+    return this.getCampaignById(id);
+  }
+
+  async hardDeleteCampaign(id: string, adminId: string, reason?: string) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (!campaign.deletedByAdmin) {
+      throw new BadRequestException('Move campaign to bin before permanent delete');
+    }
+
     await this.campaignModel.findByIdAndDelete(id);
-    await this.audit.logEvent({ type: 'campaign.hard_delete', campaignId: id });
+    await this.audit.logEvent({
+      type: 'campaign.hard_delete',
+      campaignId: id,
+      adminId,
+      reason: reason?.trim() || null,
+    });
     return { message: 'Campaign permanently removed' };
   }
 }

@@ -444,6 +444,7 @@ export default function AddCampaignPage() {
     try {
       const createdCampaign = await createCampaign(payload);
       const requiresSubmission = createdCampaign.approvalStatus === 'draft' || createdCampaign.approvalStatus === 'rejected';
+      const isUnderReview = createdCampaign.approvalStatus === 'submitted' || requiresSubmission;
 
       if (requiresSubmission) {
         await submitCampaign(createdCampaign._id);
@@ -451,7 +452,7 @@ export default function AddCampaignPage() {
 
       setForm(defaultFormState);
       setSuccess(
-        requiresSubmission
+        isUnderReview
           ? `Campaign submitted for admin review. System ID: ${createdCampaign.campaignCode ?? createdCampaign._id}`
           : `Campaign created successfully. System ID: ${createdCampaign.campaignCode ?? createdCampaign._id}`,
       );

@@ -80,7 +80,11 @@ export default function ChatManager() {
   };
 
   const searchMessages = async () => {
-    if (!selectedConversation || !messageSearch.trim()) {
+    if (!selectedConversation) {
+      return;
+    }
+
+    if (!messageSearch.trim()) {
       fetchMessages(selectedConversation._id);
       return;
     }

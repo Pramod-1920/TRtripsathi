@@ -44,6 +44,7 @@ export type ExtraListResponse = {
 };
 
 export type PlaceCatalogItem = {
+  provinceNumber?: number;
   province: string;
   districts: string[];
   districtItems?: PlaceCatalogDistrictItem[];

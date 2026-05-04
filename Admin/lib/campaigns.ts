@@ -50,17 +50,14 @@ export type Campaign = {
   hostId?: string;
   participants?: CampaignParticipant[];
   completed?: boolean;
-<<<<<<< HEAD
   failed?: boolean;
   awaitingVerification?: boolean;
-=======
-  hostId?: string;
->>>>>>> d41db78a9a973145bd2adb83e1a3fd0a8cf7fb95
   creator?: {
     name?: string;
     role?: 'admin' | 'user';
     phoneNumber?: string | null;
   };
+  deletedByAdmin?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -219,12 +216,14 @@ export async function fetchCampaigns(params?: {
   page?: number;
   limit?: number;
   includeFuture?: boolean;
+  approvalStatus?: CampaignApprovalStatus;
 }) {
   const response = await apiClient.get('/campaigns/admin/list', {
     params: {
       page: params?.page ?? 1,
       limit: params?.limit ?? 50,
       includeFuture: params?.includeFuture ?? true,
+      ...(params?.approvalStatus ? { approvalStatus: params.approvalStatus } : {}),
     },
   });
 
@@ -248,6 +247,32 @@ export async function updateCampaign(id: string, payload: CampaignPayload) {
 
 export async function deleteCampaign(id: string, reason?: string) {
   const response = await apiClient.delete(`/campaigns/${id}`, {
+    params: reason?.trim() ? { reason: reason.trim() } : undefined,
+  });
+  return response.data as { message?: string };
+}
+
+export async function fetchCampaignBin(params?: {
+  page?: number;
+  limit?: number;
+}) {
+  const response = await apiClient.get('/campaigns/admin/bin', {
+    params: {
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 20,
+    },
+  });
+
+  return normalizeCampaignListResponse(response.data);
+}
+
+export async function restoreCampaign(id: string) {
+  const response = await apiClient.post(`/campaigns/${id}/restore`);
+  return response.data as Campaign;
+}
+
+export async function permanentlyDeleteCampaign(id: string, reason?: string) {
+  const response = await apiClient.delete(`/campaigns/${id}/permanent`, {
     params: reason?.trim() ? { reason: reason.trim() } : undefined,
   });
   return response.data as { message?: string };
