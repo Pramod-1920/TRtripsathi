@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -102,6 +103,26 @@ export class ExtraController {
   @ApiOkResponse({ description: 'Places hierarchy updated successfully' })
   patchPlaces(@Body() dto: PatchPlacesDto) {
     return this.placesService.patchHierarchy(dto.operations);
+  }
+
+  @Get('difficulty')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: get difficulty configuration list' })
+  @ApiOkResponse({ description: 'Difficulty list fetched successfully' })
+  getDifficulties() {
+    return this.extraService.getDifficulties();
+  }
+
+  @Put('difficulty')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: replace full difficulty configuration list' })
+  @ApiOkResponse({ description: 'Difficulty list saved successfully' })
+  saveDifficulties(@Body() body: unknown) {
+    return this.extraService.saveDifficulties(body);
   }
 
   @Get(':id')

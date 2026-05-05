@@ -89,8 +89,9 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
-  // ensure body parsing for sendBeacon JSON payloads (small bodies)
-  app.use(bodyParser.json({ limit: '16kb' }));
+  // allow moderate analytics payloads while keeping a bounded request body size
+  app.use(bodyParser.json({ limit: '64kb' }));
+  app.use(bodyParser.urlencoded({ extended: true, limit: '64kb' }));
 
   // Apply admin security headers globally (safe conservative policy)
   app.use(adminHeadersMiddleware);

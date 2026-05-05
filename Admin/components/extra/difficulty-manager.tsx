@@ -21,6 +21,17 @@ function cloneDefaultDifficulties() {
   return DEFAULT_DIFFICULTY_TIERS.map((item) => ({ ...item }));
 }
 
+function createNewDifficultyId(items: DifficultyTier[]) {
+  const used = new Set(items.map((item) => item.id.trim().toLowerCase()).filter(Boolean));
+  let index = 1;
+
+  while (used.has(`new_${index}`)) {
+    index += 1;
+  }
+
+  return `new_${index}`;
+}
+
 function buildFieldErrors(errors: DifficultyValidationError[]): FieldErrorMap {
   const result: FieldErrorMap = {};
 
@@ -155,12 +166,12 @@ export function DifficultyManager() {
   }
 
   function addDifficulty() {
+    const placeholderId = createNewDifficultyId(rows);
     setRows((current) => withSequentialOrder([
       ...current,
       {
-        id: '',
+        id: placeholderId,
         label: '',
-        description: '',
         adminApprovalRequired: false,
         xpMultiplier: 1,
         order: current.length + 1,
@@ -262,13 +273,12 @@ export function DifficultyManager() {
       {success && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-[1100px] w-full divide-y divide-slate-200">
+        <table className="min-w-[980px] w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">ID</th>
               <th className="px-4 py-3">Label</th>
-              <th className="px-4 py-3">Description</th>
               <th className="px-4 py-3">Admin Approval</th>
               <th className="px-4 py-3">XP Multiplier</th>
               <th className="px-4 py-3">Enabled</th>
@@ -277,7 +287,7 @@ export function DifficultyManager() {
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
                   Loading difficulty settings...
                 </td>
               </tr>
@@ -285,7 +295,7 @@ export function DifficultyManager() {
 
             {!loading && !hasRows && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
                   No difficulty tiers found.
                 </td>
               </tr>
@@ -327,14 +337,19 @@ export function DifficultyManager() {
                   </td>
 
                   <td className="px-4 py-3 align-top">
-                    <input
-                      value={row.id}
-                      onChange={(event) => updateRow(index, { ...row, id: event.target.value })}
-                      disabled={idLocked}
-                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="easy"
-                    />
-                    {idLocked && <p className="mt-1 text-xs text-slate-500">ID is locked after creation.</p>}
+                    {idLocked ? (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700">
+                        {row.id}
+                      </div>
+                    ) : (
+                      <input
+                        value={row.id}
+                        onChange={(event) => updateRow(index, { ...row, id: event.target.value })}
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="new_1"
+                      />
+                    )}
+                    {idLocked && <p className="mt-1 text-xs text-slate-500">ID is permanent after creation.</p>}
                     {getError(index, 'id') && <p className="mt-1 text-xs text-red-600">{getError(index, 'id')}</p>}
                   </td>
 
@@ -346,16 +361,6 @@ export function DifficultyManager() {
                       placeholder="Easy"
                     />
                     {getError(index, 'label') && <p className="mt-1 text-xs text-red-600">{getError(index, 'label')}</p>}
-                  </td>
-
-                  <td className="px-4 py-3 align-top">
-                    <input
-                      value={row.description}
-                      onChange={(event) => updateRow(index, { ...row, description: event.target.value })}
-                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional description"
-                    />
-                    {getError(index, 'description') && <p className="mt-1 text-xs text-red-600">{getError(index, 'description')}</p>}
                   </td>
 
                   <td className="px-4 py-3 align-top">

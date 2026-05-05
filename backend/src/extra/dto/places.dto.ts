@@ -70,8 +70,8 @@ export class BulkSeedPlacesDto {
 
 export class PlaceOperationDto {
   @IsString()
-  @IsIn(['add', 'rename', 'delete', 'restore'])
-  op!: 'add' | 'rename' | 'delete' | 'restore';
+  @IsIn(['add', 'rename', 'delete', 'restore', 'hard_delete'])
+  op!: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
 
   @IsString()
   @IsIn(['province', 'district', 'municipality'])

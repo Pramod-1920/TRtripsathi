@@ -356,6 +356,47 @@ export class PlacesService {
       return;
     }
 
+    if (operation.op === 'hard_delete') {
+      if (!operation.id?.trim()) {
+        throw new BadRequestException('hard_delete operation requires id');
+      }
+
+      const node = this.findNode(hierarchy, operation.id.trim());
+      if (!node) {
+        throw new BadRequestException(`Node not found: ${operation.id}`);
+      }
+
+      const ensureSoftDeleted = (deleted?: boolean) => {
+        if (deleted !== true) {
+          throw new BadRequestException('You must disable (soft delete) the node before hard deleting it');
+        }
+      };
+
+      if (node.type === 'province') {
+        ensureSoftDeleted(node.province.deleted);
+        if (node.province.districts.some((district) => district.deleted !== true)) {
+          throw new BadRequestException('Cannot hard delete a province with non-deleted districts');
+        }
+        hierarchy.provinces = hierarchy.provinces.filter((province) => province.id !== node.province.id);
+        return;
+      }
+
+      if (node.type === 'district') {
+        ensureSoftDeleted(node.district.deleted);
+        if (node.district.municipalities.some((municipality) => municipality.deleted !== true)) {
+          throw new BadRequestException('Cannot hard delete a district with non-deleted municipalities');
+        }
+        node.province.districts = node.province.districts.filter((district) => district.id !== node.district.id);
+        return;
+      }
+
+      ensureSoftDeleted(node.municipality.deleted);
+      node.district.municipalities = node.district.municipalities.filter(
+        (municipality) => municipality.id !== node.municipality.id,
+      );
+      return;
+    }
+
     if (!operation.id?.trim()) {
       throw new BadRequestException(`${operation.op} operation requires id`);
     }

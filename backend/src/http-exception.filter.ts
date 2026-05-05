@@ -12,6 +12,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse = exception.getResponse();
 
     const message = this.getMessage(exceptionResponse);
+    const errors = this.getErrors(exceptionResponse);
     const timestamp = new Date().toISOString();
 
     // Log errors for debugging (especially 5xx errors)
@@ -24,6 +25,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       statusCode: status,
       message,
+      ...(errors.length > 0 ? { errors } : {}),
       timestamp,
     });
   }
@@ -42,5 +44,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     return 'Internal Server Error';
+  }
+
+  private getErrors(exceptionResponse: any): Array<Record<string, unknown>> {
+    if (
+      exceptionResponse
+      && typeof exceptionResponse === 'object'
+      && Array.isArray(exceptionResponse.errors)
+    ) {
+      return exceptionResponse.errors
+        .filter((item: unknown) => typeof item === 'object' && item !== null)
+        .map((item: Record<string, unknown>) => item);
+    }
+
+    return [];
   }
 }

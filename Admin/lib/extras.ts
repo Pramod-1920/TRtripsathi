@@ -90,12 +90,70 @@ export type PlacesHierarchyResponse = {
 };
 
 export type PlacePatchOperation = {
-  op: 'add' | 'rename' | 'delete' | 'restore';
+  op: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
   type?: 'province' | 'district' | 'municipality';
   parentId?: string;
   id?: string;
   name?: string;
 };
+
+export type DifficultyTier = {
+  id: string;
+  label: string;
+  adminApprovalRequired: boolean;
+  xpMultiplier: number;
+  order: number;
+  enabled: boolean;
+};
+
+export type DifficultyValidationError = {
+  index: number;
+  field: keyof DifficultyTier | 'root';
+  message: string;
+};
+
+export const DEFAULT_DIFFICULTY_TIERS: DifficultyTier[] = [
+  {
+    id: 'easy',
+    label: 'Easy',
+    adminApprovalRequired: false,
+    xpMultiplier: 1,
+    order: 1,
+    enabled: true,
+  },
+  {
+    id: 'moderate',
+    label: 'Moderate',
+    adminApprovalRequired: false,
+    xpMultiplier: 1.2,
+    order: 2,
+    enabled: true,
+  },
+  {
+    id: 'hard',
+    label: 'Hard',
+    adminApprovalRequired: true,
+    xpMultiplier: 1.5,
+    order: 3,
+    enabled: true,
+  },
+  {
+    id: 'extreme',
+    label: 'Extreme',
+    adminApprovalRequired: true,
+    xpMultiplier: 2,
+    order: 4,
+    enabled: true,
+  },
+  {
+    id: 'challenging',
+    label: 'Challenging',
+    adminApprovalRequired: true,
+    xpMultiplier: 3,
+    order: 5,
+    enabled: true,
+  },
+];
 
 export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
   if (typeof data === 'object' && data !== null) {
@@ -134,6 +192,40 @@ export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
       totalPages: 1,
     },
   };
+}
+
+function normalizeDifficultySettings(data: unknown): DifficultyTier[] {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map((item, index) => {
+      if (typeof item !== 'object' || item === null) {
+        return null;
+      }
+
+      const row = item as Partial<DifficultyTier>;
+      const id = typeof row.id === 'string' ? row.id.trim() : '';
+      const label = typeof row.label === 'string' ? row.label.trim() : '';
+      const xpMultiplier = Number(row.xpMultiplier);
+
+      if (!id || !label || !Number.isFinite(xpMultiplier)) {
+        return null;
+      }
+
+      return {
+        id,
+        label,
+        adminApprovalRequired: row.adminApprovalRequired === true,
+        xpMultiplier,
+        order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
+        enabled: row.enabled !== false,
+      };
+    })
+    .filter((item): item is DifficultyTier => Boolean(item))
+    .sort((a, b) => a.order - b.order)
+    .map((item, index) => ({ ...item, order: index + 1 }));
 }
 
 export async function fetchExtras(category: ExtraCategory, params?: { page?: number; limit?: number }) {
@@ -201,4 +293,14 @@ export async function bulkSeedPlaces(payload: PlacesHierarchyResponse) {
 export async function patchPlaces(operations: PlacePatchOperation[]) {
   const response = await apiClient.patch('/extra/places', { operations });
   return response.data as PlacesHierarchyResponse;
+}
+
+export async function fetchDifficultySettings() {
+  const response = await apiClient.get('/extra/difficulty');
+  return normalizeDifficultySettings(response.data);
+}
+
+export async function saveDifficultySettings(payload: DifficultyTier[]) {
+  const response = await apiClient.put('/extra/difficulty', payload);
+  return normalizeDifficultySettings(response.data);
 }
