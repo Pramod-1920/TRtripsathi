@@ -650,14 +650,15 @@ export class CampaignService {
       return false;
     }
 
-    const difficultyItems = await this.extraService.listExtras({
-      category: ExtraCategory.Difficulty,
-      page: 1,
-      limit: 100,
-    });
+    const difficultyItems = await this.extraService.getDifficulties();
 
-    const matched = difficultyItems.items.find(
-      (item) => item.name.toLowerCase() === difficulty.trim().toLowerCase(),
+    const matched = difficultyItems.find(
+      (item) =>
+        item.enabled !== false
+        && (
+          item.id.toLowerCase() === difficulty.trim().toLowerCase()
+          || item.label.toLowerCase() === difficulty.trim().toLowerCase()
+        ),
     );
 
     return matched?.adminApprovalRequired ?? false;
@@ -727,6 +728,7 @@ export class CampaignService {
 
     const requiresAdminApproval = await this.getDifficultyApprovalRequirement(dto.difficulty);
     const approvalStatus: CampaignApprovalStatus = requiresAdminApproval ? 'submitted' : 'approved';
+    const now = new Date();
 
     const created = await this.campaignModel.create({
       campaignCode,
@@ -743,8 +745,8 @@ export class CampaignService {
       joinOpenDate,
       hostId: new Types.ObjectId(hostId),
       approvalStatus,
-      submittedAt: requiresAdminApproval ? new Date() : null,
-      approvedAt: !requiresAdminApproval && isAdmin ? new Date() : null,
+      submittedAt: requiresAdminApproval ? now : null,
+      approvedAt: !requiresAdminApproval ? now : null,
       approvedBy: !requiresAdminApproval && isAdmin ? new Types.ObjectId(hostId) : null,
       rejectedAt: null,
       rejectedBy: null,
@@ -1089,17 +1091,20 @@ export class CampaignService {
       throw new BadRequestException('Campaign is already submitted for review');
     }
 
-    campaign.approvalStatus = 'submitted';
-    campaign.submittedAt = new Date();
-    campaign.approvedAt = null;
-    campaign.approvedBy = null;
+    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+    const now = new Date();
+
+    campaign.approvalStatus = requiresAdminApproval ? 'submitted' : 'approved';
+    campaign.submittedAt = requiresAdminApproval ? now : null;
+    campaign.approvedAt = requiresAdminApproval ? null : now;
+    campaign.approvedBy = !requiresAdminApproval && isAdmin ? new Types.ObjectId(requesterId) : null;
     campaign.rejectedAt = null;
     campaign.rejectedBy = null;
     campaign.approvalNote = null;
     await campaign.save();
 
     await this.audit.logEvent({
-      type: 'campaign.submit',
+      type: requiresAdminApproval ? 'campaign.submit' : 'campaign.auto_approve',
       campaignId: id,
       requesterId,
     });

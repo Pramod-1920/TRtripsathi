@@ -3,11 +3,14 @@
 import { FiAlertTriangle, FiX } from 'react-icons/fi';
 
 type ConfirmModalProps = {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   title: string;
-  description: string;
+  description?: string;
+  message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  intent?: 'danger' | 'default' | string;
   isProcessing?: boolean;
   requireReason?: boolean;
   reasonLabel?: string;
@@ -20,10 +23,13 @@ type ConfirmModalProps = {
 
 export function ConfirmModal({
   open,
+  isOpen,
   title,
   description,
+  message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  intent = 'danger',
   isProcessing = false,
   requireReason = false,
   reasonLabel = 'Reason',
@@ -33,7 +39,13 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
-  if (!open) {
+  const isVisible = open ?? isOpen ?? false;
+  const bodyText = description ?? message ?? '';
+  const confirmClass = intent === 'danger'
+    ? 'rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-60'
+    : 'rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60';
+
+  if (!isVisible) {
     return null;
   }
 
@@ -54,7 +66,7 @@ export function ConfirmModal({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-              <p className="mt-1 text-sm text-slate-600">{description}</p>
+              <p className="mt-1 text-sm text-slate-600">{bodyText}</p>
             </div>
           </div>
 
@@ -93,7 +105,7 @@ export function ConfirmModal({
             type="button"
             onClick={onConfirm}
             disabled={isProcessing}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-60"
+            className={confirmClass}
           >
             {isProcessing ? 'Please wait...' : confirmLabel}
           </button>

@@ -5,10 +5,14 @@ import { FiChevronLeft, FiChevronRight, FiRefreshCw, FiRotateCcw, FiTrash2 } fro
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import {
   Campaign,
+  CampaignApprovalStatus,
   fetchCampaignBin,
   permanentlyDeleteCampaign,
   restoreCampaign,
 } from '@/lib/campaigns';
+
+type DeletedDateFilter = 'all' | 'today' | '7d' | '30d';
+type OriginalStatusFilter = 'all' | CampaignApprovalStatus;
 
 export default function CampaignBinPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -17,6 +21,9 @@ export default function CampaignBinPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [deletedDateFilter, setDeletedDateFilter] = useState<DeletedDateFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<OriginalStatusFilter>('all');
+  const [filterNow] = useState(() => Date.now());
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -43,24 +50,35 @@ export default function CampaignBinPage() {
   }
 
   useEffect(() => {
-    void loadBin(page);
+    const timer = window.setTimeout(() => {
+      void loadBin(page);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [page, limit]);
 
   const filteredCampaigns = useMemo(() => {
     const query = search.trim().toLowerCase();
+    return campaigns.filter((campaign) => {
+      const matchesSearch = !query || (
+        campaign.title.toLowerCase().includes(query)
+        || (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query)
+        || (campaign.location ?? '').toLowerCase().includes(query)
+        || (campaign.creator?.name ?? '').toLowerCase().includes(query)
+        || (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
+      );
+      const matchesStatus = statusFilter === 'all' || campaign.approvalStatus === statusFilter;
+      const deletedAt = campaign.updatedAt ? new Date(campaign.updatedAt).getTime() : Number.NaN;
+      const ageDays = Number.isFinite(deletedAt) ? (filterNow - deletedAt) / (24 * 60 * 60 * 1000) : Number.POSITIVE_INFINITY;
+      const matchesDeletedDate =
+        deletedDateFilter === 'all'
+        || (deletedDateFilter === 'today' && ageDays < 1)
+        || (deletedDateFilter === '7d' && ageDays <= 7)
+        || (deletedDateFilter === '30d' && ageDays <= 30);
 
-    if (!query) {
-      return campaigns;
-    }
-
-    return campaigns.filter((campaign) => (
-      campaign.title.toLowerCase().includes(query)
-      || (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query)
-      || (campaign.location ?? '').toLowerCase().includes(query)
-      || (campaign.creator?.name ?? '').toLowerCase().includes(query)
-      || (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
-    ));
-  }, [campaigns, search]);
+      return matchesSearch && matchesStatus && matchesDeletedDate;
+    });
+  }, [campaigns, deletedDateFilter, filterNow, search, statusFilter]);
 
   async function handleRestore(campaignId: string) {
     setError('');
@@ -156,7 +174,30 @@ export default function CampaignBinPage() {
             placeholder="Search deleted campaigns"
           />
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={deletedDateFilter}
+              onChange={(event) => setDeletedDateFilter(event.target.value as DeletedDateFilter)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Deleted date filter"
+            >
+              <option value="all">Any deleted date</option>
+              <option value="today">Deleted today</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as OriginalStatusFilter)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Original approval status filter"
+            >
+              <option value="all">Any original status</option>
+              <option value="draft">Draft</option>
+              <option value="submitted">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
             <label htmlFor="bin-page-size" className="whitespace-nowrap text-sm text-slate-600">
               Rows per page
             </label>
@@ -185,6 +226,7 @@ export default function CampaignBinPage() {
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Title</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Creator</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Location</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Original Status</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Deleted At</th>
               <th className="px-6 py-3 text-right text-sm font-semibold text-slate-900">Actions</th>
             </tr>
@@ -192,7 +234,7 @@ export default function CampaignBinPage() {
           <tbody className="divide-y divide-slate-200">
             {loading && (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-sm text-slate-500">
+                <td colSpan={6} className="px-6 py-8 text-sm text-slate-500">
                   Loading campaign bin...
                 </td>
               </tr>
@@ -200,7 +242,7 @@ export default function CampaignBinPage() {
 
             {!loading && filteredCampaigns.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-sm text-slate-500">
+                <td colSpan={6} className="px-6 py-8 text-sm text-slate-500">
                   No deleted campaigns found.
                 </td>
               </tr>
@@ -217,6 +259,7 @@ export default function CampaignBinPage() {
                   <p className="text-xs text-slate-500">{campaign.creator?.phoneNumber ?? 'N/A'}</p>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-700">{campaign.location ?? 'N/A'}</td>
+                <td className="px-6 py-4 text-sm text-slate-700 capitalize">{campaign.approvalStatus ?? 'draft'}</td>
                 <td className="px-6 py-4 text-sm text-slate-700">
                   {campaign.updatedAt ? new Date(campaign.updatedAt).toLocaleString() : 'N/A'}
                 </td>

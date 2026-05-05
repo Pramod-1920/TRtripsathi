@@ -1,303 +1,107 @@
 import { apiClient } from '@/lib/api';
 
-export type JoinMode = 'open' | 'request';
-export type CampaignScheduleType = 'instant' | 'scheduled';
-export type CampaignApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
-
-export type CampaignPhoto = {
-  url: string;
-  publicId?: string;
-  caption?: string;
-};
-
-export type CampaignParticipantStatus = 'pending' | 'accepted' | 'rejected';
-
-export type CampaignParticipant = {
-  userId: string;
-  status?: CampaignParticipantStatus;
-  verified?: boolean;
-  completionDays?: number | null;
-};
-
-export type Campaign = {
-  _id: string;
-  campaignCode?: string;
-  title: string;
-  description?: string | null;
-  category?: string | null;
-  hikeType?: 'solo' | 'group' | null;
-  location?: string | null;
-  province?: string | null;
-  district?: string | null;
-  placeName?: string | null;
-  difficulty?: string | null;
-  durationDays?: number;
-  maxParticipants?: number;
-  estimatedNPR?: number;
-  scheduleType?: CampaignScheduleType;
-  startDate?: string | null;
-  endDate?: string | null;
-  joinOpenDate?: string | null;
-  joinMode?: JoinMode;
-  approvalStatus?: CampaignApprovalStatus;
-  submittedAt?: string | null;
-  approvedAt?: string | null;
-  approvedBy?: string | null;
-  rejectedAt?: string | null;
-  rejectedBy?: string | null;
-  approvalNote?: string | null;
-  photos?: CampaignPhoto[];
-  hostId?: string;
-  participants?: CampaignParticipant[];
-  completed?: boolean;
-  failed?: boolean;
-  awaitingVerification?: boolean;
-  creator?: {
-    name?: string;
-    role?: 'admin' | 'user';
-    phoneNumber?: string | null;
-  };
-  deletedByAdmin?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
 export type CampaignPayload = {
   title: string;
   description?: string;
-  category: string;
+  category?: string;
   hikeType: 'solo' | 'group';
-  location?: string;
-  province?: string;
-  district?: string;
-  placeName?: string;
-  difficulty?: string;
-  durationDays?: number;
   maxParticipants?: number;
-  estimatedNPR?: number;
-  scheduleType?: CampaignScheduleType;
-  startDate?: string;
-  endDate?: string;
-  joinOpenDate?: string;
-  joinMode?: JoinMode;
-  photos?: CampaignPhoto[];
+  startDate: string;
+  photos?: { url: string }[];
 };
 
-export type CampaignListPagination = {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-};
+export type CampaignPhase =
+  | 'draft'
+  | 'open'
+  | 'planning'
+  | 'verification'
+  | 'ready'
+  | 'started'
+  | 'completed'
+  | 'cancelled';
 
-export type CampaignListResponse = {
-  items: Campaign[];
-  pagination: CampaignListPagination;
-};
+// 🧠 TIMELINE GENERATOR
+export function generateTimeline(startDate: Date) {
+  const createdAt = new Date();
 
-export function normalizeCampaignList(data: unknown): Campaign[] {
-  if (Array.isArray(data)) {
-    return data as Campaign[];
-  }
+  const totalDays =
+    Math.floor(
+      (startDate.getTime() - createdAt.getTime()) /
+        (1000 * 60 * 60 * 24)
+    ) - 1;
 
-  if (typeof data === 'object' && data !== null) {
-    const maybeItems = (data as { items?: unknown }).items;
-    if (Array.isArray(maybeItems)) {
-      return maybeItems as Campaign[];
-    }
-  }
+  const openDays = Math.floor(totalDays * 0.33);
+  const planningDays = Math.floor(totalDays * 0.33);
+  const verificationDays = totalDays - openDays - planningDays;
 
-  return [];
-}
+  const openEnd = new Date(createdAt);
+  openEnd.setDate(openEnd.getDate() + openDays);
 
-export function normalizeCampaignListResponse(data: unknown): CampaignListResponse {
-  if (Array.isArray(data)) {
-    return {
-      items: data as Campaign[],
-      pagination: {
-        total: data.length,
-        page: 1,
-        limit: data.length,
-        totalPages: 1,
-      },
-    };
-  }
+  const planningEnd = new Date(openEnd);
+  planningEnd.setDate(planningEnd.getDate() + planningDays);
 
-  if (typeof data === 'object' && data !== null) {
-    const asRecord = data as {
-      items?: unknown;
-      pagination?: Partial<CampaignListPagination>;
-    };
+  const verificationEnd = new Date(planningEnd);
+  verificationEnd.setDate(
+    verificationEnd.getDate() + verificationDays
+  );
 
-    if (Array.isArray(asRecord.items)) {
-      const total = Number(asRecord.pagination?.total ?? asRecord.items.length);
-      const page = Number(asRecord.pagination?.page ?? 1);
-      const limit = Number((asRecord.pagination?.limit ?? asRecord.items.length) || 1);
-      const totalPages = Number(
-        asRecord.pagination?.totalPages
-          ?? (limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1)
-      );
-
-      return {
-        items: asRecord.items as Campaign[],
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages,
-        },
-      };
-    }
-  }
+  const restDay = new Date(startDate);
+  restDay.setDate(startDate.getDate() - 1);
 
   return {
-    items: [],
-    pagination: {
-      total: 0,
-      page: 1,
-      limit: 1,
-      totalPages: 1,
-    },
+    createdAt,
+    openEnd,
+    planningEnd,
+    verificationEnd,
+    restDay,
+    startDate,
   };
 }
 
-export function toIsoFromDateInput(value: string) {
-  if (!value) {
-    return undefined;
-  }
-
-  const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
-
-  if (dateOnlyPattern.test(value)) {
-    return new Date(`${value}T00:00:00.000Z`).toISOString();
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return undefined;
-  }
-
-  return parsed.toISOString();
-}
-
-export function toDateInputValue(value?: string | null) {
-  if (!value) {
-    return '';
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
-  }
-
-  return parsed.toISOString().slice(0, 10);
-}
-
-export function toDateTimeLocalValue(value?: string | null) {
-  if (!value) {
-    return '';
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
-  }
-
-  const localAdjusted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000);
-  return localAdjusted.toISOString().slice(0, 16);
-}
-
-export function formatDateTimeLocal(value: Date) {
-  const localAdjusted = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
-  return localAdjusted.toISOString().slice(0, 16);
-}
-
-export async function fetchCampaigns(params?: {
-  page?: number;
-  limit?: number;
-  includeFuture?: boolean;
-  approvalStatus?: CampaignApprovalStatus;
-}) {
-  const response = await apiClient.get('/campaigns/admin/list', {
-    params: {
-      page: params?.page ?? 1,
-      limit: params?.limit ?? 50,
-      includeFuture: params?.includeFuture ?? true,
-      ...(params?.approvalStatus ? { approvalStatus: params.approvalStatus } : {}),
-    },
-  });
-
-  return normalizeCampaignListResponse(response.data);
-}
-
-export async function fetchCampaignById(id: string) {
-  const response = await apiClient.get(`/campaigns/${id}`);
-  return response.data as Campaign;
-}
-
+// 🚀 CREATE CAMPAIGN
 export async function createCampaign(payload: CampaignPayload) {
-  const response = await apiClient.post('/campaigns', payload);
-  return response.data as Campaign;
-}
+  if (!payload.title?.trim()) {
+    throw new Error('Title is required');
+  }
 
-export async function updateCampaign(id: string, payload: CampaignPayload) {
-  const response = await apiClient.patch(`/campaigns/${id}`, payload);
-  return response.data as Campaign;
-}
+  if (!payload.startDate) {
+    throw new Error('Start date is required');
+  }
 
-export async function deleteCampaign(id: string, reason?: string) {
-  const response = await apiClient.delete(`/campaigns/${id}`, {
-    params: reason?.trim() ? { reason: reason.trim() } : undefined,
+  const now = new Date();
+  const startDate = new Date(payload.startDate);
+
+  if (Number.isNaN(startDate.getTime())) {
+    throw new Error('Invalid start date');
+  }
+
+  // 🔥 GROUP RULES
+  if (payload.hikeType === 'group') {
+    const minStart = new Date();
+    minStart.setDate(now.getDate() + 8); // ✅ 8 days rule
+
+    if (startDate < minStart) {
+      throw new Error('Group campaign must be at least 8 days later');
+    }
+
+    if (!payload.maxParticipants || payload.maxParticipants < 2) {
+      throw new Error('Minimum 2 participants required');
+    }
+  }
+
+  // SOLO CLEANUP
+  if (payload.hikeType === 'solo') {
+    payload.maxParticipants = undefined;
+  }
+
+  const timeline = generateTimeline(startDate);
+
+  const response = await apiClient.post('/campaigns', {
+    ...payload,
+    phase: payload.hikeType === 'group' ? 'open' : 'ready',
+    timeline,
+    joinMode: 'open',
   });
-  return response.data as { message?: string };
-}
 
-export async function fetchCampaignBin(params?: {
-  page?: number;
-  limit?: number;
-}) {
-  const response = await apiClient.get('/campaigns/admin/bin', {
-    params: {
-      page: params?.page ?? 1,
-      limit: params?.limit ?? 20,
-    },
-  });
-
-  return normalizeCampaignListResponse(response.data);
-}
-
-export async function restoreCampaign(id: string) {
-  const response = await apiClient.post(`/campaigns/${id}/restore`);
-  return response.data as Campaign;
-}
-
-export async function permanentlyDeleteCampaign(id: string, reason?: string) {
-  const response = await apiClient.delete(`/campaigns/${id}/permanent`, {
-    params: reason?.trim() ? { reason: reason.trim() } : undefined,
-  });
-  return response.data as { message?: string };
-}
-
-export async function submitCampaign(id: string) {
-  const response = await apiClient.post(`/campaigns/${id}/submit`);
-  return response.data as Campaign;
-}
-
-export async function approveCampaign(id: string, note?: string) {
-  const response = await apiClient.post(`/campaigns/${id}/approve`, {
-    ...(note?.trim() ? { note: note.trim() } : {}),
-  });
-  return response.data as Campaign;
-}
-
-export async function rejectCampaign(id: string, reason: string) {
-  const response = await apiClient.post(`/campaigns/${id}/reject`, {
-    reason: reason.trim(),
-  });
-  return response.data as Campaign;
-}
-
-export async function joinCampaign(id: string) {
-  const response = await apiClient.post(`/campaigns/${id}/join`);
-  return response.data as { message?: string; campaign?: Campaign };
+  return response.data;
 }

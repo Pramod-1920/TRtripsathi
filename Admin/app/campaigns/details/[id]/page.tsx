@@ -15,6 +15,7 @@ import {
   deleteCampaign,
   fetchCampaignById,
   rejectCampaign,
+  restoreCampaign,
   submitCampaign,
   toDateTimeLocalValue,
   toIsoFromDateInput,
@@ -111,6 +112,67 @@ function getApprovalBadgeClass(status?: CampaignApprovalStatus) {
   }
 }
 
+function formatTimelineDate(value?: string | null) {
+  if (!value) {
+    return 'N/A';
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString();
+}
+
+function buildTimeline(campaign: Campaign) {
+  const hostName = campaign.creator?.name || 'Host';
+  const events = [
+    {
+      label: 'Created',
+      timestamp: campaign.createdAt,
+      actor: hostName,
+      tone: 'bg-blue-600',
+    },
+    {
+      label: 'Submitted for approval',
+      timestamp: campaign.submittedAt,
+      actor: hostName,
+      tone: 'bg-amber-500',
+    },
+    {
+      label: campaign.approvalStatus === 'rejected' ? 'Rejected' : 'Approved',
+      timestamp: campaign.approvalStatus === 'rejected' ? campaign.rejectedAt : campaign.approvedAt,
+      actor: campaign.approvalStatus === 'rejected'
+        ? (campaign.rejectedBy ? 'Admin' : 'System')
+        : (campaign.approvedBy ? 'Admin' : 'System'),
+      tone: campaign.approvalStatus === 'rejected' ? 'bg-red-600' : 'bg-emerald-600',
+    },
+    {
+      label: 'Started',
+      timestamp: campaign.startDate,
+      actor: 'Schedule',
+      tone: 'bg-cyan-600',
+    },
+    {
+      label: 'Ended',
+      timestamp: campaign.endDate,
+      actor: 'Schedule',
+      tone: 'bg-slate-600',
+    },
+    {
+      label: campaign.hostVerified ? 'Verification completed' : 'Verification requested',
+      timestamp: campaign.verifiedAt ?? campaign.verificationDeadline,
+      actor: campaign.hostVerified ? hostName : 'System',
+      tone: campaign.hostVerified ? 'bg-emerald-600' : 'bg-violet-600',
+    },
+    {
+      label: 'Failed',
+      timestamp: campaign.failedAt,
+      actor: 'System',
+      tone: 'bg-red-700',
+    },
+  ];
+
+  return events.filter((event) => Boolean(event.timestamp));
+}
+
 export default function CampaignDetailsByIdPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin';
@@ -123,10 +185,11 @@ export default function CampaignDetailsByIdPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(searchParams.get('mode') === 'edit');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState('');
   const [difficultyOptions, setDifficultyOptions] = useState<ExtraItem[]>([]);
@@ -136,10 +199,6 @@ export default function CampaignDetailsByIdPage() {
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [placeLoading, setPlaceLoading] = useState(true);
   const campaignCode = campaign?.campaignCode || campaign?._id || 'N/A';
-
-  useEffect(() => {
-    setIsEditing(searchParams.get('mode') === 'edit');
-  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -367,22 +426,6 @@ export default function CampaignDetailsByIdPage() {
     return values;
   }, [form.district, form.placeName, form.province, placeCatalog]);
 
-  useEffect(() => {
-    if (!form.province || districtOptions.includes(form.district)) {
-      return;
-    }
-
-    setForm((current) => ({ ...current, district: '' }));
-  }, [districtOptions, form.district, form.province]);
-
-  useEffect(() => {
-    if (!form.placeName || placeNameOptions.length === 0 || placeNameOptions.includes(form.placeName)) {
-      return;
-    }
-
-    setForm((current) => ({ ...current, placeName: '' }));
-  }, [form.placeName, placeNameOptions]);
-
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -606,6 +649,27 @@ export default function CampaignDetailsByIdPage() {
     }
   }
 
+  async function handleRestore() {
+    if (!campaignId) {
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setRestoring(true);
+
+    try {
+      const restored = await restoreCampaign(campaignId);
+      setCampaign(restored);
+      setForm(toFormState(restored));
+      setSuccess('Campaign restored successfully.');
+    } catch {
+      setError('Unable to restore campaign.');
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   async function handleSubmitForReview() {
     if (!campaignId) {
       return;
@@ -688,6 +752,7 @@ export default function CampaignDetailsByIdPage() {
   const minimumEndDateTime = form.scheduleType === 'scheduled' && form.startDate
     ? form.startDate
     : minimumStartDateTime;
+  const timelineEvents = campaign ? buildTimeline(campaign) : [];
 
   if (error && !campaign) {
     return (
@@ -761,6 +826,18 @@ export default function CampaignDetailsByIdPage() {
             </button>
           )}
 
+          {isAdmin && campaign?.deletedByAdmin && (
+            <button
+              type="button"
+              onClick={() => void handleRestore()}
+              disabled={restoring || saving}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              <FiCheck size={16} />
+              {restoring ? 'Restoring...' : 'Restore'}
+            </button>
+          )}
+
           {!isEditing && (
             <button
               type="button"
@@ -826,6 +903,26 @@ export default function CampaignDetailsByIdPage() {
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h2 className="text-sm font-semibold text-slate-900">Campaign Timeline</h2>
+          {timelineEvents.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">No timeline events are available yet.</p>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {timelineEvents.map((event) => (
+                <div key={`${event.label}-${event.timestamp}`} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${event.tone}`} />
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{event.label}</p>
+                    <p className="text-xs text-slate-600">{formatTimelineDate(event.timestamp)}</p>
+                    <p className="text-xs text-slate-500">By {event.actor}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <h2 className="text-sm font-semibold text-slate-900">Campaign Creator</h2>
           <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3 text-sm text-slate-700">
             <p>
@@ -860,6 +957,66 @@ export default function CampaignDetailsByIdPage() {
               <FiCopy size={14} />
               Copy ID
             </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Campaign Metadata</h2>
+            <dl className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 md:grid-cols-2">
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Activity</dt>
+                <dd className="font-medium">{campaign?.category || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Difficulty</dt>
+                <dd className="font-medium">{campaign?.difficulty || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Province</dt>
+                <dd className="font-medium">{campaign?.province || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-slate-500">District</dt>
+                <dd className="font-medium">{campaign?.district || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Spot</dt>
+                <dd className="font-medium">{campaign?.placeName || 'N/A'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Participants</dt>
+                <dd className="font-medium">{campaign?.participants?.length ?? 0}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Participants</h2>
+            {!campaign?.participants || campaign.participants.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-600">No participants have joined this campaign.</p>
+            ) : (
+              <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">User ID</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Verified</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {campaign.participants.map((participant) => (
+                      <tr key={participant.userId}>
+                        <td className="px-3 py-2 text-slate-700">{participant.userId}</td>
+                        <td className="px-3 py-2 capitalize text-slate-700">{participant.status ?? 'pending'}</td>
+                        <td className="px-3 py-2 text-slate-700">{participant.verified ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
