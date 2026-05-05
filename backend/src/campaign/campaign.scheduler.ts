@@ -8,14 +8,14 @@ export class CampaignScheduler {
 
   constructor(private readonly campaignService: CampaignService) {}
 
-  // run every 5 minutes to process verification deadlines and auto-close expired campaigns
+  // run every 5 minutes for lifecycle transitions, verification deadlines and inactivity handling
   @Cron(CronExpression.EVERY_5_MINUTES)
   async handleVerificationCron() {
     try {
       await this.campaignService.runVerificationHousekeeping();
-      this.logger.debug('Ran campaign verification housekeeping');
+      this.logger.debug('Ran campaign lifecycle housekeeping');
     } catch (err) {
-      this.logger.error('Error running campaign verification housekeeping', err as any);
+      this.logger.error('Error running campaign lifecycle housekeeping', err as any);
     }
   }
 }

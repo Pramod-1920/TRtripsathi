@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsString,
   IsNotEmpty,
   IsOptional,
@@ -6,7 +7,86 @@ import {
   IsDateString,
   IsIn,
   IsArray,
+  Min,
+  ValidateNested,
+  IsMongoId,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class CampaignPhotoDto {
+  @IsString()
+  @IsNotEmpty()
+  url!: string;
+
+  @IsString()
+  @IsOptional()
+  publicId?: string;
+
+  @IsString()
+  @IsOptional()
+  caption?: string;
+}
+
+class CampaignTaskDto {
+  @IsString()
+  @IsNotEmpty()
+  title!: string;
+
+  @IsMongoId()
+  @IsOptional()
+  assignedUserId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  completed?: boolean;
+}
+
+class CampaignCostBreakdownDto {
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  transport?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  food?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  guide?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  misc?: number;
+}
+
+class CampaignPlanningDto {
+  @IsString()
+  @IsOptional()
+  transportDecision?: string;
+
+  @IsString()
+  @IsOptional()
+  meetingPoint?: string;
+
+  @IsDateString()
+  @IsOptional()
+  meetingTime?: string;
+
+  @ValidateNested()
+  @Type(() => CampaignCostBreakdownDto)
+  @IsOptional()
+  costBreakdown?: CampaignCostBreakdownDto;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CampaignTaskDto)
+  @IsOptional()
+  tasks?: CampaignTaskDto[];
+}
 
 export class CreateCampaignDto {
   @IsString()
@@ -31,6 +111,10 @@ export class CreateCampaignDto {
 
   @IsString()
   @IsOptional()
+  municipality?: string;
+
+  @IsString()
+  @IsOptional()
   placeName?: string;
 
   @IsString()
@@ -50,10 +134,17 @@ export class CreateCampaignDto {
   durationDays?: number;
 
   @IsNumber()
+  @Min(1)
   @IsOptional()
   maxParticipants?: number;
 
   @IsNumber()
+  @Min(1)
+  @IsOptional()
+  minParticipants?: number;
+
+  @IsNumber()
+  @Min(0)
   @IsOptional()
   estimatedNPR?: number;
 
@@ -78,6 +169,17 @@ export class CreateCampaignDto {
   joinMode?: 'open' | 'request';
 
   @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CampaignPhotoDto)
   @IsOptional()
-  photos?: Array<{ url: string; publicId?: string; caption?: string }>;
+  photos?: CampaignPhotoDto[];
+
+  @IsIn(['draft', 'open', 'planning', 'verification', 'ready', 'started', 'completed', 'cancelled'])
+  @IsOptional()
+  lifecyclePhase?: 'draft' | 'open' | 'planning' | 'verification' | 'ready' | 'started' | 'completed' | 'cancelled';
+
+  @ValidateNested()
+  @Type(() => CampaignPlanningDto)
+  @IsOptional()
+  planning?: CampaignPlanningDto;
 }

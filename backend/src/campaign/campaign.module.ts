@@ -10,6 +10,7 @@ import { UserModule } from '../user/user.module';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
 import { ExtraModule } from '../extra/extra.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ExtraModule } from '../extra/extra.module';
     ]),
     UserModule,
     ExtraModule,
+    NotificationModule,
   ],
   controllers: [CampaignController],
   providers: [CampaignService, AuditService, CampaignScheduler],

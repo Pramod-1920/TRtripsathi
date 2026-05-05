@@ -18,6 +18,14 @@ import { CampaignService } from './campaign.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { ApproveCampaignDto, RejectCampaignDto } from './dto/review-campaign.dto';
+import {
+  AddTaskDto,
+  TransitionCampaignPhaseDto,
+  UpdateParticipantRoleDto,
+  UpdatePlanningDto,
+  UpdateTaskDto,
+  VerifyPlanningRejectDto,
+} from './dto/lifecycle.dto';
 import { GetCurrentUser } from '../auth/decorators/get-current-user.decorator';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -44,6 +52,17 @@ export class CampaignController {
   @Get()
   async list(@Query('page') page = '1', @Query('limit') limit = '20') {
     return this.service.listCampaigns(Number(page), Number(limit), false);
+  }
+
+  @Get('admin/phase/:phase')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async adminListByLifecycle(
+    @Param('phase') phase: 'draft' | 'open' | 'planning' | 'verification' | 'ready' | 'started' | 'completed' | 'cancelled',
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.service.listCampaignsByLifecyclePhase(phase, Number(page), Number(limit));
   }
 
   @Get('admin/list')
@@ -85,6 +104,86 @@ export class CampaignController {
     @GetCurrentUser('userId') userId: string,
   ) {
     return this.service.joinCampaign(id, userId);
+  }
+
+  @Post(':id/leave')
+  @UseGuards(JwtAuthGuard)
+  async leaveCampaign(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') userId: string,
+  ) {
+    return this.service.leaveCampaign(id, userId);
+  }
+
+  @Post(':id/confirm')
+  @UseGuards(JwtAuthGuard)
+  async confirmCampaign(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') userId: string,
+  ) {
+    return this.service.confirmParticipation(id, userId);
+  }
+
+  @Patch(':id/participants/:participantId/role')
+  @UseGuards(JwtAuthGuard)
+  async updateParticipantRole(
+    @Param('id') id: string,
+    @Param('participantId') participantId: string,
+    @Body() dto: UpdateParticipantRoleDto,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.updateParticipantRole(id, participantId, dto.role, requesterId, isAdmin);
+  }
+
+  @Patch(':id/planning')
+  @UseGuards(JwtAuthGuard)
+  async updatePlanning(
+    @Param('id') id: string,
+    @Body() dto: UpdatePlanningDto,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.updatePlanning(id, dto, requesterId, isAdmin);
+  }
+
+  @Post(':id/tasks')
+  @UseGuards(JwtAuthGuard)
+  async addTask(
+    @Param('id') id: string,
+    @Body() dto: AddTaskDto,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.addTask(id, dto, requesterId, isAdmin);
+  }
+
+  @Patch(':id/tasks/:taskId')
+  @UseGuards(JwtAuthGuard)
+  async updateTask(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+    @Body() dto: UpdateTaskDto,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.updateTask(id, taskId, dto, requesterId, isAdmin);
+  }
+
+  @Post(':id/phase-transition')
+  @UseGuards(JwtAuthGuard)
+  async transitionPhase(
+    @Param('id') id: string,
+    @Body() dto: TransitionCampaignPhaseDto,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
+  ) {
+    const isAdmin = req.user?.role === Role.Admin;
+    return this.service.transitionCampaignPhase(id, dto.toPhase, requesterId, isAdmin, dto.reason);
   }
 
   @Patch(':id')
@@ -140,6 +239,28 @@ export class CampaignController {
     @Body() dto: RejectCampaignDto,
   ) {
     return this.service.rejectCampaign(id, adminId, dto.reason);
+  }
+
+  @Post(':id/verification/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async approveVerification(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+    @Body() dto: ApproveCampaignDto,
+  ) {
+    return this.service.approvePlanningVerification(id, adminId, dto.note);
+  }
+
+  @Post(':id/verification/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  async rejectVerification(
+    @Param('id') id: string,
+    @GetCurrentUser('userId') adminId: string,
+    @Body() dto: VerifyPlanningRejectDto,
+  ) {
+    return this.service.rejectPlanningVerification(id, adminId, dto.reason);
   }
 
   @Delete(':id')
