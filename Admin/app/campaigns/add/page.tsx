@@ -1,5 +1,6 @@
-'use client';
+ 'use client';
 
+import Image from 'next/image';
 import { ChangeEvent, ReactNode, useEffect, useMemo, useState } from 'react';
 import {
   CampaignPayload,
@@ -71,19 +72,25 @@ function getMinStartDate(hikeType: 'solo' | 'group') {
   return date;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function FieldBox({
   title,
   description,
   children,
+  required,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  required?: boolean;
 }) {
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
       <div>
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        <p className="text-sm font-semibold text-slate-900">
+          {title}{required ? <span className="ml-1 text-red-600">*</span> : null}
+        </p>
         <p className="text-xs text-slate-600">{description}</p>
       </div>
       {children}
@@ -101,6 +108,17 @@ export default function AddCampaignPage() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
+  type MeteoDaily = {
+    time?: string[];
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_sum?: number[];
+  };
+
+  const [weatherSummary, setWeatherSummary] = useState<null | { geocoded: { lat: string; lon: string; display_name?: string }; forecast: { daily?: MeteoDaily } }>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -138,6 +156,43 @@ export default function AddCampaignPage() {
     };
   }, []);
 
+  // If an admin selected a place in PlacesManager, read it from sessionStorage and apply
+  useEffect(() => {
+    if (loadingOptions) return; // wait until places are loaded
+
+    try {
+      const raw = sessionStorage.getItem('admin:selectedPlace');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { place?: { id?: string; name?: string; provinceId?: string; districtId?: string }; weather?: unknown };
+      if (!parsed?.place) return;
+
+      const place = parsed.place;
+      // Map province/district ids to names if available
+      const provinceItem = places.find((p) => p.id === place.provinceId);
+      const provinceName = provinceItem?.name ?? '';
+      const districtName = provinceItem?.districts.find((d) => d.id === place.districtId)?.name ?? '';
+
+      setForm((current) => ({
+        ...current,
+        province: provinceName || current.province,
+        district: districtName || current.district,
+        municipality: place.name ?? current.municipality,
+        placeName: place.name ?? current.placeName,
+      }));
+
+      // Attach weather if present (try to set as forecast summary)
+      if (parsed.weather && typeof parsed.weather === 'object') {
+        // The existing weatherSummary shape expects { geocoded, forecast }
+        setWeatherSummary({ geocoded: { lat: String((parsed as any).lat ?? ''), lon: String((parsed as any).lon ?? ''), display_name: place.name ?? '' }, forecast: parsed.weather as unknown as { daily?: MeteoDaily } });
+      }
+
+      // Clear the session storage flag so it won't reapply
+      sessionStorage.removeItem('admin:selectedPlace');
+    } catch {
+      // ignore
+    }
+  }, [loadingOptions, places]);
+
   const districtOptions = useMemo(() => {
     const province = places.find((item) => item.name === form.province);
     return province?.districts.filter((item) => item.deleted !== true).map((item) => item.name) ?? [];
@@ -153,6 +208,28 @@ export default function AddCampaignPage() {
 
   const minDate = formatDateTimeLocal(getMinStartDate(form.hikeType));
   const previewLocation = [form.placeName, form.municipality, form.district, form.province].filter(Boolean).join(', ') || 'Not set';
+
+  // Auto-calculate duration for solo campaigns when both start and end are present
+  useEffect(() => {
+    if (form.hikeType !== 'solo') {
+      return;
+    }
+
+    if (!form.startDate || !form.endDate) {
+      return;
+    }
+
+    try {
+      const start = new Date(form.startDate).getTime();
+      const end = new Date(form.endDate).getTime();
+      if (end > start) {
+        const days = Math.max(1, Math.ceil((end - start) / DAY_MS));
+        updateField('durationDays', String(days));
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, [form.hikeType, form.startDate, form.endDate]);
 
   function updateField<K extends keyof CampaignFormState>(field: K, value: CampaignFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -244,6 +321,12 @@ export default function AddCampaignPage() {
     if (!form.title.trim()) {
       return 'Title is required.';
     }
+    if (!form.province.trim()) {
+      return 'Province is required.';
+    }
+    if (!form.placeName.trim()) {
+      return 'Place name is required.';
+    }
     if (!form.category.trim()) {
       return 'Activity category is required.';
     }
@@ -296,6 +379,85 @@ export default function AddCampaignPage() {
     return null;
   }
 
+  function validateField(field: keyof CampaignFormState) {
+    const nextErrors = { ...fieldErrors };
+    if (field === 'title') {
+      if (!form.title.trim()) nextErrors.title = 'Title is required.';
+      else delete nextErrors.title;
+    }
+    if (field === 'category') {
+      if (!form.category.trim()) nextErrors.category = 'Activity category is required.';
+      else delete nextErrors.category;
+    }
+    if (field === 'province') {
+      if (!form.province.trim()) nextErrors.province = 'Province is required.';
+      else delete nextErrors.province;
+    }
+    if (field === 'placeName') {
+      if (!form.placeName.trim()) nextErrors.placeName = 'Place name is required.';
+      else delete nextErrors.placeName;
+    }
+
+    setFieldErrors(nextErrors);
+  }
+
+  // Fetch basic weather for the campaign location and start date (Open-Meteo)
+  const fetchWeatherForPreview = useMemo(() => async () => {
+    setWeatherError(null);
+    setWeatherSummary(null);
+
+    const q = previewLocation;
+    const when = form.startDate ? new Date(form.startDate) : null;
+
+    if (!q || !when) {
+      return;
+    }
+
+  setWeatherLoading(true);
+    try {
+      // Use Nominatim to geocode the location string (public, rate-limited)
+      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
+      const nomRes = await fetch(nomUrl, { headers: { 'User-Agent': 'TRtripsathi-Admin/1.0' } });
+      if (!nomRes.ok) throw new Error('Geocoding failed');
+      const nomJson = await nomRes.json() as Array<{ lat: string; lon: string; display_name?: string }>;
+      if (!nomJson || nomJson.length === 0) {
+        setWeatherError('Unable to geocode location for weather preview');
+        return;
+      }
+
+      const { lat, lon } = nomJson[0];
+
+      // Open-Meteo forecast (use daily for simplicity)
+      const dateStr = when.toISOString().slice(0, 10);
+      const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&start_date=${dateStr}&end_date=${dateStr}&timezone=UTC`;
+      const meteoRes = await fetch(openMeteoUrl);
+      if (!meteoRes.ok) throw new Error('Weather fetch failed');
+      const meteoJson = await meteoRes.json();
+
+      setWeatherSummary({ geocoded: nomJson[0], forecast: meteoJson });
+    } catch (err: unknown) {
+      setWeatherError(String((err as Error).message || 'Weather fetch failed'));
+    } finally {
+      setWeatherLoading(false);
+    }
+  }, [previewLocation, form.startDate]);
+
+  // Trigger weather fetch when preview location or startDate changes
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      if (!active) return;
+      try {
+        await fetchWeatherForPreview();
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => { active = false; };
+  }, [fetchWeatherForPreview]);
+
   async function handleCreateCampaign(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -322,7 +484,8 @@ export default function AddCampaignPage() {
       scheduleType: form.hikeType === 'group' ? 'scheduled' : form.scheduleType,
       startDate: form.startDate ? new Date(form.startDate).toISOString() : undefined,
       endDate: form.endDate ? new Date(form.endDate).toISOString() : undefined,
-      joinMode: form.joinMode,
+  // joinMode is only applicable for group campaigns; for solo omit it
+  ...(form.hikeType !== 'solo' ? { joinMode: form.joinMode } : {}),
       minParticipants: form.hikeType === 'group' ? Number(form.minParticipants) : undefined,
       maxParticipants: form.hikeType === 'group' ? Number(form.maxParticipants) : undefined,
       photos: form.photos.length > 0
@@ -372,8 +535,15 @@ export default function AddCampaignPage() {
                 <p className="text-sm text-slate-600">Set campaign identity and trip style.</p>
               </div>
 
-              <FieldBox title="Campaign Title" description="This is the main name shown to users in listings and details pages.">
-                <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Campaign title" value={form.title} onChange={(event) => updateField('title', event.target.value)} />
+              <FieldBox title="Campaign Title" description="This is the main name shown to users in listings and details pages." required>
+                <input
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  placeholder="Campaign title"
+                  value={form.title}
+                  onChange={(event) => updateField('title', event.target.value)}
+                  onBlur={() => validateField('title')}
+                />
+                {fieldErrors.title && <p className="mt-1 text-xs text-red-600">{fieldErrors.title}</p>}
               </FieldBox>
 
               <FieldBox title="Description" description="Explain what this campaign is about, highlights, and expectations.">
@@ -408,10 +578,11 @@ export default function AddCampaignPage() {
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <FieldBox title="Activity Category" description="This controls how the campaign is categorized and filtered.">
-                  <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.category} onChange={(event) => updateField('category', event.target.value)} disabled={loadingOptions}>
+                  <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.category} onChange={(event) => updateField('category', event.target.value)} disabled={loadingOptions} onBlur={() => validateField('category')}>
                     <option value="">Select activity</option>
                     {categories.map((item) => <option key={item._id} value={item.name}>{item.name}</option>)}
                   </select>
+                  {fieldErrors.category && <p className="mt-1 text-xs text-red-600">{fieldErrors.category}</p>}
                 </FieldBox>
 
                 <FieldBox title="Difficulty" description="Difficulty affects admin approval and user expectations.">
@@ -432,6 +603,7 @@ export default function AddCampaignPage() {
                     <option value="">Select province</option>
                     {places.map((province) => <option key={province.id} value={province.name}>{province.name}</option>)}
                   </select>
+                  {fieldErrors.province && <p className="mt-1 text-xs text-red-600">{fieldErrors.province}</p>}
                 </FieldBox>
 
                 <FieldBox title="District" description="Pick the district inside the selected province.">
@@ -461,7 +633,8 @@ export default function AddCampaignPage() {
                 </FieldBox>
 
                 <FieldBox title="Place Name" description="Specific place/spot name shown in campaign cards.">
-                  <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Place name" value={form.placeName} onChange={(event) => updateField('placeName', event.target.value)} />
+            <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Place name" value={form.placeName} onChange={(event) => updateField('placeName', event.target.value)} onBlur={() => validateField('placeName')} />
+            {fieldErrors.placeName && <p className="mt-1 text-xs text-red-600">{fieldErrors.placeName}</p>}
                 </FieldBox>
               </div>
             </section>
@@ -474,19 +647,30 @@ export default function AddCampaignPage() {
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <FieldBox title="Duration (days)" description="Expected trip duration in days.">
-                  <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" type="number" min={1} placeholder="Duration days" value={form.durationDays} onChange={(event) => updateField('durationDays', event.target.value)} />
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    type="number"
+                    min={1}
+                    placeholder="Duration days"
+                    value={form.durationDays}
+                    onChange={(event) => updateField('durationDays', event.target.value)}
+                    readOnly={form.hikeType === 'solo'}
+                    title={form.hikeType === 'solo' ? 'Duration is auto-calculated for solo campaigns' : undefined}
+                  />
                 </FieldBox>
 
                 <FieldBox title="Estimated Cost (NPR)" description="Total estimated cost users should expect.">
                   <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" type="number" min={0} placeholder="Estimated cost (NPR)" value={form.estimatedNPR} onChange={(event) => updateField('estimatedNPR', event.target.value)} />
                 </FieldBox>
 
-                <FieldBox title="Join Mode" description="Open = instant join, Request = host approval flow.">
-                  <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.joinMode} onChange={(event) => updateField('joinMode', event.target.value as JoinMode)}>
-                    <option value="open">Open join</option>
-                    <option value="request">Request to join</option>
-                  </select>
-                </FieldBox>
+                {form.hikeType !== 'solo' && (
+                  <FieldBox title="Join Mode" description="Open = instant join, Request = host approval flow.">
+                    <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.joinMode} onChange={(event) => updateField('joinMode', event.target.value as JoinMode)}>
+                      <option value="open">Open join</option>
+                      <option value="request">Request to join</option>
+                    </select>
+                  </FieldBox>
+                )}
               </div>
 
               {form.hikeType === 'group' && (
@@ -534,7 +718,7 @@ export default function AddCampaignPage() {
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {form.photos.map((photo, index) => (
                     <div key={`${photo.url}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                      <img src={photo.url} alt={`Campaign ${index + 1}`} className="h-36 w-full rounded-md object-cover" />
+                      <Image src={photo.url} alt={`Campaign ${index + 1}`} width={640} height={240} className="rounded-md object-cover" style={{ width: '100%', height: '9rem', objectFit: 'cover' }} unoptimized />
                       <div className="mt-2 space-y-2">
                         <input
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -572,10 +756,14 @@ export default function AddCampaignPage() {
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <div className="relative">
                 {form.photos.length > 0 ? (
-                  <img
+                  <Image
                     src={form.photos[0].url}
                     alt={form.photos[0].caption || form.title || 'Campaign preview'}
-                    className="h-48 w-full object-cover"
+                    width={1024}
+                    height={384}
+                    className="object-cover"
+                    style={{ width: '100%', height: '12rem', objectFit: 'cover' }}
+                    unoptimized
                   />
                 ) : (
                   <div className="h-48 w-full bg-gradient-to-br from-sky-400 to-indigo-600" />
@@ -614,12 +802,32 @@ export default function AddCampaignPage() {
               </div>
             </div>
 
+            {/* Weather preview */}
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium text-slate-600">Weather Preview</p>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                {weatherLoading && <p className="text-xs text-slate-600">Loading weather...</p>}
+                {weatherError && <p className="text-xs text-red-600">{weatherError}</p>}
+                {!weatherLoading && !weatherError && !weatherSummary && <p className="text-xs text-slate-600">Set a place and start date to see forecast.</p>}
+                {weatherSummary?.geocoded && weatherSummary?.forecast?.daily && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold">{weatherSummary.geocoded.display_name ?? previewLocation}</p>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-lg bg-white p-2 text-center">Max °C<br />{weatherSummary.forecast.daily.temperature_2m_max?.[0] ?? '—'}</div>
+                      <div className="rounded-lg bg-white p-2 text-center">Min °C<br />{weatherSummary.forecast.daily.temperature_2m_min?.[0] ?? '—'}</div>
+                      <div className="rounded-lg bg-white p-2 text-center">Precip (mm)<br />{weatherSummary.forecast.daily.precipitation_sum?.[0] ?? '—'}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {form.photos.length > 1 && (
               <div>
                 <p className="mb-2 text-xs font-medium text-slate-600">Gallery Preview</p>
                 <div className="grid grid-cols-3 gap-2">
                   {form.photos.slice(0, 6).map((photo, index) => (
-                    <img key={`${photo.url}-${index}`} src={photo.url} alt={`Gallery ${index + 1}`} className="h-16 w-full rounded-md object-cover" />
+                    <Image key={`${photo.url}-${index}`} src={photo.url} alt={`Gallery ${index + 1}`} width={160} height={64} className="rounded-md object-cover" style={{ width: '100%', height: '4rem', objectFit: 'cover' }} unoptimized />
                   ))}
                 </div>
               </div>

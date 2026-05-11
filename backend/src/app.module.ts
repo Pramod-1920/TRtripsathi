@@ -1,4 +1,5 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { AdminModule } from './admin/admin.module';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -42,9 +43,11 @@ import { RequestLoggerMiddleware } from './request-logger.middleware';
     VisitedPlaceModule,
     XpLedgerModule,
     BadgeModule,
-    MediaModule,
-    ChatModule,
-    ExtraModule,
+  MediaModule,
+  ChatModule,
+  // Admin utilities
+  AdminModule,
+  ExtraModule,
     SecurityModule,
   ],
   controllers: [AppController],

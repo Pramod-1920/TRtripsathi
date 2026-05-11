@@ -1036,6 +1036,27 @@ export class CampaignService {
       tasks: planningState.tasks ?? [],
     } as any;
 
+    // Enforce per-user annual campaign creation quota (unless admin)
+    if (!isAdmin) {
+      const user = await this.userModel.findById(hostId);
+      if (user) {
+        const nowYear = new Date().getUTCFullYear();
+        const lastResetYear = user.campaignQuotaResetAt ? new Date(user.campaignQuotaResetAt).getUTCFullYear() : null;
+        if (lastResetYear === null || lastResetYear < nowYear) {
+          user.campaignQuota = 5;
+          // set to Jan 1 of current year
+          user.campaignQuotaResetAt = new Date(Date.UTC(nowYear, 0, 1));
+        }
+
+        if (!user.campaignQuota || user.campaignQuota <= 0) {
+          throw new BadRequestException('Campaign creation quota exceeded for this year');
+        }
+
+        user.campaignQuota = Math.max(0, Number(user.campaignQuota) - 1);
+        await user.save();
+      }
+    }
+
     const created = await this.campaignModel.create({
       campaignCode,
       ...rest,

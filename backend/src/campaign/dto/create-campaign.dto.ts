@@ -174,9 +174,26 @@ export class CreateCampaignDto {
   @IsOptional()
   photos?: CampaignPhotoDto[];
 
-  @IsIn(['draft', 'open', 'planning', 'verification', 'ready', 'started', 'completed', 'cancelled'])
+  @IsIn([
+    'draft',
+    'open',
+    'planning',
+    'verification',
+    'ready',
+    'started',
+    'completed',
+    'cancelled',
+  ])
   @IsOptional()
-  lifecyclePhase?: 'draft' | 'open' | 'planning' | 'verification' | 'ready' | 'started' | 'completed' | 'cancelled';
+  lifecyclePhase?:
+    | 'draft'
+    | 'open'
+    | 'planning'
+    | 'verification'
+    | 'ready'
+    | 'started'
+    | 'completed'
+    | 'cancelled';
 
   @ValidateNested()
   @Type(() => CampaignPlanningDto)

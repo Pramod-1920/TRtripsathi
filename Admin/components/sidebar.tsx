@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   FiHome,
@@ -55,7 +55,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/campaigns/add', label: 'Add Campaign' },
     { href: '/campaigns/details', label: 'Campaign Details' },
     { href: '/campaigns/approval', label: 'Campaign Approval' },
-    { href: '/campaigns/bin', label: 'Campaign Bin' },
+  { href: '/campaigns/bin', label: 'Campaign User' },
+    { href: '/campaigns/reviews', label: 'Reviews' },
   ];
 
   const extraItems = [
@@ -72,21 +73,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
   const sidebarWidthClass = collapsed ? 'md:w-20' : 'md:w-72';
   const isMySectionActive = pathname === '/profile' || pathname.startsWith('/my-campaign');
   const isExtraSectionActive = pathname.startsWith('/extra');
-  const [myOpen, setMyOpen] = useState(isMySectionActive);
-  const [campaignOpen, setCampaignOpen] = useState(isCampaignSectionActive);
-  const [extraOpen, setExtraOpen] = useState(isExtraSectionActive);
-
-  useEffect(() => {
-    if (isMySectionActive) {
-      setMyOpen(true);
-    }
-  }, [isMySectionActive]);
-
-  useEffect(() => {
-    if (isExtraSectionActive) {
-      setExtraOpen(true);
-    }
-  }, [isExtraSectionActive]);
+  const [myOpen, setMyOpen] = useState<boolean>(() => isMySectionActive);
+  const [campaignOpen, setCampaignOpen] = useState<boolean>(() => isCampaignSectionActive);
+  const [extraOpen, setExtraOpen] = useState<boolean>(() => isExtraSectionActive);
 
   return (
     <>

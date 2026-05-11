@@ -9,6 +9,8 @@ import {
   Patch,
   Delete,
   Req,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -41,7 +43,7 @@ export class CampaignController {
   @Post()
   @UseGuards(JwtAuthGuard)
   async create(
-    @Body() dto: CreateCampaignDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })) dto: CreateCampaignDto,
     @GetCurrentUser('userId') userId: string,
     @Req() req,
   ) {

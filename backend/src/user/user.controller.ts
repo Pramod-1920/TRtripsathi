@@ -259,6 +259,18 @@ export class UserController {
     return profile;
   }
 
+  @Patch('admin/:id/campaign-quota')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: update campaign creation quota for a user' })
+  async adminUpdateCampaignQuota(
+    @Param('id') profileId: string,
+    @Body() body: { campaignQuota: number; resetToJanFirst?: boolean },
+  ) {
+    // body expected: { campaignQuota: number, resetToJanFirst?: boolean }
+    return this.userService.adminUpdateCampaignQuota(profileId, body);
+  }
+
   @Patch('admin/profiles/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)

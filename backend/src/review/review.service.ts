@@ -133,6 +133,7 @@ export class ReviewService {
     reviewId: string,
     reviewerId: string,
     updateDto: UpdateReviewDto,
+    isAdmin = false,
   ): Promise<Review> {
     const review = await this.reviewModel.findById(reviewId);
 
@@ -140,7 +141,8 @@ export class ReviewService {
       throw new NotFoundException('Review not found');
     }
 
-    if (review.reviewerId.toString() !== reviewerId) {
+    // allow admin to update any review
+    if (!isAdmin && review.reviewerId.toString() !== reviewerId) {
       throw new BadRequestException('Can only update your own review');
     }
 
@@ -159,14 +161,15 @@ export class ReviewService {
    * Delete a review
    * Only reviewer or admin can delete
    */
-  async deleteReview(reviewId: string, userId: string): Promise<void> {
+  async deleteReview(reviewId: string, userId: string, isAdmin = false): Promise<void> {
     const review = await this.reviewModel.findById(reviewId);
 
     if (!review) {
       throw new NotFoundException('Review not found');
     }
 
-    if (review.reviewerId.toString() !== userId) {
+    // allow admin to delete any review
+    if (!isAdmin && review.reviewerId.toString() !== userId) {
       throw new BadRequestException('Can only delete your own review');
     }
 
@@ -215,15 +218,57 @@ export class ReviewService {
   async getAllReviews(
     page = 1,
     limit = 20,
+    options?: {
+      sort?: string;
+      reviewerId?: string | undefined;
+      revieweeId?: string | undefined;
+      tripId?: string | undefined;
+    },
   ): Promise<{ data: Review[]; total: number }> {
-    const total = await this.reviewModel.countDocuments();
+    const filter: Record<string, unknown> = {};
+
+    if (options && options.reviewerId) {
+      try {
+        filter.reviewerId = new Types.ObjectId(options.reviewerId);
+      } catch {
+        // invalid id: leave filter out
+      }
+    }
+
+    if (options && options.revieweeId) {
+      try {
+        filter.revieweeId = new Types.ObjectId(options.revieweeId);
+      } catch {
+        // invalid id: ignore
+      }
+    }
+
+    if (options && options.tripId) {
+      try {
+        filter.tripId = new Types.ObjectId(options.tripId);
+      } catch {
+        // invalid id: ignore
+      }
+    }
+
+    // parse sort option like 'rating:asc' or 'createdAt:desc'
+    const defaultSort = { createdAt: -1 } as Record<string, number>;
+    let sortObj: Record<string, number> = defaultSort;
+    if (options && options.sort) {
+      const parts = options.sort.split(':');
+      const field = parts[0];
+      const dir = parts[1] === 'asc' ? 1 : -1;
+      if (field) sortObj = { [field]: dir };
+    }
+
+    const total = await this.reviewModel.countDocuments(filter as any);
 
     const data = await this.reviewModel
-      .find()
+      .find(filter as any)
       .populate('reviewerId', 'firstName lastName')
       .populate('revieweeId', 'firstName lastName')
       .populate('tripId', 'title tripCode')
-      .sort({ createdAt: -1 })
+      .sort(sortObj as any)
       .skip((page - 1) * limit)
       .limit(limit);
 

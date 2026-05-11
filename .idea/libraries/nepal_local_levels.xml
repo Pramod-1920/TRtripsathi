@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="nepal-local-levels">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/Admin/public/data/nepal-local-levels.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

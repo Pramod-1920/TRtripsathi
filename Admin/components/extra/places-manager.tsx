@@ -7,19 +7,19 @@ import {
   FiDownload,
   FiFlag,
   FiMapPin,
-  FiMoreVertical,
   FiNavigation,
   FiPlus,
   FiRefreshCw,
   FiSearch,
 } from 'react-icons/fi';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
+import { apiClient } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 import {
   bulkSeedPlaces,
   fetchPlacesHierarchy,
   patchPlaces,
   PlaceDistrictNode,
-  PlaceMunicipalityNode,
   PlacePatchOperation,
   PlaceProvinceNode,
   PlacesHierarchyResponse,
@@ -64,6 +64,16 @@ type NepalSeedFile = {
 };
 
 type DistrictMunicipalitiesSeed = Array<Record<string, string[]>>;
+
+type OpenMeteoResponse = {
+  timezone?: string;
+  daily?: {
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_sum?: number[];
+  };
+  [key: string]: unknown;
+};
 
 function slugifyId(name: string) {
   return name
@@ -216,6 +226,10 @@ export function PlacesManager() {
   const [selectedNode, setSelectedNode] = useState<TreeNodeRef | null>(null);
   const [editName, setEditName] = useState('');
   const [inlineError, setInlineError] = useState('');
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState('');
+  const [weatherData, setWeatherData] = useState<OpenMeteoResponse | null>(null);
+  const router = useRouter();
   const [seedModalOpen, setSeedModalOpen] = useState(false);
   const [disableModalNode, setDisableModalNode] = useState<TreeNodeRef | null>(null);
   const [cascadeDisableNode, setCascadeDisableNode] = useState<TreeNodeRef | null>(null);
@@ -298,6 +312,65 @@ export function PlacesManager() {
     setSelectedNode(selectedResolved);
     setEditName(selectedResolved.name);
   }, [selectedResolved?.id, selectedResolved?.name, selectedResolved?.deleted]);
+
+  // Fetch weather for selected place (municipality or district) using backend proxy
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWeather() {
+      setWeatherError('');
+      setWeatherData(null);
+      if (!selectedResolved) return;
+
+      // We only fetch weather for municipalities or districts (places)
+      if (selectedResolved.type !== 'municipality' && selectedResolved.type !== 'district') {
+        return;
+      }
+
+      setWeatherLoading(true);
+
+      try {
+        // Build a helpful geocode query using province/district context
+        const province = hierarchy.provinces.find((p) => p.id === selectedResolved.provinceId);
+        const district = province?.districts.find((d) => d.id === selectedResolved.districtId);
+        const parts = [selectedResolved.name, district?.name, province?.name, 'Nepal'].filter(Boolean).join(', ');
+
+        const geoResp = await apiClient.get('/admin/geocode', { params: { q: parts } });
+        const geo = Array.isArray(geoResp.data) && geoResp.data.length > 0 ? geoResp.data[0] : null;
+        if (!geo) {
+          setWeatherError('Geocoding failed (no results).');
+          return;
+        }
+
+        const lat = geo.lat ?? geo.latitude ?? geo.latitude;
+        const lon = geo.lon ?? geo.longitude ?? geo.long;
+        if (!lat || !lon) {
+          setWeatherError('Geocoding returned no coordinates.');
+          return;
+        }
+
+        const weatherResp = await apiClient.get('/admin/weather', { params: { lat: String(lat), lon: String(lon) } });
+        if (cancelled) return;
+        setWeatherData(weatherResp.data ?? null);
+      } catch (err) {
+        let message = 'Failed to load weather.';
+        if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
+          message = (err as any).message as string;
+        } else if (typeof err === 'string') {
+          message = err;
+        }
+        setWeatherError(message);
+      } finally {
+        setWeatherLoading(false);
+      }
+    }
+
+    void loadWeather();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedResolved?.id]);
 
   const filteredTree = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -1085,6 +1158,71 @@ export function PlacesManager() {
                       <FiPlus size={14} />
                       Add Municipality
                     </button>
+                  )}
+                </div>
+              </div>
+              {/* Weather preview panel */}
+              <div className="rounded-xl border border-slate-200 p-4">
+                <p className="text-sm font-semibold text-slate-900">Weather preview</p>
+                <p className="mt-1 text-xs text-slate-500">Preview approximate weather for the selected place (provided by Open-Meteo via server proxy).</p>
+                <div className="mt-3">
+                  {weatherLoading ? (
+                    <div className="text-sm text-slate-500">Loading weather...</div>
+                  ) : weatherError ? (
+                    <div className="text-sm text-red-600">{weatherError}</div>
+                  ) : weatherData ? (
+                    <div className="text-sm text-slate-700 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-500">Timezone</div>
+                        <div className="font-medium">{weatherData?.timezone ?? 'UTC'}</div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-500">Daily max</div>
+                        <div className="font-medium">{weatherData?.daily?.temperature_2m_max?.[0] ?? '—'} °C</div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-500">Daily min</div>
+                        <div className="font-medium">{weatherData?.daily?.temperature_2m_min?.[0] ?? '—'} °C</div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-500">Precipitation</div>
+                        <div className="font-medium">{weatherData?.daily?.precipitation_sum?.[0] ?? '—'} mm</div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            if (!selectedResolved) return;
+                            // Persist selection and weather to sessionStorage then navigate to campaign add
+                            try {
+                              const payload = { place: selectedResolved, weather: weatherData };
+                              sessionStorage.setItem('admin:selectedPlace', JSON.stringify(payload));
+                              // navigate to campaign add page using top-level router
+                              router.push('/campaigns/add');
+                            } catch {
+                              addToast('error', 'Failed to select place.');
+                            }
+                          }}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          Use this place (copy details)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setWeatherData(null);
+                            setWeatherError('');
+                          }}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500">Select a municipality or district to preview weather.</div>
                   )}
                 </div>
               </div>

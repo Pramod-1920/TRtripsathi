@@ -3180,6 +3180,25 @@ export class UserService {
     return { message: 'Profile deleted successfully' };
   }
 
+  async adminUpdateCampaignQuota(profileId: string, body: { campaignQuota: number; resetToJanFirst?: boolean }) {
+    const profile = await this.userModel.findById(this.toObjectId(profileId));
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    profile.campaignQuota = Math.max(0, Math.floor(Number(body.campaignQuota ?? 0)));
+
+    if (body.resetToJanFirst) {
+      const nowYear = new Date().getUTCFullYear();
+      profile.campaignQuotaResetAt = new Date(Date.UTC(nowYear, 0, 1));
+    }
+
+    await profile.save();
+
+    return { message: 'Campaign quota updated' };
+  }
+
   private async attachAuthContactInfo(profile: User, rules?: LevelUpRule[]) {
     const levelUpRules = rules ?? await this.getLevelUpRules();
     const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);

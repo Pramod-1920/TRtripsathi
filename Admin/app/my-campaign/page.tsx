@@ -66,7 +66,26 @@ export default function MyCampaignPage() {
   }
 
   useEffect(() => {
-    void loadCampaigns();
+    let active = true;
+    (async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetchCampaigns({ page: 1, limit: 100, includeFuture: true });
+        if (!active) return;
+        setCampaigns(response.items);
+      } catch {
+        if (!active) return;
+        setError('Failed to load campaigns.');
+      } finally {
+        if (!active) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const sortedCampaigns = useMemo(
@@ -77,6 +96,17 @@ export default function MyCampaignPage() {
     }),
     [campaigns],
   );
+
+  // Only show campaigns that are open or upcoming (hide closed/completed/failed)
+  const filteredCampaigns = useMemo(() => {
+    const now = new Date();
+    return sortedCampaigns.filter((c) => {
+      if (c.completed || c.failed) return false;
+      // If endDate exists and is in the past or equal to now, consider closed
+      if (c.endDate && now.getTime() >= new Date(c.endDate).getTime()) return false;
+      return true;
+    });
+  }, [sortedCampaigns]);
 
   async function handleJoin(campaign: Campaign) {
     setBusyCampaignId(campaign._id);
@@ -149,13 +179,13 @@ export default function MyCampaignPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           Loading campaigns...
         </div>
-      ) : sortedCampaigns.length === 0 ? (
+      ) : filteredCampaigns.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           No campaigns found.
         </div>
       ) : (
         <div className="grid gap-4">
-          {sortedCampaigns.map((campaign) => {
+          {filteredCampaigns.map((campaign) => {
             const accepted = getAcceptedParticipantsCount(campaign);
             const maxParticipants = Math.max(1, Number(campaign.maxParticipants ?? 1));
             const availableSeats = Math.max(0, maxParticipants - accepted);

@@ -118,8 +118,17 @@ export class ReviewController {
   async getAllReviews(
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('sort') sort = undefined,
+    @Query('reviewerId') reviewerId = undefined,
+    @Query('revieweeId') revieweeId = undefined,
+    @Query('tripId') tripId = undefined,
   ) {
-    return this.reviewService.getAllReviews(parseInt(page), parseInt(limit));
+    return this.reviewService.getAllReviews(parseInt(page), parseInt(limit), {
+      sort,
+      reviewerId,
+      revieweeId,
+      tripId,
+    });
   }
 
   /**
@@ -134,7 +143,8 @@ export class ReviewController {
     @Body() updateDto: UpdateReviewDto,
     @CurrentUser() user: any,
   ) {
-    return this.reviewService.updateReview(reviewId, user._id.toString(), updateDto);
+    const isAdmin = user?.role === Role.Admin || false;
+    return this.reviewService.updateReview(reviewId, user._id.toString(), updateDto, isAdmin);
   }
 
   /**
@@ -148,7 +158,8 @@ export class ReviewController {
     @Param('reviewId') reviewId: string,
     @CurrentUser() user: any,
   ) {
-    await this.reviewService.deleteReview(reviewId, user._id.toString());
+    const isAdmin = user?.role === Role.Admin || false;
+    await this.reviewService.deleteReview(reviewId, user._id.toString(), isAdmin);
     return { message: 'Review deleted successfully' };
   }
 }

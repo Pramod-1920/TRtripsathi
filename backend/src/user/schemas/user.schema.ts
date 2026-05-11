@@ -198,6 +198,14 @@ export class User extends Document {
   @Prop({ type: [String], default: [] })
   languagesKnown?: string[];
 
+  // Campaign creation quota per year (admin-adjustable)
+  @Prop({ type: Number, default: 5 })
+  campaignQuota?: number;
+
+  // When the campaign quota was last reset (ISO Date)
+  @Prop({ type: Date, default: null })
+  campaignQuotaResetAt?: Date | null;
+
   // Admin-imposed flags (not editable by the user directly)
   @Prop({
     type: [{ type: String, campaignId: String, reason: String, date: Date }],
