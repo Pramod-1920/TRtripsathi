@@ -1,27 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/api.dart';
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({Key? key}) : super(key: key);
+  const OnboardingScreen({super.key});
 
   @override
-  _OnboardingScreenState createState() => _OnboardingScreenState();
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _firstController = TextEditingController();
   final _lastController = TextEditingController();
+  final _ageController = TextEditingController();
+
   String? _selectedProvince;
   String? _selectedDistrict;
   String? _selectedPlace;
   String? _experienceLevel;
+
   bool _loading = false;
-  String? _error;
-  List<dynamic> _placeHierarchy = [];
   bool _loadingPlaces = true;
 
-  final List<String> _levels = ['beginner', 'intermediate', 'advanced'];
-  final _ageController = TextEditingController();
+  String? _error;
+
+  List<dynamic> _placeHierarchy = [];
+
+  final List<String> _levels = [
+    'beginner',
+    'intermediate',
+    'advanced',
+  ];
 
   @override
   void initState() {
@@ -32,15 +42,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _loadPlaces() async {
     try {
       final places = await ApiService.getPlaceHierarchy();
+
+      if (!mounted) return;
+
       setState(() {
         _placeHierarchy = places;
         _loadingPlaces = false;
       });
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
         _loadingPlaces = false;
-        _error = 'Failed to load places: $e';
+        _error = 'Failed to load places';
       });
+
+      debugPrint('PLACE ERROR: $e');
     }
   }
 
@@ -53,13 +70,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   List<String> _getDistricts(String province) {
-    final provinceItem = _placeHierarchy
-        .whereType<Map<String, dynamic>>()
-        .firstWhere((item) => item['province'] == province, orElse: () => {});
+    final provinceItem =
+        _placeHierarchy.whereType<Map<String, dynamic>>().firstWhere(
+              (item) => item['province'] == province,
+              orElse: () => {},
+            );
 
     if (provinceItem.isEmpty) return [];
 
     final districtItems = provinceItem['districtItems'] as List<dynamic>? ?? [];
+
     return districtItems
         .whereType<Map<String, dynamic>>()
         .map((item) => item['district'] as String?)
@@ -68,160 +88,84 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   List<String> _getPlaces(String province, String district) {
-    final provinceItem = _placeHierarchy
-        .whereType<Map<String, dynamic>>()
-        .firstWhere((item) => item['province'] == province, orElse: () => {});
+    final provinceItem =
+        _placeHierarchy.whereType<Map<String, dynamic>>().firstWhere(
+              (item) => item['province'] == province,
+              orElse: () => {},
+            );
 
     if (provinceItem.isEmpty) return [];
 
     final districtItems = provinceItem['districtItems'] as List<dynamic>? ?? [];
-    final districtItem = districtItems
-        .whereType<Map<String, dynamic>>()
-        .firstWhere((item) => item['district'] == district, orElse: () => {});
+
+    final districtItem =
+        districtItems.whereType<Map<String, dynamic>>().firstWhere(
+              (item) => item['district'] == district,
+              orElse: () => {},
+            );
 
     if (districtItem.isEmpty) return [];
 
     final places = districtItem['places'] as List<dynamic>? ?? [];
+
     return places.whereType<String>().toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final provinces = _getProvinces();
-    final districts =
-        _selectedProvince != null ? _getDistricts(_selectedProvince!) : [];
-    final places = (_selectedProvince != null && _selectedDistrict != null)
-        ? _getPlaces(_selectedProvince!, _selectedDistrict!)
-        : [];
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Complete your profile')),
-      body: _loadingPlaces
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _firstController,
-                    decoration: const InputDecoration(labelText: 'First name'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _lastController,
-                    decoration: const InputDecoration(labelText: 'Last name'),
-                  ),
-                  const SizedBox(height: 12),
-                  // Province Dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedProvince,
-                    items: provinces
-                        .map((p) =>
-                            DropdownMenuItem<String>(value: p, child: Text(p)))
-                        .toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedProvince = value;
-                        _selectedDistrict = null;
-                        _selectedPlace = null;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Province',
-                      hintText: 'Select province',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // District Dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedDistrict,
-                    items: districts
-                        .map((d) =>
-                            DropdownMenuItem<String>(value: d, child: Text(d)))
-                        .toList(),
-                    onChanged: _selectedProvince != null
-                        ? (value) {
-                            setState(() {
-                              _selectedDistrict = value;
-                              _selectedPlace = null;
-                            });
-                          }
-                        : null,
-                    decoration: InputDecoration(
-                      labelText: 'District',
-                      hintText: _selectedProvince == null
-                          ? 'Select province first'
-                          : 'Select district',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Place Dropdown
-                  DropdownButtonFormField<String>(
-                    value: _selectedPlace,
-                    items: places
-                        .map((p) =>
-                            DropdownMenuItem<String>(value: p, child: Text(p)))
-                        .toList(),
-                    onChanged:
-                        (_selectedProvince != null && _selectedDistrict != null)
-                            ? (value) {
-                                setState(() {
-                                  _selectedPlace = value;
-                                });
-                              }
-                            : null,
-                    decoration: InputDecoration(
-                      labelText: 'Place (Famous Location)',
-                      hintText: _selectedDistrict == null
-                          ? 'Select district first'
-                          : 'Select place',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _ageController,
-                    decoration: const InputDecoration(
-                        labelText: 'Age (optional, must be > 8)'),
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _experienceLevel,
-                    items: _levels
-                        .map((l) =>
-                            DropdownMenuItem<String>(value: l, child: Text(l)))
-                        .toList(),
-                    onChanged: (v) => setState(() => _experienceLevel = v),
-                    decoration:
-                        const InputDecoration(labelText: 'Experience level'),
-                  ),
-                  const SizedBox(height: 20),
-                  if (_error != null)
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
-                  ElevatedButton(
-                    onPressed: _loading ? null : _submit,
-                    child: _loading
-                        ? const CircularProgressIndicator()
-                        : const Text('Save and continue'),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
-    // Build location string from selections
+    if (_firstController.text.trim().isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'First name is required';
+      });
+      return;
+    }
+
+    if (_selectedProvince == null ||
+        _selectedDistrict == null ||
+        _selectedPlace == null) {
+      setState(() {
+        _loading = false;
+        _error = 'Please select your location';
+      });
+      return;
+    }
+
+    final ageText = _ageController.text.trim();
+
+    int? age;
+
+    if (ageText.isNotEmpty) {
+      age = int.tryParse(ageText);
+
+      if (age == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Age must be a number';
+        });
+        return;
+      }
+
+      if (age <= 8) {
+        setState(() {
+          _loading = false;
+          _error = 'Age must be greater than 8';
+        });
+        return;
+      }
+    }
+
     final locationParts = [
       _selectedPlace,
       _selectedDistrict,
       _selectedProvince,
-    ].where((p) => p != null && p.isNotEmpty).toList();
+    ].where((e) => e != null && e.isNotEmpty).toList();
 
     final updates = <String, dynamic>{
       'firstName': _firstController.text.trim(),
@@ -230,38 +174,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'province': _selectedProvince,
       'district': _selectedDistrict,
       if (_experienceLevel != null) 'experienceLevel': _experienceLevel,
+      if (age != null) 'age': age,
     };
-
-    // Age validation (optional)
-    final ageText = _ageController.text.trim();
-    if (ageText.isNotEmpty) {
-      final age = int.tryParse(ageText);
-      if (age == null) {
-        setState(() {
-          _loading = false;
-          _error = 'Age must be a number';
-        });
-        return;
-      }
-      if (age <= 8) {
-        setState(() {
-          _loading = false;
-          _error = 'Age must be greater than 8';
-        });
-        return;
-      }
-      updates['age'] = age;
-    }
 
     try {
       await ApiService.updateProfile(updates);
+
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setBool('onboarding_done', true);
+
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/profile');
+
+      Navigator.pushReplacementNamed(context, '/profile');
     } catch (e) {
+      if (!mounted) return;
+
       setState(() {
-        _error = e.toString();
+        _error = 'Something went wrong';
       });
+
+      debugPrint('ONBOARDING ERROR: $e');
     } finally {
+      if (!mounted) return;
+
       setState(() {
         _loading = false;
       });
@@ -269,10 +205,204 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   @override
+  Widget build(BuildContext context) {
+    final provinces = _getProvinces();
+
+    final districts = _selectedProvince != null
+        ? _getDistricts(_selectedProvince!)
+        : <String>[];
+
+    final places = (_selectedProvince != null && _selectedDistrict != null)
+        ? _getPlaces(
+            _selectedProvince!,
+            _selectedDistrict!,
+          )
+        : <String>[];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Complete your profile'),
+        centerTitle: true,
+      ),
+      body: _loadingPlaces
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Welcome to Yatri',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Complete your profile to continue',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    TextField(
+                      controller: _firstController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'First Name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _lastController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Last Name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedProvince,
+                      decoration: const InputDecoration(
+                        labelText: 'Province',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: provinces
+                          .map(
+                            (province) => DropdownMenuItem(
+                              value: province,
+                              child: Text(province),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedProvince = value;
+                          _selectedDistrict = null;
+                          _selectedPlace = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedDistrict,
+                      decoration: const InputDecoration(
+                        labelText: 'District',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: districts
+                          .map(
+                            (district) => DropdownMenuItem(
+                              value: district,
+                              child: Text(district),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: _selectedProvince == null
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _selectedDistrict = value;
+                                _selectedPlace = null;
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedPlace,
+                      decoration: const InputDecoration(
+                        labelText: 'Place',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: places
+                          .map(
+                            (place) => DropdownMenuItem(
+                              value: place,
+                              child: Text(place),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (_selectedProvince == null ||
+                              _selectedDistrict == null)
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _selectedPlace = value;
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _ageController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Age (Optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _experienceLevel,
+                      decoration: const InputDecoration(
+                        labelText: 'Experience Level',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _levels
+                          .map(
+                            (level) => DropdownMenuItem(
+                              value: level,
+                              child: Text(level),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _experienceLevel = value;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    SizedBox(
+                      height: 55,
+                      child: ElevatedButton(
+                        onPressed: _loading ? null : _submit,
+                        child: _loading
+                            ? const CircularProgressIndicator()
+                            : const Text(
+                                'Save and Continue',
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  @override
   void dispose() {
     _firstController.dispose();
     _lastController.dispose();
     _ageController.dispose();
+
     super.dispose();
   }
 }
