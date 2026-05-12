@@ -88,7 +88,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final provinces = _getProvinces();
-    final districts = _selectedProvince != null ? _getDistricts(_selectedProvince!) : [];
+    final districts =
+        _selectedProvince != null ? _getDistricts(_selectedProvince!) : [];
     final places = (_selectedProvince != null && _selectedDistrict != null)
         ? _getPlaces(_selectedProvince!, _selectedDistrict!)
         : [];
@@ -115,7 +116,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   DropdownButtonFormField<String>(
                     value: _selectedProvince,
                     items: provinces
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                        .map((p) =>
+                            DropdownMenuItem<String>(value: p, child: Text(p)))
                         .toList(),
                     onChanged: (value) {
                       setState(() {
@@ -134,7 +136,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   DropdownButtonFormField<String>(
                     value: _selectedDistrict,
                     items: districts
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                        .map((d) =>
+                            DropdownMenuItem<String>(value: d, child: Text(d)))
                         .toList(),
                     onChanged: _selectedProvince != null
                         ? (value) {
@@ -146,7 +149,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         : null,
                     decoration: InputDecoration(
                       labelText: 'District',
-                      hintText: _selectedProvince == null ? 'Select province first' : 'Select district',
+                      hintText: _selectedProvince == null
+                          ? 'Select province first'
+                          : 'Select district',
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -154,38 +159,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   DropdownButtonFormField<String>(
                     value: _selectedPlace,
                     items: places
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                        .map((p) =>
+                            DropdownMenuItem<String>(value: p, child: Text(p)))
                         .toList(),
-                    onChanged: (_selectedProvince != null && _selectedDistrict != null)
-                        ? (value) {
-                            setState(() {
-                              _selectedPlace = value;
-                            });
-                          }
-                        : null,
+                    onChanged:
+                        (_selectedProvince != null && _selectedDistrict != null)
+                            ? (value) {
+                                setState(() {
+                                  _selectedPlace = value;
+                                });
+                              }
+                            : null,
                     decoration: InputDecoration(
                       labelText: 'Place (Famous Location)',
-                      hintText: _selectedDistrict == null ? 'Select district first' : 'Select place',
+                      hintText: _selectedDistrict == null
+                          ? 'Select district first'
+                          : 'Select place',
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _ageController,
-                    decoration: const InputDecoration(labelText: 'Age (optional, must be > 8)'),
+                    decoration: const InputDecoration(
+                        labelText: 'Age (optional, must be > 8)'),
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    initialValue: _experienceLevel,
-                    items: _levels.map((l) => DropdownMenuItem(value: l, child: Text(l))).toList(),
+                    value: _experienceLevel,
+                    items: _levels
+                        .map((l) =>
+                            DropdownMenuItem<String>(value: l, child: Text(l)))
+                        .toList(),
                     onChanged: (v) => setState(() => _experienceLevel = v),
-                    decoration: const InputDecoration(labelText: 'Experience level'),
+                    decoration:
+                        const InputDecoration(labelText: 'Experience level'),
                   ),
                   const SizedBox(height: 20),
-                  if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+                  if (_error != null)
+                    Text(_error!, style: const TextStyle(color: Colors.red)),
                   ElevatedButton(
                     onPressed: _loading ? null : _submit,
-                    child: _loading ? const CircularProgressIndicator() : const Text('Save and continue'),
+                    child: _loading
+                        ? const CircularProgressIndicator()
+                        : const Text('Save and continue'),
                   ),
                 ],
               ),

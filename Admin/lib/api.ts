@@ -1,6 +1,7 @@
 import axios, { AxiosHeaders, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import 'dotenv/config'
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // Create axios instance with default config
 export const apiClient: AxiosInstance = axios.create({
