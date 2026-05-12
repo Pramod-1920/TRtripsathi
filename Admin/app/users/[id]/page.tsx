@@ -287,6 +287,31 @@ type Profile = {
     context?: Record<string, unknown>;
     awardedAt?: string;
   }>;
+  currentRankBadge?: {
+    rankCode?: string;
+    imageUrl?: string;
+    publicId?: string;
+    name?: string;
+    isCurrentRank?: boolean;
+  } | null;
+  rankBadges?: Array<{
+    rankCode?: string;
+    imageUrl?: string;
+    publicId?: string;
+    name?: string;
+    isCurrentRank?: boolean;
+  }>;
+  userBadges?: Array<{
+    _id?: string;
+    userId?: string;
+    badgeCode?: string;
+    tier?: string;
+    name?: string;
+    description?: string;
+    iconUrl?: string;
+    unlockedAt?: string;
+  }>;
+  badgeCount?: number;
 };
 
 export default function UserDetailPage() {
@@ -1223,6 +1248,40 @@ export default function UserDetailPage() {
             </div>
           </div>
 
+          {(formData.userBadges ?? []).length > 0 && (
+            <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
+              <h2 className="mb-4 text-lg font-semibold text-slate-900">Awarded Badges ({formData.badgeCount ?? 0})</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                {formData.userBadges!.map((badge) => (
+                  <div key={badge._id} className="flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    {badge.iconUrl && (
+                      <Image
+                        src={badge.iconUrl}
+                        alt={badge.name || 'Badge'}
+                        width={64}
+                        height={64}
+                        className="h-16 w-16 rounded-full"
+                        unoptimized
+                      />
+                    )}
+                    <div className="text-center">
+                      <p className="font-medium text-slate-900">{badge.name || 'Unknown Badge'}</p>
+                      <p className="text-xs text-slate-600">{badge.tier}</p>
+                      {badge.description && (
+                        <p className="mt-1 text-xs text-slate-500">{badge.description}</p>
+                      )}
+                      {badge.unlockedAt && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Unlocked: {new Date(badge.unlockedAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1364,8 +1423,25 @@ export default function UserDetailPage() {
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Badge</p>
-                <p className="text-lg font-semibold text-purple-600 mt-1">{formData.badge || 'No badge'}</p>
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank Badge</p>
+                {formData.currentRankBadge?.imageUrl ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Image
+                      src={formData.currentRankBadge.imageUrl}
+                      alt={formData.currentRankBadge.name || 'Rank badge'}
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 rounded-lg border border-slate-200"
+                      unoptimized
+                    />
+                    <div>
+                      <p className="font-medium text-slate-900">{formData.currentRankBadge.name || 'Unlocked Badge'}</p>
+                      <p className="text-xs text-slate-500">{formData.currentRankBadge.rankCode}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">No rank badge yet</p>
+                )}
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Profile Status</p>

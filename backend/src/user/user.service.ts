@@ -9,6 +9,7 @@ import { Model, PipelineStage, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
 import { ExperienceLevel } from '../auth/constants/experience-level.enum';
 import { CloudinaryService } from '../config/cloudinary/cloudinary.service';
+import { BadgeService } from '../badge/badge.service';
 import { ExtraCategory } from '../extra/constants/extra-category.enum';
 import { ExtraItem } from '../extra/schemas/extra.schema';
 import { Gender } from './constants/gender.enum';
@@ -186,6 +187,8 @@ export class UserService {
     @InjectModel(Auth.name) private readonly authModel: Model<Auth>,
     @InjectModel(ExtraItem.name) private readonly extraModel: Model<ExtraItem>,
     private readonly cloudinaryService: CloudinaryService,
+    // BadgeService is imported via UserModule
+    private readonly badgeService?: BadgeService,
   ) {}
 
   private toObjectId(id: string): Types.ObjectId {
@@ -3024,8 +3027,26 @@ export class UserService {
       }),
     );
 
+    // If BadgeService is available, fetch persisted badges/counts for each profile
+    let enrichedItems = syncedItems as any[];
+    try {
+      if (this.badgeService) {
+        enrichedItems = await Promise.all(
+          syncedItems.map(async (it: any) => {
+            const profileId = String(it._id ?? '');
+            if (!profileId) return it;
+            const userBadges = await this.badgeService?.getUserBadges(profileId);
+            const badgeCount = await this.badgeService?.getBadgeCount(profileId);
+            return { ...it, userBadges, badgeCount };
+          }),
+        );
+      }
+    } catch (err) {
+      this.logger.debug('Failed to enrich admin profiles with badges', err as Error);
+    }
+
     return {
-      items: syncedItems,
+      items: enrichedItems,
       pagination: {
         total,
         page,
@@ -3097,11 +3118,28 @@ export class UserService {
     );
 
     const [result] = await this.userModel.aggregate(pipeline);
-    const items = (result?.items ?? []).map((item: Record<string, unknown>) => ({
+    let items = (result?.items ?? []).map((item: Record<string, unknown>) => ({
       ...item,
       profileId: String(item.profileId),
       reviewedByAuthId: item.reviewedByAuthId ? String(item.reviewedByAuthId) : undefined,
     }));
+
+    // Enrich items with persisted badges when possible
+    try {
+      if (this.badgeService && items.length > 0) {
+        items = await Promise.all(
+          items.map(async (it: any) => {
+            const profileId = String(it.profileId ?? '');
+            if (!profileId) return it;
+            const userBadges = await this.badgeService?.getUserBadges(profileId);
+            const badgeCount = await this.badgeService?.getBadgeCount(profileId);
+            return { ...it, userBadges, badgeCount };
+          }),
+        );
+      }
+    } catch (err) {
+      this.logger.debug('Failed to enrich photo verification queue items with badges', err as Error);
+    }
 
     const total = Number(result?.total?.[0]?.value ?? 0);
 
@@ -3222,6 +3260,24 @@ export class UserService {
       },
       levelUpRules,
     );
+    // If BadgeService is available, fetch persisted user badges and include count
+    let userBadges = [] as any[];
+    let badgeCount = 0;
+
+    try {
+      if (this.badgeService && profile._id) {
+        // badgeService may be a circular dependency; call if available
+        // BadgeService.getUserBadges expects a userId (profile._id)
+        // Use toString() to pass as string id
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        userBadges = await this.badgeService.getUserBadges(String(profile._id));
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        badgeCount = await this.badgeService.getBadgeCount(String(profile._id));
+      }
+    } catch (err) {
+      // Non-fatal: if badges cannot be loaded, continue without them
+      this.logger.debug('Unable to load persisted user badges', err as Error);
+    }
 
     return {
       ...profile.toObject(),
@@ -3235,6 +3291,9 @@ export class UserService {
       currentRankBadge,
       subRank: (profile as User & { subRank?: string }).subRank ?? null,
       nextRankProgress,
+      // persisted awarded badges
+      userBadges,
+      badgeCount,
     };
   }
 }

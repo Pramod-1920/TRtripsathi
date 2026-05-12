@@ -20,10 +20,17 @@ interface User {
   experienceLevel?: string | null;
   level?: number;
   xp?: number;
+  totalXp?: number;
   badge?: string;
   profileCompleted: boolean;
   isProfilePublic?: boolean;
   createdAt?: string;
+  currentRankBadge?: {
+    rankCode?: string;
+    imageUrl?: string;
+    name?: string;
+  } | null;
+  badgeCount?: number;
 }
 
 export default function UsersPage() {
@@ -219,7 +226,9 @@ export default function UsersPage() {
                 <td className="px-6 py-4">
                   <div>
                     <p className="font-medium text-slate-900">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-slate-500">{user.badge || 'No badge yet'}</p>
+                    <p className="text-xs text-slate-500">
+                      {user.badgeCount ?? 0} badge{user.badgeCount !== 1 ? 's' : ''} earned
+                    </p>
                   </div>
                 </td>
                 <td className="px-6 py-4">

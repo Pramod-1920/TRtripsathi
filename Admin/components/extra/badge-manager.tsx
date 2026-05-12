@@ -150,6 +150,7 @@ export function BadgeManager() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ExtraItem | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
   const [form, setForm] = useState<BadgeFormState>(defaultFormState);
 
   async function loadBadges() {
@@ -203,6 +204,10 @@ export function BadgeManager() {
   function resetForm() {
     setForm(defaultFormState);
     setEditId(null);
+    if (selectedImageUrl) {
+      URL.revokeObjectURL(selectedImageUrl);
+      setSelectedImageUrl(null);
+    }
     setSelectedImageFile(null);
   }
 
@@ -210,6 +215,10 @@ export function BadgeManager() {
     const parsed = parseBadgeValue(item.value);
 
     setEditId(item._id);
+    if (selectedImageUrl) {
+      URL.revokeObjectURL(selectedImageUrl);
+      setSelectedImageUrl(null);
+    }
     setSelectedImageFile(null);
     setForm({
       rankCode: normalizeRankCode(item.name),
@@ -407,7 +416,19 @@ export function BadgeManager() {
             <input
               type="file"
               accept="image/*"
-              onChange={(event) => setSelectedImageFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                if (selectedImageUrl) {
+                  URL.revokeObjectURL(selectedImageUrl);
+                  setSelectedImageUrl(null);
+                }
+                if (file) {
+                  setSelectedImageFile(file);
+                  setSelectedImageUrl(URL.createObjectURL(file));
+                } else {
+                  setSelectedImageFile(null);
+                }
+              }}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-blue-700"
             />
           </div>
@@ -426,11 +447,32 @@ export function BadgeManager() {
         {(selectedImageFile || form.imageUrl.trim()) && (
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-xs font-medium text-slate-500">Preview</p>
-            <img
-              src={selectedImageFile ? URL.createObjectURL(selectedImageFile) : form.imageUrl}
-              alt={`${form.rankCode || 'Rank'} badge preview`}
-              className="mt-2 h-20 w-20 rounded-lg object-cover"
-            />
+            <div className="mt-2 flex items-start gap-3">
+              <img
+                src={selectedImageFile ? selectedImageUrl ?? '' : form.imageUrl}
+                alt={`${form.rankCode || 'Rank'} badge preview`}
+                className="h-20 w-20 rounded-lg object-cover"
+              />
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // remove selected image (file or URL)
+                    if (selectedImageUrl) {
+                      URL.revokeObjectURL(selectedImageUrl);
+                      setSelectedImageUrl(null);
+                    }
+                    setSelectedImageFile(null);
+                    setForm((current) => ({ ...current, imageUrl: '', imagePublicId: '' }));
+                  }}
+                  aria-label="Remove image"
+                  title="Remove image"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <span aria-hidden className="-mt-0.5 text-lg">×</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -515,6 +557,30 @@ export function BadgeManager() {
                       title="Edit badge"
                     >
                       Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const profileId = window.prompt('Enter profile ID to award this badge to (profile._id):');
+                        if (!profileId) return;
+
+                        try {
+                          await apiClient.post(`/admin/profiles/${encodeURIComponent(profileId)}/badges`, {
+                            badgeCode: normalizeRankCode(item.name),
+                            name: item.name,
+                            iconUrl: parsed?.imageUrl ?? '',
+                            tier: 'rank',
+                            description: `Awarded rank badge ${item.name}`,
+                          });
+                          setSuccess('Badge awarded successfully.');
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Unable to award badge.');
+                        }
+                      }}
+                      className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50"
+                      title="Award this badge to a user"
+                    >
+                      Award
                     </button>
                     <button
                       type="button"
