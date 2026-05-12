@@ -222,8 +222,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Builder(
                   builder: (context) {
                     final rankBadges = _extractRankBadges(data);
+                    final currentRankBadge = data['currentRankBadge'];
 
-                    if (rankBadges.isEmpty) {
+                    // Show rank badges if available, otherwise show current rank badge
+                    final badgesToDisplay = rankBadges.isNotEmpty
+                        ? rankBadges
+                        : (currentRankBadge is Map<String, dynamic> &&
+                                currentRankBadge['imageUrl'] != null
+                            ? [currentRankBadge]
+                            : []);
+
+                    if (badgesToDisplay.isEmpty) {
                       return const SizedBox.shrink();
                     }
 
@@ -242,7 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Wrap(
                               spacing: 12,
                               runSpacing: 12,
-                              children: rankBadges.map((badge) {
+                              children: badgesToDisplay.map((badge) {
                                 final rankCode =
                                     badge['rankCode']?.toString() ?? '';
                                 final imageUrl =

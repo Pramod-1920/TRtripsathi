@@ -224,11 +224,25 @@ export default function UsersPage() {
             {users.map((user) => (
               <tr key={user._id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4">
-                  <div>
-                    <p className="font-medium text-slate-900">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-slate-500">
-                      {user.badgeCount ?? 0} badge{user.badgeCount !== 1 ? 's' : ''} earned
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="font-medium text-slate-900">{user.firstName} {user.lastName}</p>
+                      <p className="text-xs text-slate-500">
+                        {user.badgeCount ?? 0} badge{user.badgeCount !== 1 ? 's' : ''} earned
+                      </p>
+                    </div>
+                    {user.currentRankBadge?.imageUrl && (
+                      <div className="shrink-0">
+                        <img
+                          src={user.currentRankBadge.imageUrl}
+                          alt={user.currentRankBadge.name || 'Rank badge'}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded border border-slate-200"
+                          style={{ objectFit: 'cover' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </td>
                 <td className="px-6 py-4">
