@@ -20,8 +20,13 @@ import 'services/api.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
+  // Load environment variables (guarded: mobile builds may not include a .env file)
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    // ignore: avoid_print
+    print('No .env file found or failed to load: $e');
+  }
 
   // Read BACKEND_URL from .env (trim/normalize). Fall back to emulator default.
   var envUrl = dotenv.env['BACKEND_URL']?.trim() ?? '';
