@@ -77,15 +77,15 @@ export default function ReportManager() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'open':
-        return 'bg-red-100 text-red-800';
+        return 'bg-destructive/15 text-destructive';
       case 'investigating':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-primary/15 text-primary';
       case 'resolved':
-        return 'bg-green-100 text-green-800';
+        return 'bg-secondary/20 text-secondary';
       case 'dismissed':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -116,48 +116,48 @@ export default function ReportManager() {
   };
 
   if (error) {
-    return <div className="text-red-600 p-4">{error}</div>;
+    return <div className="p-4 text-destructive">{error}</div>;
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 text-foreground">
       <h1 className="text-3xl font-bold">Report Management</h1>
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <div className="text-xs text-gray-600">Total</div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-xs text-muted-foreground">Total</div>
             <div className="text-2xl font-bold">{stats.total}</div>
           </div>
-          <div className="bg-red-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-red-600">Open</div>
-            <div className="text-2xl font-bold text-red-600">{stats.open}</div>
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 shadow-sm">
+            <div className="text-xs text-destructive">Open</div>
+            <div className="text-2xl font-bold text-destructive">{stats.open}</div>
           </div>
-          <div className="bg-yellow-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-yellow-600">Investigating</div>
-            <div className="text-2xl font-bold text-yellow-600">{stats.investigating}</div>
+          <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 shadow-sm">
+            <div className="text-xs text-primary">Investigating</div>
+            <div className="text-2xl font-bold text-primary">{stats.investigating}</div>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-green-600">Resolved</div>
-            <div className="text-2xl font-bold text-green-600">{stats.resolved}</div>
+          <div className="rounded-xl border border-secondary/35 bg-secondary/15 p-4 shadow-sm">
+            <div className="text-xs text-secondary">Resolved</div>
+            <div className="text-2xl font-bold text-secondary">{stats.resolved}</div>
           </div>
-          <div className="bg-gray-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-gray-600">Dismissed</div>
-            <div className="text-2xl font-bold text-gray-600">{stats.dismissed}</div>
+          <div className="rounded-xl border border-border bg-muted/50 p-4 shadow-sm">
+            <div className="text-xs text-muted-foreground">Dismissed</div>
+            <div className="text-2xl font-bold text-muted-foreground">{stats.dismissed}</div>
           </div>
         </div>
       )}
 
       {/* Top Reasons */}
       {stats && stats.topReasons.length > 0 && (
-        <div className="bg-white p-4 rounded-lg shadow">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
           <h2 className="text-lg font-semibold mb-3">Top Report Reasons</h2>
           <div className="space-y-2">
             {stats.topReasons.map((item, idx) => (
               <div key={idx} className="flex items-center justify-between">
-                <span className="text-gray-700">{item.reason}</span>
-                <span className="font-semibold text-blue-600">{item.count}</span>
+                <span className="text-foreground">{item.reason}</span>
+                <span className="font-semibold text-primary">{item.count}</span>
               </div>
             ))}
           </div>
@@ -174,7 +174,9 @@ export default function ReportManager() {
               setPage(1);
             }}
             className={`px-4 py-2 rounded ${
-              filterStatus === status ? 'bg-blue-600 text-white' : 'bg-gray-200'
+              filterStatus === status
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-accent'
             }`}
           >
             {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -183,9 +185,9 @@ export default function ReportManager() {
       </div>
 
       {/* Reports List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b">
+          <thead className="border-b border-border bg-muted/40">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold">ID</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">Reporter</th>
@@ -211,7 +213,7 @@ export default function ReportManager() {
               </tr>
             ) : (
               reports.map((report) => (
-                <tr key={report._id} className="hover:bg-gray-50">
+                <tr key={report._id} className="hover:bg-accent/40">
                   <td className="px-6 py-4 text-sm font-mono">{report._id.slice(-8)}</td>
                   <td className="px-6 py-4 text-sm">{report.reporterId?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-sm">{report.targetType}</td>
@@ -227,7 +229,7 @@ export default function ReportManager() {
                   <td className="px-6 py-4 text-sm">
                     <button
                       onClick={() => setSelectedReport(report)}
-                      className="text-blue-600 hover:underline"
+                      className="text-primary hover:underline"
                     >
                       View
                     </button>
@@ -240,22 +242,22 @@ export default function ReportManager() {
 
         {/* Pagination */}
         {totalReports > 0 && (
-          <div className="px-6 py-4 border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+          <div className="flex items-center justify-between border-t border-border px-6 py-4">
+            <div className="text-sm text-muted-foreground">
               Page {page} of {Math.ceil(totalReports / itemsPerPage)} ({totalReports} total)
             </div>
             <div className="space-x-2">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={page * itemsPerPage >= totalReports}
-                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
               >
                 Next
               </button>
@@ -266,33 +268,33 @@ export default function ReportManager() {
 
       {/* Report Detail Modal */}
       {selectedReport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 p-6 max-h-screen overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm">
+          <div className="mx-4 max-h-screen w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl">
             <h2 className="text-2xl font-bold mb-4">Report Details</h2>
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-600">Reporter</label>
+                <label className="text-sm text-muted-foreground">Reporter</label>
                 <p className="font-semibold">{selectedReport.reporterId?.name}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Target Type</label>
+                <label className="text-sm text-muted-foreground">Target Type</label>
                 <p className="font-semibold">{selectedReport.targetType}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Reason</label>
+                <label className="text-sm text-muted-foreground">Reason</label>
                 <p className="font-semibold">{selectedReport.reason}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Description</label>
-                <p className="bg-gray-50 p-3 rounded">{selectedReport.description}</p>
+                <label className="text-sm text-muted-foreground">Description</label>
+                <p className="rounded-md bg-muted/60 p-3">{selectedReport.description}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Current Status</label>
+                <label className="text-sm text-muted-foreground">Current Status</label>
                 <p className={`font-semibold px-2 py-1 rounded-full text-sm w-fit ${getStatusColor(selectedReport.status)}`}>
                   {selectedReport.status}
                 </p>
@@ -300,18 +302,18 @@ export default function ReportManager() {
 
               {selectedReport.resolution && (
                 <div>
-                  <label className="text-sm text-gray-600">Resolution</label>
-                  <p className="bg-green-50 p-3 rounded">{selectedReport.resolution}</p>
+                  <label className="text-sm text-muted-foreground">Resolution</label>
+                  <p className="rounded-md bg-secondary/15 p-3">{selectedReport.resolution}</p>
                 </div>
               )}
 
               {selectedReport.status === 'open' || selectedReport.status === 'investigating' ? (
-                <div className="space-y-3 mt-6 pt-4 border-t">
+                <div className="mt-6 space-y-3 border-t border-border pt-4">
                   <textarea
                     value={resolutionText}
                     onChange={(e) => setResolutionText(e.target.value)}
                     placeholder="Resolution note (optional)"
-                    className="w-full border rounded p-2 text-sm"
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     rows={3}
                   />
 
@@ -319,20 +321,20 @@ export default function ReportManager() {
                     {selectedReport.status === 'open' && (
                       <button
                         onClick={() => updateReportStatus(selectedReport._id, 'investigating', resolutionText)}
-                        className="flex-1 bg-yellow-600 text-white py-2 rounded hover:bg-yellow-700"
+                        className="flex-1 rounded-full bg-primary py-2 text-primary-foreground hover:bg-primary/90"
                       >
                         Mark Investigating
                       </button>
                     )}
                     <button
                       onClick={() => updateReportStatus(selectedReport._id, 'resolved', resolutionText)}
-                      className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700"
+                      className="flex-1 rounded-full bg-secondary py-2 text-secondary-foreground hover:bg-secondary/90"
                     >
                       Resolve
                     </button>
                     <button
                       onClick={() => updateReportStatus(selectedReport._id, 'dismissed', resolutionText)}
-                      className="flex-1 bg-gray-600 text-white py-2 rounded hover:bg-gray-700"
+                      className="flex-1 rounded-full bg-muted py-2 text-foreground hover:bg-accent"
                     >
                       Dismiss
                     </button>
@@ -343,7 +345,7 @@ export default function ReportManager() {
 
             <button
               onClick={() => setSelectedReport(null)}
-              className="mt-6 w-full bg-gray-200 py-2 rounded hover:bg-gray-300"
+              className="mt-6 w-full rounded-full bg-muted py-2 hover:bg-accent"
             >
               Close
             </button>

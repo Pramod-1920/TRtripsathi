@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -159,7 +159,7 @@ function getNextSubRankTarget(level: number, totalXp: number) {
 
     return {
       hasNextTarget: true,
-      targetLabel: `${nextTier.name} (${nextTier.code}) • ${nextTier.subRanks[0]}`,
+      targetLabel: `${nextTier.name} (${nextTier.code}) * ${nextTier.subRanks[0]}`,
       targetSubtitle: 'Next rank promotion target',
       currentRankXp: Math.min(spanXp, earnedXp),
       totalRemainingXp: Math.max(0, targetXp - totalXp),
@@ -645,8 +645,8 @@ export default function UserDetailPage() {
       };
 
       const successMsg = result.autoRankedUp
-        ? `✅ ${result.message}\n🎉 User auto-ranked up to ${result.newRank}!\n${result.autoRankUpReason ?? ''}`
-        : `✅ ${result.message}\nNew Rank XP: ${result.newXp}, Level: ${result.newLevel}, Rank: ${result.newRank}`;
+        ? `[OK] ${result.message}\nUser auto-ranked up to ${result.newRank}!\n${result.autoRankUpReason ?? ''}`
+        : `[OK] ${result.message}\nNew Rank XP: ${result.newXp}, Level: ${result.newLevel}, Rank: ${result.newRank}`;
 
       setSuccess(successMsg);
       closeXpActionModal();
@@ -831,7 +831,7 @@ export default function UserDetailPage() {
   if (loading) {
     return (
       <div className="p-8">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+        <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
           Loading profile from the backend...
         </div>
       </div>
@@ -861,17 +861,17 @@ export default function UserDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             href="/users"
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-accent rounded-lg transition-colors"
           >
-            <FiArrowLeft size={24} className="text-slate-600" />
+            <FiArrowLeft size={24} className="text-muted-foreground" />
           </Link>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
+            <h1 className="text-3xl font-bold text-foreground">
               {formData.firstName} {formData.lastName}
             </h1>
-            <p className="text-sm text-slate-500">{formData.location || 'No location provided'}</p>
-            <p className="text-xs text-slate-400 mt-1">
-              {formData.phoneNumber || 'No phone number'}{formData.email ? ` • ${formData.email}` : ''}
+            <p className="text-sm text-muted-foreground">{formData.location || 'No location provided'}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {formData.phoneNumber || 'No phone number'}{formData.email ? ` * ${formData.email}` : ''}
             </p>
           </div>
         </div>
@@ -880,14 +880,14 @@ export default function UserDetailPage() {
             <>
               <button
                 onClick={handleSave}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90 transition-colors"
               >
                 <FiSave size={20} />
                 Save Changes
               </button>
               <button
                 onClick={() => setIsEditing(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                className="px-4 py-2 border border-border rounded-lg hover:bg-muted/50 transition-colors"
               >
                 Cancel
               </button>
@@ -896,13 +896,13 @@ export default function UserDetailPage() {
             <>
               <button
                 onClick={() => setIsEditing(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 Edit User
               </button>
               <button
                 onClick={handleDelete}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground rounded-lg hover:bg-destructive/90 transition-colors"
               >
                 <FiTrash2 size={20} />
                 Delete
@@ -916,12 +916,12 @@ export default function UserDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Form */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-6">Personal Information</h2>
+          <div className="bg-card rounded-lg border border-border p-6">
+            <h2 className="text-lg font-semibold text-foreground mb-6">Personal Information</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Phone Number</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Phone Number</label>
                 <input
                   type="text"
                   name="phoneNumber"
@@ -932,11 +932,11 @@ export default function UserDetailPage() {
                   maxLength={10}
                   pattern="\d{10}"
                   placeholder="Enter 10-digit phone number"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Email</label>
                 <input
                   type="email"
                   name="email"
@@ -945,68 +945,68 @@ export default function UserDetailPage() {
                   disabled={!isEditing}
                   required
                   placeholder="Enter email address"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">First Name</label>
+                <label className="block text-sm font-medium text-foreground mb-2">First Name</label>
                 <input
                   type="text"
                   name="firstName"
                   value={formData.firstName ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Last Name</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Last Name</label>
                 <input
                   name="lastName"
                   type="text"
                   value={formData.lastName ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Date of Birth</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Date of Birth</label>
                 <input
                   type="date"
                   name="dateOfBirth"
                   value={formData.dateOfBirth ? formData.dateOfBirth.slice(0, 10) : ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Age</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Age</label>
                 <input
                   type="number"
                   value={formData.age ?? ''}
                   disabled
-                  className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600"
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-muted/50 text-muted-foreground"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Gender</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Gender</label>
                 <select
                   name="gender"
                   value={formData.gender ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 >
                   <option value="">Select gender</option>
                   {GENDER_OPTIONS.map((option) => (
@@ -1017,9 +1017,9 @@ export default function UserDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Languages Known</label>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="mb-3 text-xs text-slate-500">
+                <label className="block text-sm font-medium text-foreground mb-2">Languages Known</label>
+                <div className="rounded-xl border border-border bg-muted/50 p-3">
+                  <p className="mb-3 text-xs text-muted-foreground">
                     Select all languages this user knows. If you choose Other, add language name(s) below.
                   </p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -1033,10 +1033,10 @@ export default function UserDetailPage() {
                           onClick={() => toggleLanguage(language)}
                           disabled={!isEditing}
                           aria-pressed={isSelected}
-                          className={`rounded-xl border px-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          className={`rounded-xl border px-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary/40 ${
                             isSelected
-                              ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                              : 'border-border bg-card text-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary'
                           } disabled:cursor-not-allowed disabled:opacity-70`}
                         >
                           {language}
@@ -1047,20 +1047,20 @@ export default function UserDetailPage() {
 
                   {(formData.languagesKnown ?? []).includes(OTHER_LANGUAGE_VALUE) && (
                     <div className="mt-3">
-                      <label className="mb-1 block text-xs font-medium text-slate-600">Other language(s)</label>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Other language(s)</label>
                       <input
                         type="text"
                         value={customOtherLanguage}
                         onChange={(e) => setCustomOtherLanguage(e.target.value)}
                         disabled={!isEditing}
                         placeholder="Example: French or French, Spanish"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                        className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                       />
                     </div>
                   )}
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected</span>
+                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Selected</span>
                     {getLanguagesForSave(formData.languagesKnown ?? []).length > 0 ? (
                       getLanguagesForSave(formData.languagesKnown ?? []).map((language) => (
                         <button
@@ -1068,7 +1068,7 @@ export default function UserDetailPage() {
                           type="button"
                           onClick={() => removeLanguage(language)}
                           disabled={!isEditing}
-                          className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
+                          className="inline-flex items-center gap-1 rounded-full bg-card px-3 py-1 text-xs font-medium text-foreground ring-1 ring-border hover:bg-accent disabled:cursor-not-allowed disabled:opacity-70"
                           title={`Remove ${language}`}
                           aria-label={`Remove ${language}`}
                         >
@@ -1077,19 +1077,19 @@ export default function UserDetailPage() {
                         </button>
                       ))
                     ) : (
-                      <span className="text-sm text-slate-500">No languages selected yet</span>
+                      <span className="text-sm text-muted-foreground">No languages selected yet</span>
                     )}
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Click selected chips to remove them.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Click selected chips to remove them.</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Profile Photo</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Profile Photo</label>
                 {formData.profilePhoto ? (
-                  <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  <div className="overflow-hidden rounded-lg border border-border bg-muted/50">
                     <Image
                       src={formData.profilePhoto}
                       alt="Profile photo"
@@ -1100,7 +1100,7 @@ export default function UserDetailPage() {
                     />
                   </div>
                 ) : (
-                  <div className="flex h-52 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                  <div className="flex h-52 items-center justify-center rounded-lg border border-dashed border-border bg-muted/50 text-sm text-muted-foreground">
                     No profile photo available
                   </div>
                 )}
@@ -1109,24 +1109,24 @@ export default function UserDetailPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Age</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Age</label>
                 <input
                   type="number"
                   name="age"
                   value={formData.age ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Experience Level</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Experience Level</label>
                 <select
                   name="experienceLevel"
                   value={formData.experienceLevel ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 >
                   <option value="">Select level</option>
                   <option value="beginner">Beginner</option>
@@ -1138,74 +1138,74 @@ export default function UserDetailPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Profile Photo URL</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Profile Photo URL</label>
                 <input
                   type="text"
                   name="profilePhoto"
                   value={formData.profilePhoto ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Landmark</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Landmark</label>
                 <input
                   type="text"
                   name="landmark"
                   value={formData.landmark ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Bio</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Bio</label>
               <textarea
                 name="bio"
                 value={formData.bio ?? ''}
                 onChange={handleInputChange}
                 disabled={!isEditing}
                 rows={4}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
               />
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Location</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Location</label>
               <input
                 type="text"
                 name="location"
                 value={formData.location ?? ''}
                 onChange={handleInputChange}
                 disabled={!isEditing}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Province</label>
+                <label className="block text-sm font-medium text-foreground mb-2">Province</label>
                 <input
                   type="text"
                   name="province"
                   value={formData.province ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">District</label>
+                <label className="block text-sm font-medium text-foreground mb-2">District</label>
                 <input
                   type="text"
                   name="district"
                   value={formData.district ?? ''}
                   onChange={handleInputChange}
                   disabled={!isEditing}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                  className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-muted/50"
                 />
               </div>
             </div>
@@ -1217,16 +1217,16 @@ export default function UserDetailPage() {
                 checked={formData.isProfilePublic ?? false}
                 onChange={handleInputChange}
                 disabled={!isEditing}
-                className="w-4 h-4 rounded border-slate-300"
+                className="w-4 h-4 rounded border-border"
               />
-              <label className="ml-3 text-sm font-medium text-slate-700">Make profile public</label>
+              <label className="ml-3 text-sm font-medium text-foreground">Make profile public</label>
             </div>
           </div>
 
-          <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
+          <div className="mt-6 bg-card rounded-lg border border-border p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">XP History Manager</h2>
+                <h2 className="text-lg font-semibold text-foreground">XP History Manager</h2>
                 <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                   Rank resets at level-up
                 </span>
@@ -1234,22 +1234,22 @@ export default function UserDetailPage() {
               <button
                 type="button"
                 onClick={openAddXpModal}
-                className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                className="rounded-full bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
               >
                 Add XP
               </button>
             </div>
-            <p className="text-sm text-slate-600 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               Admins can add XP to users (capped at 500 per action). Auto-rank-up will occur when user reaches level threshold and completes all rank-up achievements.
             </p>
 
             {(formData.xpHistory ?? []).length === 0 ? (
-              <p className="text-sm text-slate-500">No XP history entries found.</p>
+              <p className="text-sm text-muted-foreground">No XP history entries found.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-slate-600">
+                    <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="px-3 py-2">Awarded At</th>
                       <th className="px-3 py-2">Event</th>
                       <th className="px-3 py-2">Rule</th>
@@ -1268,20 +1268,20 @@ export default function UserDetailPage() {
                         const isEditingRow = editingHistoryId === historyId;
 
                         return (
-                          <tr key={historyId || `${entry.contextKey ?? 'ctx'}-${entry.awardedAt ?? Date.now()}`} className="border-b border-slate-100 align-top">
-                            <td className="px-3 py-2 text-slate-700">
+                          <tr key={historyId || `${entry.contextKey ?? 'ctx'}-${entry.awardedAt ?? Date.now()}`} className="border-b border-border/60 align-top">
+                            <td className="px-3 py-2 text-foreground">
                               {entry.awardedAt ? new Date(entry.awardedAt).toLocaleString() : 'N/A'}
                             </td>
-                            <td className="px-3 py-2 text-slate-700">{entry.eventKey ?? '-'}</td>
-                            <td className="px-3 py-2 text-slate-700">{entry.ruleName ?? entry.ruleCode ?? '-'}</td>
-                            <td className="px-3 py-2 text-slate-700">
+                            <td className="px-3 py-2 text-foreground">{entry.eventKey ?? '-'}</td>
+                            <td className="px-3 py-2 text-foreground">{entry.ruleName ?? entry.ruleCode ?? '-'}</td>
+                            <td className="px-3 py-2 text-foreground">
                               {isEditingRow ? (
                                 <input
                                   type="number"
                                   min={0}
                                   value={editingHistoryPoints}
                                   onChange={(event) => setEditingHistoryPoints(event.target.value)}
-                                  className="w-24 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-24 rounded-md border border-border px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/40"
                                 />
                               ) : (
                                 Math.max(0, Math.floor(Number(entry.points ?? 0)))
@@ -1289,27 +1289,27 @@ export default function UserDetailPage() {
                             </td>
                             <td className="px-3 py-2">
                               {!historyId ? (
-                                <span className="text-xs text-slate-400">Entry ID unavailable</span>
+                                <span className="text-xs text-muted-foreground">Entry ID unavailable</span>
                               ) : isEditingRow ? (
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
                                     onClick={requestSaveXpHistoryEdit}
                                     disabled={savingHistoryId === historyId}
-                                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                                    className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/90 disabled:opacity-60"
                                   >
                                     {savingHistoryId === historyId ? 'Saving...' : 'Save'}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={cancelXpHistoryEdit}
-                                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                                    className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted/50"
                                   >
                                     Cancel
                                   </button>
                                 </div>
                               ) : (
-                                <span className="text-xs text-slate-500">View only - use "Add XP" button above</span>
+                                <span className="text-xs text-muted-foreground">View only - use "Add XP" button above</span>
                               )}
                             </td>
                           </tr>
@@ -1325,55 +1325,55 @@ export default function UserDetailPage() {
         {/* Sidebar */}
         <div>
           {/* Stats Card */}
-          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Account Stats</h3>
+          <div className="bg-card rounded-lg border border-border p-6 mb-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Account Stats</h3>
             <div className="space-y-4">
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total XP</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total XP</p>
+                <p className="text-2xl font-bold text-foreground mt-1">
                   {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   Current Rank XP: {Number(formData.xp ?? 0).toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Level</p>
-                <p className="text-lg font-semibold text-slate-900 mt-1">{effectiveLevel}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Level</p>
+                <p className="text-lg font-semibold text-foreground mt-1">{effectiveLevel}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rank</p>
-                <p className="text-lg font-semibold text-slate-900 mt-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rank</p>
+                <p className="text-lg font-semibold text-foreground mt-1">
                   {formatRankLabel(formData.experienceLevel, effectiveLevel)}
                 </p>
-                <p className="text-xs text-slate-500">{getRankTier(effectiveLevel).name}</p>
+                <p className="text-xs text-muted-foreground">{getRankTier(effectiveLevel).name}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Sub-Rank</p>
-                <p className="text-lg font-semibold text-blue-700 mt-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sub-Rank</p>
+                <p className="text-lg font-semibold text-primary mt-1">
                   {formData.subRank ?? getSubRank(effectiveLevel)}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {getSubRankBands(effectiveLevel).map((band) => `${band.name} (${band.fromLevel}-${band.toLevel})`).join(' • ')}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {getSubRankBands(effectiveLevel).map((band) => `${band.name} (${band.fromLevel}-${band.toLevel})`).join(' * ')}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank Band</p>
-                <p className="text-sm font-semibold text-slate-900 mt-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Rank Band</p>
+                <p className="text-sm font-semibold text-foreground mt-1">
                   Levels {getRankTier(effectiveLevel).minLevel}-{getRankTier(effectiveLevel).maxLevel}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Badge</p>
-                <p className="text-lg font-semibold text-purple-600 mt-1">{formData.badge || 'No badge'}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Badge</p>
+                <p className="text-lg font-semibold text-tertiary mt-1">{formData.badge || 'No badge'}</p>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Profile Status</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Profile Status</p>
                 <div className="mt-1">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     formData.profileCompleted
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-yellow-50 text-yellow-700'
+                      ? 'bg-secondary/15 text-secondary'
+                      : 'bg-primary/15 text-primary'
                   }`}>
                     {formData.profileCompleted ? 'Complete' : 'Incomplete'}
                   </span>
@@ -1382,33 +1382,33 @@ export default function UserDetailPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Target Progress</h3>
+          <div className="bg-card rounded-lg border border-border p-6 mb-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Next Target Progress</h3>
             {rankProgress.hasNextTarget ? (
-              <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-4 rounded-2xl border border-border bg-muted/50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub-Rank Progress</p>
-                    <p className="mt-1 text-sm text-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sub-Rank Progress</p>
+                    <p className="mt-1 text-sm text-foreground">
                       {rankProgress.currentRankXp.toLocaleString()} XP in this rank
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Rank XP is band-based and resets on rank-up; Total XP never resets.
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-foreground">
                       Next: {rankProgress.targetLabel}
                     </p>
-                    <p className="text-xs text-slate-500">{rankProgress.targetSubtitle}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">{rankProgress.targetSubtitle}</p>
+                    <p className="text-xs text-muted-foreground">
                       {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
+                <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-linear-to-r from-emerald-500 via-cyan-500 to-blue-500 transition-all duration-500"
+                    className="h-full rounded-full bg-linear-to-r from-secondary via-tertiary to-primary transition-all duration-500"
                     style={{ width: `${Math.max(0, Math.min(100, rankProgress.progressPercentage))}%` }}
                   />
                 </div>
@@ -1419,59 +1419,59 @@ export default function UserDetailPage() {
               </p>
             )}
             {rankProgress.hasNextTarget ? (
-              <div className="space-y-3 text-sm text-slate-700">
+              <div className="space-y-3 text-sm text-foreground">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Next Target</span>
-                  <span className="font-semibold text-slate-900">{rankProgress.targetLabel}</span>
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Next Target</span>
+                  <span className="font-semibold text-foreground">{rankProgress.targetLabel}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Remaining</span>
-                  <span className="font-semibold text-slate-900">{rankProgress.totalRemainingXp}</span>
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">XP Remaining</span>
+                  <span className="font-semibold text-foreground">{rankProgress.totalRemainingXp}</span>
                 </div>
                 {formData.nextRankProgress?.remainingAchievements
                 && Object.keys(formData.nextRankProgress.remainingAchievements).length > 0
                 && rankProgress.totalRemainingXp === 0 ? (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Remaining Achievements</p>
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Remaining Achievements</p>
                     <div className="space-y-1">
                       {Object.entries(formData.nextRankProgress.remainingAchievements).map(([key, value]) => (
-                        <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                          <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                          <span className="font-semibold text-slate-900">{value}</span>
+                        <div key={key} className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+                          <span className="capitalize text-muted-foreground">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                          <span className="font-semibold text-foreground">{value}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <p className="text-slate-500">Progress updates automatically for sub-rank, then rank promotion.</p>
+                  <p className="text-muted-foreground">Progress updates automatically for sub-rank, then rank promotion.</p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-slate-500">No further sub-rank progression available.</p>
+              <p className="text-sm text-muted-foreground">No further sub-rank progression available.</p>
             )}
           </div>
 
           {/* Info Card */}
-          <div className="bg-slate-50 rounded-lg p-4">
-            <p className="text-xs text-slate-600">
+          <div className="bg-muted/50 rounded-lg p-4">
+            <p className="text-xs text-muted-foreground">
               <span className="font-semibold">User ID:</span> {userId}
             </p>
-            <p className="text-xs text-slate-600 mt-2">
+            <p className="text-xs text-muted-foreground mt-2">
               <span className="font-semibold">Created:</span> {formData.createdAt ? new Date(formData.createdAt).toLocaleString() : 'N/A'}
             </p>
           </div>
 
-          <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900">Photo Verification Requests</h4>
+          <div className="mt-6 rounded-lg border border-border bg-card p-4">
+            <h4 className="text-sm font-semibold text-foreground">Photo Verification Requests</h4>
             <div className="mt-3 space-y-3">
               {(formData.photoVerificationRequests ?? []).length === 0 && (
-                <p className="text-xs text-slate-500">No photo verification requests.</p>
+                <p className="text-xs text-muted-foreground">No photo verification requests.</p>
               )}
 
               {(formData.photoVerificationRequests ?? []).map((request) => (
-                <div key={request.requestCode} className="rounded-md border border-slate-200 p-3">
+                <div key={request.requestCode} className="rounded-md border border-border p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-700">{request.requestCode}</p>
+                    <p className="text-xs font-semibold text-foreground">{request.requestCode}</p>
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                         request.status === 'approved'
@@ -1484,13 +1484,13 @@ export default function UserDetailPage() {
                       {request.status}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-slate-600">Campaign: {request.campaignId}</p>
-                  <p className="text-xs text-slate-600">Kind: {request.kind}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Campaign: {request.campaignId}</p>
+                  <p className="text-xs text-muted-foreground">Kind: {request.kind}</p>
                   <a
                     href={request.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-1 inline-block text-xs text-blue-700 underline"
+                    className="mt-1 inline-block text-xs text-primary underline"
                   >
                     Open photo
                   </a>
@@ -1507,14 +1507,14 @@ export default function UserDetailPage() {
                           }))
                         }
                         placeholder="Optional review note"
-                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded-md border border-border px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40"
                       />
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => void handleReviewPhotoRequest(request.requestCode, 'approved')}
                           disabled={reviewingCode === request.requestCode}
-                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/90 disabled:opacity-60"
                         >
                           <FiCheck size={12} />
                           Approve
@@ -1523,7 +1523,7 @@ export default function UserDetailPage() {
                           type="button"
                           onClick={() => void handleReviewPhotoRequest(request.requestCode, 'rejected')}
                           disabled={reviewingCode === request.requestCode}
-                          className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                          className="rounded-full bg-destructive px-2.5 py-1 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
                         >
                           Reject
                         </button>
@@ -1532,7 +1532,7 @@ export default function UserDetailPage() {
                   )}
 
                   {request.reviewNote && (
-                    <p className="mt-2 text-xs text-slate-600">Note: {request.reviewNote}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">Note: {request.reviewNote}</p>
                   )}
                 </div>
               ))}
@@ -1542,10 +1542,10 @@ export default function UserDetailPage() {
       </div>
 
       {achievementPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900">Achievement Unlocked</h3>
-            <p className="mt-2 text-sm text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-foreground">Achievement Unlocked</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
               The user completed {achievementPopup.items.length} achievement{achievementPopup.items.length > 1 ? 's' : ''}.
             </p>
             {achievementPopup.totalRewardXp > 0 && (
@@ -1556,9 +1556,9 @@ export default function UserDetailPage() {
 
             <div className="mt-4 space-y-2">
               {achievementPopup.items.map((item) => (
-                <div key={item.key} className="rounded-lg border border-slate-200 px-3 py-2">
-                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
-                  <p className="text-xs text-slate-500">
+                <div key={item.key} className="rounded-lg border border-border px-3 py-2">
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  <p className="text-xs text-muted-foreground">
                     {item.rewardXp > 0 ? `Reward: +${item.rewardXp} XP` : 'No XP reward configured'}
                   </p>
                 </div>
@@ -1569,7 +1569,7 @@ export default function UserDetailPage() {
               <button
                 type="button"
                 onClick={() => setAchievementPopup(null)}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Close
               </button>
@@ -1599,17 +1599,17 @@ export default function UserDetailPage() {
       {/* Add XP Modal */}
       {xpActionModal?.mode === 'add' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add XP to User</h2>
+          <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-foreground mb-4">Add XP to User</h2>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Current XP: <span className="font-semibold text-blue-600">{formData.xp}</span>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Current XP: <span className="font-semibold text-primary">{formData.xp}</span>
               </label>
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 XP to Add <span className="text-red-600">*</span>
               </label>
               <input
@@ -1619,13 +1619,13 @@ export default function UserDetailPage() {
                 value={xpToAddAmount}
                 onChange={(e) => setXpToAddAmount(e.target.value)}
                 placeholder="Enter amount (1-500)"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
-              <p className="text-xs text-slate-500 mt-1">Maximum 500 XP per action</p>
+              <p className="text-xs text-muted-foreground mt-1">Maximum 500 XP per action</p>
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Reason <span className="text-red-600">*</span>
               </label>
               <textarea
@@ -1633,7 +1633,7 @@ export default function UserDetailPage() {
                 onChange={(e) => setXpActionReason(e.target.value)}
                 placeholder="Enter reason for adding XP (e.g., 'Manual correction for completed activity')"
                 rows={3}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
 
@@ -1642,7 +1642,7 @@ export default function UserDetailPage() {
                 type="button"
                 onClick={closeXpActionModal}
                 disabled={xpActionProcessing}
-                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -1650,7 +1650,7 @@ export default function UserDetailPage() {
                 type="button"
                 onClick={() => void confirmXpAction()}
                 disabled={xpActionProcessing}
-                className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                className="flex-1 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
               >
                 {xpActionProcessing ? 'Adding XP...' : 'Add XP'}
               </button>
@@ -1661,3 +1661,4 @@ export default function UserDetailPage() {
     </div>
   );
 }
+

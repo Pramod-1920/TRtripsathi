@@ -74,15 +74,15 @@ export default function MediaModerationManager() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-primary/15 text-primary';
       case 'approved':
-        return 'bg-green-100 text-green-800';
+        return 'bg-secondary/20 text-secondary';
       case 'rejected':
-        return 'bg-red-100 text-red-800';
+        return 'bg-destructive/15 text-destructive';
       case 'flagged_ai':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-tertiary/20 text-tertiary';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -131,31 +131,31 @@ export default function MediaModerationManager() {
   };
 
   if (error) {
-    return <div className="text-red-600 p-4">{error}</div>;
+    return <div className="p-4 text-destructive">{error}</div>;
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 text-foreground">
       <h1 className="text-3xl font-bold">Media Moderation</h1>
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-blue-600">Pending</div>
-            <div className="text-2xl font-bold text-blue-600">{stats.pending}</div>
+          <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 shadow-sm">
+            <div className="text-xs text-primary">Pending</div>
+            <div className="text-2xl font-bold text-primary">{stats.pending}</div>
           </div>
-          <div className="bg-yellow-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-yellow-600">Flagged AI</div>
-            <div className="text-2xl font-bold text-yellow-600">{stats.flagged}</div>
+          <div className="rounded-xl border border-tertiary/35 bg-tertiary/10 p-4 shadow-sm">
+            <div className="text-xs text-tertiary">Flagged AI</div>
+            <div className="text-2xl font-bold text-tertiary">{stats.flagged}</div>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-green-600">Approved</div>
-            <div className="text-2xl font-bold text-green-600">{stats.approved}</div>
+          <div className="rounded-xl border border-secondary/35 bg-secondary/15 p-4 shadow-sm">
+            <div className="text-xs text-secondary">Approved</div>
+            <div className="text-2xl font-bold text-secondary">{stats.approved}</div>
           </div>
-          <div className="bg-red-50 p-4 rounded-lg shadow">
-            <div className="text-xs text-red-600">Rejected</div>
-            <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 shadow-sm">
+            <div className="text-xs text-destructive">Rejected</div>
+            <div className="text-2xl font-bold text-destructive">{stats.rejected}</div>
           </div>
         </div>
       )}
@@ -165,15 +165,15 @@ export default function MediaModerationManager() {
         {loading ? (
           <div className="col-span-full text-center py-8">Loading...</div>
         ) : media.length === 0 ? (
-          <div className="col-span-full text-center py-8 text-gray-500">No media to review</div>
+          <div className="col-span-full py-8 text-center text-muted-foreground">No media to review</div>
         ) : (
           media.map((item) => (
             <div
               key={item._id}
               onClick={() => setSelectedMedia(item)}
-              className="cursor-pointer rounded-lg overflow-hidden shadow hover:shadow-lg transition-shadow"
+              className="cursor-pointer overflow-hidden rounded-xl border border-border bg-card shadow-sm transition hover:shadow-lg"
             >
-              <div className="relative aspect-square bg-gray-200">
+              <div className="relative aspect-square bg-muted">
                 <Image
                   src={item.cloudinaryThumbnailUrl}
                   alt="Media"
@@ -181,8 +181,8 @@ export default function MediaModerationManager() {
                   className="object-cover"
                 />
               </div>
-              <div className="p-2 bg-white">
-                <div className="text-xs text-gray-600 truncate">{item.uploaderId?.name}</div>
+              <div className="bg-card p-2">
+                <div className="truncate text-xs text-muted-foreground">{item.uploaderId?.name}</div>
                 <div className="flex items-center justify-between mt-1">
                   <span className={`text-xs px-2 py-1 rounded ${getStatusColor(item.status)}`}>
                     {item.status === 'flagged_ai' ? 'Flagged' : item.status}
@@ -200,21 +200,21 @@ export default function MediaModerationManager() {
       {/* Pagination */}
       {totalMedia > 0 && (
         <div className="flex items-center justify-between px-6 py-4">
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-muted-foreground">
             Page {page} of {Math.ceil(totalMedia / itemsPerPage)} ({totalMedia} total)
           </div>
           <div className="space-x-2">
             <button
               onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page === 1}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+              className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
             >
               Previous
             </button>
             <button
               onClick={() => setPage(page + 1)}
               disabled={page * itemsPerPage >= totalMedia}
-              className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+              className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
             >
               Next
             </button>
@@ -224,9 +224,9 @@ export default function MediaModerationManager() {
 
       {/* Media Detail Modal */}
       {selectedMedia && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 max-h-screen overflow-y-auto">
-            <div className="relative aspect-video bg-gray-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm">
+          <div className="mx-4 max-h-screen w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card shadow-xl">
+            <div className="relative aspect-video bg-muted">
               <Image
                 src={selectedMedia.cloudinaryUrl}
                 alt="Media"
@@ -237,17 +237,17 @@ export default function MediaModerationManager() {
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="text-sm text-gray-600">Uploader</label>
+                <label className="text-sm text-muted-foreground">Uploader</label>
                 <p className="font-semibold">{selectedMedia.uploaderId?.name}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Purpose</label>
+                <label className="text-sm text-muted-foreground">Purpose</label>
                 <p className="font-semibold">{selectedMedia.purpose}</p>
               </div>
 
               <div>
-                <label className="text-sm text-gray-600">Status</label>
+                <label className="text-sm text-muted-foreground">Status</label>
                 <span className={`px-2 py-1 rounded text-sm font-semibold ${getStatusColor(selectedMedia.status)}`}>
                   {selectedMedia.status}
                 </span>
@@ -255,9 +255,9 @@ export default function MediaModerationManager() {
 
               {selectedMedia.aiScore > 0 && (
                 <div>
-                  <label className="text-sm text-gray-600">AI Safety Score</label>
+                  <label className="text-sm text-muted-foreground">AI Safety Score</label>
                   <div className="flex items-center mt-1">
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
+                    <div className="h-2 flex-1 rounded-full bg-muted">
                       <div
                         className={`h-2 rounded-full ${
                           selectedMedia.aiScore > 70
@@ -275,37 +275,37 @@ export default function MediaModerationManager() {
               )}
 
               <div>
-                <label className="text-sm text-gray-600">Uploaded</label>
+                <label className="text-sm text-muted-foreground">Uploaded</label>
                 <p className="text-sm">{new Date(selectedMedia.createdAt).toLocaleString()}</p>
               </div>
 
               {selectedMedia.rejectionReason && (
                 <div>
-                  <label className="text-sm text-gray-600">Rejection Reason</label>
-                  <p className="bg-red-50 p-2 rounded text-sm">{selectedMedia.rejectionReason}</p>
+                  <label className="text-sm text-muted-foreground">Rejection Reason</label>
+                  <p className="rounded-md bg-destructive/10 p-2 text-sm">{selectedMedia.rejectionReason}</p>
                 </div>
               )}
 
               {selectedMedia.status === 'pending' || selectedMedia.status === 'flagged_ai' ? (
-                <div className="space-y-3 mt-6 pt-4 border-t">
+                <div className="mt-6 space-y-3 border-t border-border pt-4">
                   <textarea
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
                     placeholder="Rejection reason (if rejecting)"
-                    className="w-full border rounded p-2 text-sm"
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     rows={2}
                   />
 
                   <div className="flex space-x-2">
                     <button
                       onClick={() => approveMedia(selectedMedia._id)}
-                      className="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700 font-semibold"
+                      className="flex-1 rounded-full bg-secondary py-2 font-semibold text-secondary-foreground hover:bg-secondary/90"
                     >
                       Approve
                     </button>
                     <button
                       onClick={() => rejectMedia(selectedMedia._id)}
-                      className="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700 font-semibold"
+                      className="flex-1 rounded-full bg-destructive py-2 font-semibold text-destructive-foreground hover:bg-destructive/90"
                     >
                       Reject
                     </button>
@@ -316,7 +316,7 @@ export default function MediaModerationManager() {
 
             <button
               onClick={() => setSelectedMedia(null)}
-              className="w-full bg-gray-200 py-2 hover:bg-gray-300 font-semibold"
+              className="w-full bg-muted py-2 font-semibold hover:bg-accent"
             >
               Close
             </button>

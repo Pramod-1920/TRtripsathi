@@ -83,28 +83,28 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
         <button
           type="button"
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-950/40 md:hidden"
+          className="fixed inset-0 z-40 bg-foreground/35 md:hidden"
           aria-label="Close sidebar overlay"
         />
       ) : null}
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-slate-200 bg-white text-slate-900 shadow-xl transition-all duration-300 ease-out',
+          'fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
           sidebarWidthClass,
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
       >
         {/* Logo */}
-        <div className={clsx('flex items-center justify-between border-b border-slate-200 p-5', collapsed ? 'md:px-3' : 'md:px-5')}>
+        <div className={clsx('flex items-center justify-between border-b border-sidebar-border p-5', collapsed ? 'md:px-3' : 'md:px-5')}>
           <div className={clsx('min-w-0', collapsed ? 'md:hidden' : 'block')}>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">TRTrips Admin</h1>
-            <p className="text-sm text-slate-500">Management Panel</p>
+            <h1 className="text-xl font-bold tracking-tight text-sidebar-foreground">Yatri Admin</h1>
+            <p className="text-sm text-muted-foreground">Management Panel</p>
           </div>
           <button
             type="button"
             onClick={onCloseMobile}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-900 hover:bg-slate-100 md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent md:hidden"
             aria-label="Close sidebar"
           >
             <FiX size={18} />
@@ -125,8 +125,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                   'mx-2 flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
                   collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
                   active
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                 )}
               >
                 <Icon size={20} className="shrink-0" />
@@ -145,7 +145,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isMySectionActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                isMySectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               )}
             >
               <span className="flex items-center gap-3">
@@ -170,8 +170,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -190,7 +190,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isCampaignSectionActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                isCampaignSectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               )}
             >
               <span className="flex items-center gap-3">
@@ -213,8 +213,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -233,7 +233,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isExtraSectionActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                isExtraSectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               )}
             >
               <span className="flex items-center gap-3">
@@ -256,8 +256,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -270,12 +270,12 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
         </nav>
 
         {/* Logout */}
-        <div className="border-t border-slate-200 p-4">
+        <div className="border-t border-sidebar-border p-4">
           <button
             type="button"
             onClick={handleLogout}
             className={clsx(
-              'flex w-full items-center gap-3 rounded-xl px-4 py-3 font-medium text-slate-900 transition-colors hover:bg-slate-100',
+              'flex w-full items-center gap-3 rounded-xl px-4 py-3 font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent',
               collapsed ? 'md:justify-center md:px-3' : 'md:px-4'
             )}
           >

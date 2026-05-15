@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -11,6 +12,7 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _loading = false;
   String? _error;
 
@@ -34,8 +36,15 @@ class _SignupScreenState extends State<SignupScreen> {
               decoration: const InputDecoration(labelText: 'Password'),
               obscureText: true,
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmPasswordController,
+              decoration: const InputDecoration(labelText: 'Confirm password'),
+              obscureText: true,
+            ),
             const SizedBox(height: 24),
-            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: Colors.red)),
             ElevatedButton(
               onPressed: _loading ? null : _submit,
               child: _loading ? const CircularProgressIndicator() : const Text('Create account'),
@@ -54,14 +63,30 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       final phone = _phoneController.text.trim();
       final password = _passwordController.text;
-      // Basic validation
-      if (phone.isEmpty) throw Exception('Phone number is required');
-      if (password.length < 8) throw Exception('Password must be at least 8 characters');
+      final confirmPassword = _confirmPasswordController.text;
+      final validPhone = RegExp(r'^\d{10}\$').hasMatch(phone);
+      final validPassword = RegExp(
+        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@\$!%*?&])[A-Za-z\d@\$!%*?&]{6,}\$',
+      ).hasMatch(password);
+
+      if (!validPhone) {
+        throw Exception('Phone number must be exactly 10 digits');
+      }
+      if (!validPassword) {
+        throw Exception(
+          'Password must include uppercase, lowercase, number and special character',
+        );
+      }
+      if (password != confirmPassword) {
+        throw Exception('Passwords do not match');
+      }
 
       await ApiService.signup(phone, password);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('account_created', true);
       if (!mounted) return;
-      // After signup, go to onboarding to complete profile
-      Navigator.of(context).pushReplacementNamed('/onboarding');
+      // After signup, go to profile setup step
+      Navigator.of(context).pushReplacementNamed('/profile-setup');
     } catch (e) {
       setState(() {
         _error = e.toString();

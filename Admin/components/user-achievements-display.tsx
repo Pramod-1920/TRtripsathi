@@ -86,19 +86,19 @@ export default function UserAchievementsDisplay({
   };
 
   const getProgressColor = (percentage: number): string => {
-    if (percentage === 100) return 'bg-green-500';
-    if (percentage >= 75) return 'bg-blue-500';
-    if (percentage >= 50) return 'bg-yellow-500';
-    if (percentage >= 25) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (percentage === 100) return 'bg-secondary';
+    if (percentage >= 75) return 'bg-primary';
+    if (percentage >= 50) return 'bg-tertiary';
+    if (percentage >= 25) return 'bg-primary/70';
+    return 'bg-destructive';
   };
 
   if (loading) {
-    return <div className="p-6">Loading achievements...</div>;
+    return <div className="p-6 text-foreground">Loading achievements...</div>;
   }
 
   if (!achievements) {
-    return <div className="p-6">Failed to load achievements</div>;
+    return <div className="p-6 text-destructive">Failed to load achievements</div>;
   }
 
   let filteredAchievements = [...achievements.achievements];
@@ -116,28 +116,28 @@ export default function UserAchievementsDisplay({
   ).length;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl p-6 text-foreground">
       {/* Summary */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-4">🏆 Achievements</h1>
 
         {/* Progress Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 rounded-lg">
+          <div className="rounded-xl bg-linear-to-br from-primary to-primary-container p-6 text-primary-foreground shadow-md">
             <p className="text-sm opacity-90">Total Achievements</p>
             <p className="text-3xl font-bold">
               {achievements.completedAchievements}/{achievements.totalAchievements}
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white p-6 rounded-lg">
+          <div className="rounded-xl bg-linear-to-br from-secondary to-secondary/85 p-6 text-secondary-foreground shadow-md">
             <p className="text-sm opacity-90">Completion Rate</p>
             <p className="text-3xl font-bold">
               {achievements.completionPercentage}%
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-lg">
+          <div className="rounded-xl bg-linear-to-br from-tertiary to-tertiary/80 p-6 text-tertiary-foreground shadow-md">
             <p className="text-sm opacity-90">Total XP Earned</p>
             <p className="text-3xl font-bold">
               {achievements.achievements
@@ -151,13 +151,13 @@ export default function UserAchievementsDisplay({
         <div className="mb-6">
           <div className="flex justify-between mb-2">
             <span className="font-semibold">Overall Progress</span>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-muted-foreground">
               {achievements.completionPercentage}%
             </span>
           </div>
-          <div className="w-full h-4 bg-gray-300 rounded-full overflow-hidden">
+          <div className="h-4 w-full overflow-hidden rounded-full bg-secondary/20">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+              className="h-full bg-linear-to-r from-primary to-secondary transition-all duration-500"
               style={{
                 width: `${achievements.completionPercentage}%`,
               }}
@@ -172,8 +172,8 @@ export default function UserAchievementsDisplay({
           onClick={() => setSelectedCategory('')}
           className={`px-4 py-2 rounded transition ${
             selectedCategory === ''
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-foreground hover:bg-accent'
           }`}
         >
           All
@@ -185,8 +185,8 @@ export default function UserAchievementsDisplay({
             onClick={() => setSelectedCategory(cat)}
             className={`px-4 py-2 rounded transition ${
               selectedCategory === cat
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-accent'
             }`}
           >
             {getCategoryIcon(cat)} {cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -207,7 +207,7 @@ export default function UserAchievementsDisplay({
       {/* Achievements Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredAchievements.length === 0 ? (
-          <p className="col-span-full text-center text-gray-500 py-8">
+          <p className="col-span-full py-8 text-center text-muted-foreground">
             {showCompleted
               ? 'No achievements found'
               : 'You have completed all achievements in this category!'}
@@ -218,8 +218,8 @@ export default function UserAchievementsDisplay({
               key={ach.achievementId}
               className={`p-4 rounded-lg border-2 transition ${
                 ach.isCompleted
-                  ? 'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300'
-                  : 'bg-white border-gray-300 hover:border-blue-500'
+                  ? 'border-secondary/40 bg-secondary/10'
+                  : 'border-border bg-card hover:border-primary'
               }`}
             >
               {/* Header */}
@@ -231,7 +231,7 @@ export default function UserAchievementsDisplay({
                     </span>
                     <h3 className="font-bold text-lg">{ach.name}</h3>
                   </div>
-                  <p className="text-xs text-gray-500">{ach.code}</p>
+                  <p className="text-xs text-muted-foreground">{ach.code}</p>
                 </div>
                 {ach.isCompleted && (
                   <span className="text-2xl">✨</span>
@@ -244,11 +244,11 @@ export default function UserAchievementsDisplay({
                   <span className="text-sm font-semibold">
                     {ach.progress}/{ach.conditionValue}
                   </span>
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     {ach.progressPercentage}%
                   </span>
                 </div>
-                <div className="w-full h-2 bg-gray-300 rounded-full overflow-hidden">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className={`h-full transition-all duration-300 ${getProgressColor(
                       ach.progressPercentage
@@ -261,11 +261,11 @@ export default function UserAchievementsDisplay({
               {/* Metadata */}
               <div className="text-sm space-y-1">
                 {ach.badgeCode && (
-                  <p className="text-yellow-600">
+                  <p className="text-secondary">
                     🏅 Badge: {ach.badgeCode}
                   </p>
                 )}
-                <p className="text-blue-600 font-semibold">
+                <p className="font-semibold text-primary">
                   ⭐ +{ach.xpReward} XP
                 </p>
 
@@ -277,7 +277,7 @@ export default function UserAchievementsDisplay({
                         new Date(ach.completedAt).toLocaleDateString()}
                     </p>
                     {ach.timesCompleted > 1 && (
-                      <p className="text-purple-600">
+                      <p className="text-tertiary">
                         🔄 Unlocked {ach.timesCompleted} times
                       </p>
                     )}
@@ -285,7 +285,7 @@ export default function UserAchievementsDisplay({
                 )}
 
                 {!ach.isCompleted && (
-                  <p className="text-gray-500">
+                  <p className="text-muted-foreground">
                     Need {ach.conditionValue - ach.progress} more
                   </p>
                 )}
@@ -297,15 +297,15 @@ export default function UserAchievementsDisplay({
 
       {/* Admin Panel (if enabled) */}
       {showAdminPanel && (
-        <div className="mt-12 p-6 bg-gray-100 rounded-lg border-2 border-gray-300">
+        <div className="mt-12 rounded-xl border border-border bg-card p-6 shadow-sm">
           <h2 className="text-2xl font-bold mb-4">🔧 Admin Panel</h2>
           <button
             onClick={loadAchievements}
-            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            className="rounded-full bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
           >
             Refresh Achievements
           </button>
-          <p className="mt-4 text-sm text-gray-600">
+          <p className="mt-4 text-sm text-muted-foreground">
             Use the Achievement Manager to create and modify achievements.
           </p>
         </div>

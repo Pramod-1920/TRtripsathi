@@ -1,6 +1,4 @@
-
 import 'package:flutter/material.dart';
-
 import '../services/api.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -43,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacementNamed('/profile');
+      Navigator.of(context).pushReplacementNamed('/dashboard');
     } catch (e) {
       if (!mounted) return;
 
@@ -164,9 +162,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         });
                       },
                       icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
+                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
                       ),
                     ),
                     border: OutlineInputBorder(

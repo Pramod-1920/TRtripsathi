@@ -43,12 +43,12 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   }, [profilePhoto, setProfilePhoto]);
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-6 lg:px-8">
+    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onMenuClick}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-900 transition-colors hover:bg-slate-100"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-accent"
           aria-label="Toggle sidebar"
         >
           <FiMenu size={20} className="md:hidden" />
@@ -59,23 +59,23 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
           )}
         </button>
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">Dashboard</h2>
-          <p className="text-sm text-slate-500">Welcome back, Admin</p>
+          <h2 className="text-xl font-semibold text-foreground sm:text-2xl">Dashboard</h2>
+          <p className="text-sm text-muted-foreground">Welcome back, Admin</p>
         </div>
       </div>
       <div className="flex items-center gap-4">
         <div className="text-right">
-          <p className="text-sm font-medium text-slate-900">{user?.phoneNumber || 'Admin'}</p>
-          <p className="text-xs text-slate-500">{user?.role || 'admin'}</p>
+          <p className="text-sm font-medium text-foreground">{user?.phoneNumber || 'Admin'}</p>
+          <p className="text-xs text-muted-foreground">{user?.role || 'admin'}</p>
         </div>
         {profilePhoto ? (
           <img
             src={profilePhoto}
             alt="Admin profile"
-            className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+            className="h-10 w-10 rounded-full border border-border object-cover"
           />
         ) : (
-          <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
+          <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
             A
           </div>
         )}

@@ -86,33 +86,33 @@ export default function ReviewManager() {
     : [];
 
   if (error) {
-    return <div className="text-red-600 p-4">{error}</div>;
+    return <div className="p-4 text-destructive">{error}</div>;
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 text-foreground">
       <h1 className="text-3xl font-bold">Review Management</h1>
 
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow">
-            <div className="text-sm text-gray-600">Average Rating</div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-sm text-muted-foreground">Average Rating</div>
             <div className={`text-3xl font-bold ${getRatingColor(stats.averageRating)}`}>
               {stats.averageRating.toFixed(2)} / 5.0
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-lg shadow">
-            <div className="text-sm text-gray-600">Total Reviews</div>
-            <div className="text-3xl font-bold text-blue-600">{stats.totalReviews}</div>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="text-sm text-muted-foreground">Total Reviews</div>
+            <div className="text-3xl font-bold text-primary">{stats.totalReviews}</div>
           </div>
         </div>
       )}
 
       {/* Rating Distribution Chart */}
       {stats && (
-        <div className="bg-white p-4 rounded-lg shadow">
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
           <h2 className="text-xl font-semibold mb-4">Rating Distribution</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
@@ -120,16 +120,16 @@ export default function ReviewManager() {
               <XAxis dataKey="name" />
               <YAxis />
               <Tooltip />
-              <Bar dataKey="count" fill="#3b82f6" />
+              <Bar dataKey="count" fill="hsl(var(--primary))" />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
 
       {/* Reviews List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b">
+          <thead className="border-b border-border bg-muted/40">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold">From</th>
               <th className="px-6 py-3 text-left text-sm font-semibold">To</th>
@@ -153,7 +153,7 @@ export default function ReviewManager() {
               </tr>
             ) : (
               reviews.map((review) => (
-                <tr key={review._id} className="hover:bg-gray-50">
+                <tr key={review._id} className="hover:bg-accent/40">
                   <td className="px-6 py-4 text-sm">{review.reviewerId?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-sm">{review.revieweeId?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-sm">
@@ -161,7 +161,7 @@ export default function ReviewManager() {
                       {review.rating}⭐
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-xs">
+                  <td className="max-w-xs truncate px-6 py-4 text-sm text-muted-foreground">
                     {review.comment || '-'}
                   </td>
                   <td className="px-6 py-4 text-sm">
@@ -175,22 +175,22 @@ export default function ReviewManager() {
 
         {/* Pagination */}
         {totalReviews > 0 && (
-          <div className="px-6 py-4 border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+          <div className="flex items-center justify-between border-t border-border px-6 py-4">
+            <div className="text-sm text-muted-foreground">
               Page {page} of {Math.ceil(totalReviews / itemsPerPage)} ({totalReviews} total)
             </div>
             <div className="space-x-2">
               <button
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
-                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={page * itemsPerPage >= totalReviews}
-                className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
               >
                 Next
               </button>

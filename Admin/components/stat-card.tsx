@@ -17,24 +17,24 @@ export function StatCard({
   color = 'blue',
 }: StatCardProps) {
   const colorClasses = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600',
-    red: 'bg-red-50 text-red-600',
-    purple: 'bg-purple-50 text-purple-600',
+    blue: 'bg-primary/12 text-primary',
+    green: 'bg-secondary/16 text-secondary',
+    red: 'bg-error-container text-error',
+    purple: 'bg-tertiary/16 text-tertiary',
   };
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-6">
+    <div className="bg-card rounded-2xl border border-border p-6 shadow-[0_10px_30px_rgba(71,102,75,0.10)]">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-600">{title}</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{value}</p>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-3xl font-bold text-foreground mt-2">{value}</p>
           {description && (
-            <p className="text-xs text-slate-500 mt-1">{description}</p>
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
           )}
         </div>
         {icon && (
-          <div className={clsx('p-3 rounded-lg', colorClasses[color])}>
+          <div className={clsx('p-3 rounded-xl border border-border/60', colorClasses[color])}>
             {icon}
           </div>
         )}

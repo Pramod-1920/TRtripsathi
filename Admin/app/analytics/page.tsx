@@ -159,17 +159,17 @@ export default function AnalyticsPage() {
   // placeholder static visits removed; we rely on computed metrics
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold text-slate-900 mb-8">Analytics & Reports</h1>
+    <div className="p-8 text-foreground">
+      <h1 className="mb-8 text-3xl font-bold">Analytics & Reports</h1>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {loading && (
-        <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+        <div className="mb-6 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
           Loading analytics from the backend...
         </div>
       )}
@@ -209,33 +209,33 @@ export default function AnalyticsPage() {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         {/* User Signups Chart */}
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">User Signups (Last 7 Days)</h2>
-          <div className="h-64 flex items-end justify-around gap-2 bg-slate-50 rounded-lg p-4">
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">User Signups (Last 7 Days)</h2>
+          <div className="flex h-64 items-end justify-around gap-2 rounded-lg bg-muted/50 p-4">
             {signupBars.map((value, i) => (
               <div key={i} className="flex-1 flex flex-col items-center">
                 <div
-                  className="w-full bg-blue-500 rounded-t-lg transition-all hover:bg-blue-600"
+                  className="w-full rounded-t-lg bg-primary transition-all hover:bg-primary/90"
                   style={{ height: `${Math.max(value * 14, 4)}%`, minHeight: '4px' }}
                 />
-                <p className="text-xs text-slate-600 mt-2">Day {i + 1}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Day {i + 1}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Profile Completion */}
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Profile Completion Rate</h2>
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Profile Completion Rate</h2>
           <div className="h-64 flex items-center justify-center">
             <div className="text-center">
               <div className="relative w-40 h-40 mx-auto mb-4">
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
-                    <p className="text-4xl font-bold text-slate-900">
+                    <p className="text-4xl font-bold text-foreground">
                       {Math.round((analyticsData.completedProfiles / analyticsData.totalProfiles) * 100)}%
                     </p>
-                    <p className="text-xs text-slate-500">Completed</p>
+                    <p className="text-xs text-muted-foreground">Completed</p>
                   </div>
                 </div>
                 <svg className="w-full h-full transform -rotate-90">
@@ -244,7 +244,7 @@ export default function AnalyticsPage() {
                     cy="80"
                     r="70"
                     fill="none"
-                    stroke="#e2e8f0"
+                    stroke="hsl(var(--muted))"
                     strokeWidth="8"
                   />
                   <circle
@@ -252,13 +252,13 @@ export default function AnalyticsPage() {
                     cy="80"
                     r="70"
                     fill="none"
-                    stroke="#3b82f6"
+                    stroke="hsl(var(--primary))"
                     strokeWidth="8"
                     strokeDasharray={`${2 * Math.PI * 70 * (analyticsData.completedProfiles / analyticsData.totalProfiles)} ${2 * Math.PI * 70}`}
                   />
                 </svg>
               </div>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-muted-foreground">
                 {analyticsData.completedProfiles} of {analyticsData.totalProfiles} profiles
               </p>
             </div>
@@ -269,37 +269,37 @@ export default function AnalyticsPage() {
       {/* Top Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Top Hosts */}
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Top Hosts</h2>
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Top Hosts</h2>
           <div className="space-y-4">
             {campaignStats.topHosts.length === 0 && (
-              <p className="text-sm text-slate-500">No host data yet.</p>
+              <p className="text-sm text-muted-foreground">No host data yet.</p>
             )}
             {campaignStats.topHosts.map(([host, count], i) => (
               <div key={host} className="flex items-center justify-between">
-                <span className="text-sm text-slate-700">{i + 1}. {host}</span>
-                <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded">{count} campaigns</span>
+                <span className="text-sm text-foreground">{i + 1}. {host}</span>
+                <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-primary">{count} campaigns</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Experience Level Distribution */}
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Experience Level</h2>
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Experience Level</h2>
           <div className="space-y-4">
             {experienceEntries.length === 0 && (
-              <p className="text-sm text-slate-500">No experience data yet.</p>
+              <p className="text-sm text-muted-foreground">No experience data yet.</p>
             )}
             {experienceEntries.map(([level, count]) => (
               <div key={level}>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-slate-700">{level}</span>
-                  <span className="text-xs font-medium text-slate-600">{count}</span>
+                  <span className="text-sm text-foreground">{level}</span>
+                  <span className="text-xs font-medium text-muted-foreground">{count}</span>
                 </div>
-                <div className="w-full bg-slate-200 rounded-full h-2">
+                <div className="h-2 w-full rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-blue-500"
+                    className="h-full rounded-full bg-primary"
                     style={{ width: `${analyticsData.totalProfiles ? (count / analyticsData.totalProfiles) * 100 : 0}%` }}
                   />
                 </div>
@@ -309,20 +309,20 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Key Metrics */}
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Key Metrics</h2>
+        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold">Key Metrics</h2>
           <div className="space-y-4">
-            <div className="pb-4 border-b border-slate-200">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Avg Campaign Duration (days)</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{campaignStats.avgDuration}</p>
+            <div className="border-b border-border pb-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Avg Campaign Duration (days)</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">{campaignStats.avgDuration}</p>
             </div>
-            <div className="pb-4 border-b border-slate-200">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Participants</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{campaignStats.totalParticipants}</p>
+            <div className="border-b border-border pb-4">
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Participants</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">{campaignStats.totalParticipants}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Bounce Rate</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">18%</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Bounce Rate</p>
+              <p className="mt-1 text-2xl font-bold text-foreground">18%</p>
             </div>
           </div>
         </div>

@@ -177,17 +177,17 @@ export default function LayoutWrapper({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-blue-500" />
-          <p className="text-sm text-slate-400">Checking admin session...</p>
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          <p className="text-sm text-muted-foreground">Checking admin session...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 ${sidebarWidthClass}`}>
+    <div className={`min-h-screen bg-background ${sidebarWidthClass}`}>
       <Sidebar
         collapsed={sidebarCollapsed}
         mobileOpen={sidebarOpen}
@@ -198,7 +198,7 @@ export default function LayoutWrapper({
           onMenuClick={toggleSidebar}
           sidebarCollapsed={sidebarCollapsed}
         />
-        <main className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
+        <main className="flex-1 min-h-0 overflow-y-auto bg-background">
           {children}
         </main>
       </div>

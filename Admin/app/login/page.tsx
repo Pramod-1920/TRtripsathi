@@ -61,61 +61,61 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-linear-to-br from-background via-accent to-secondary/15 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-card rounded-2xl shadow-[0_20px_40px_rgba(71,102,75,0.14)] border border-border p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-600 mb-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary mb-4 shadow-[0_6px_14px_rgba(160,65,0,0.26)]">
               <span className="text-2xl font-bold text-white">TR</span>
             </div>
-            <h1 className="text-3xl font-bold text-slate-900">TRTrips Admin</h1>
-            <p className="text-slate-600 text-sm mt-2">Sign in to your account</p>
+            <h1 className="text-3xl font-bold text-foreground">Yatri Admin</h1>
+            <p className="text-muted-foreground text-sm mt-2">Sign in to your account</p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Phone Number */}
             <div>
-              <label className="block text-sm font-medium text-slate-900 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Phone Number
               </label>
               <div className="relative">
-                <FiPhone className="absolute left-3 top-3 text-slate-400" size={20} />
+                <FiPhone className="absolute left-3 top-3 text-muted-foreground" size={20} />
                 <input
                   type="tel"
                   name="phoneNumber"
                   value={formData.phoneNumber}
                   onChange={handleInputChange}
                   placeholder="+91 98765 43210"
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2.5 border border-border bg-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-slate-900 mb-2">
+              <label className="block text-sm font-medium text-foreground mb-2">
                 Password
               </label>
               <div className="relative">
-                <FiLock className="absolute left-3 top-3 text-slate-400" size={20} />
+                <FiLock className="absolute left-3 top-3 text-muted-foreground" size={20} />
                 <input
                   type="password"
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
                   placeholder="Enter your password"
-                  className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2.5 border border-border bg-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Error Message */}
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-700">{error}</p>
+              <div className="p-3 bg-error-container border border-error rounded-lg">
+                <p className="text-sm text-on-error-container">{error}</p>
               </div>
             )}
 
@@ -123,7 +123,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-primary text-primary-foreground font-medium rounded-full hover:bg-primary-container transition-colors disabled:opacity-50 shadow-[0_8px_16px_rgba(160,65,0,0.22)]"
             >
               {loading ? 'Signing in...' : (
                 <>
@@ -137,7 +137,7 @@ export default function LoginPage() {
         </div>
 
         {/* Bottom Text */}
-        <p className="text-center text-slate-400 text-sm mt-6">
+        <p className="text-center text-muted-foreground text-sm mt-6">
           Connects directly to the NestJS backend at {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}
         </p>
       </div>
