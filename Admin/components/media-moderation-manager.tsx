@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { apiClient } from '@/lib/api';
 
 interface MediaUpload {
   _id: string;
@@ -42,11 +43,8 @@ export default function MediaModerationManager() {
   const fetchMedia = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/media/pending?page=${page}&limit=${itemsPerPage}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const response = await apiClient.get('/media/pending', { params: { page, limit: itemsPerPage } });
+      const data = response.data;
       setMedia(data.data || []);
       setTotalMedia(data.total || 0);
     } catch (err) {
@@ -58,11 +56,8 @@ export default function MediaModerationManager() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/media/stats', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const response = await apiClient.get('/media/stats');
+      const data = response.data;
       if (Array.isArray(data) && data.length > 0) {
         setStats(data[0]);
       }
@@ -88,20 +83,10 @@ export default function MediaModerationManager() {
 
   const approveMedia = async (mediaId: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/media/${mediaId}/approve`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        setSelectedMedia(null);
-        fetchMedia();
-        fetchStats();
-      }
+      await apiClient.patch(`/media/${mediaId}/approve`);
+      setSelectedMedia(null);
+      fetchMedia();
+      fetchStats();
     } catch (err) {
       setError('Failed to approve media');
     }
@@ -109,22 +94,11 @@ export default function MediaModerationManager() {
 
   const rejectMedia = async (mediaId: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/media/${mediaId}/reject`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason: rejectionReason }),
-      });
-
-      if (response.ok) {
-        setSelectedMedia(null);
-        setRejectionReason('');
-        fetchMedia();
-        fetchStats();
-      }
+      await apiClient.patch(`/media/${mediaId}/reject`, { reason: rejectionReason });
+      setSelectedMedia(null);
+      setRejectionReason('');
+      fetchMedia();
+      fetchStats();
     } catch (err) {
       setError('Failed to reject media');
     }

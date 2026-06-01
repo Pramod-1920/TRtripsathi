@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { apiClient } from '@/lib/api';
 
 interface Review {
   _id: string;
@@ -42,11 +43,8 @@ export default function ReviewManager() {
   const fetchReviews = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/reviews/admin/all?page=${page}&limit=${itemsPerPage}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const response = await apiClient.get('/reviews/admin/all', { params: { page, limit: itemsPerPage } });
+      const data = response.data;
       setReviews(data.data || []);
       setTotalReviews(data.total || 0);
     } catch (err) {
@@ -58,11 +56,8 @@ export default function ReviewManager() {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/reviews/admin/stats', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const response = await apiClient.get('/reviews/admin/stats');
+      const data = response.data;
       setStats(data);
     } catch (err) {
       console.error('Failed to load stats', err);

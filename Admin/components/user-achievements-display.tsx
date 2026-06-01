@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { API_BASE_URL } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 
 interface UserAchievementProgress {
   achievementId: string;
@@ -55,18 +55,9 @@ export default function UserAchievementsDisplay({
   const loadAchievements = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/achievements/users/${userId}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAchievements(data);
-      } else {
-        console.error('Failed to load achievements');
-      }
+      const response = await apiClient.get(`/achievements/users/${userId}`);
+      const data = response.data;
+      setAchievements(data);
     } catch (error) {
       console.error('Error loading achievements:', error);
     } finally {

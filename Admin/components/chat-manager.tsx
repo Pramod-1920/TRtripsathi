@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { apiClient } from '@/lib/api';
 
 interface ChatConversation {
   _id: string;
@@ -49,14 +50,10 @@ export default function ChatManager() {
   const fetchConversations = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(
-        `/api/chat/conversations?page=${page}&limit=${itemsPerPage}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const data = await response.json();
+      const response = await apiClient.get('/chat/conversations', {
+        params: { page, limit: itemsPerPage },
+      });
+      const data = response.data;
       setConversations(data.data || []);
       setTotalConversations(data.total || 0);
     } catch (err) {
@@ -68,11 +65,8 @@ export default function ChatManager() {
 
   const fetchMessages = async (chatGroupId: string) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/chat/messages/${chatGroupId}?page=1&limit=50`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const response = await apiClient.get(`/chat/messages/${chatGroupId}`, { params: { page: 1, limit: 50 } });
+      const data = response.data;
       setMessages(data.data || []);
     } catch (err) {
       console.error('Failed to load messages', err);
@@ -90,14 +84,8 @@ export default function ChatManager() {
     }
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(
-        `/api/chat/messages/${selectedConversation._id}/search?query=${encodeURIComponent(messageSearch)}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-      const data = await response.json();
+      const response = await apiClient.get(`/chat/messages/${selectedConversation._id}/search`, { params: { query: messageSearch } });
+      const data = response.data;
       setMessages(data.data || []);
     } catch (err) {
       setError('Search failed');

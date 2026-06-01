@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { API_BASE_URL } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 
 interface Achievement {
   _id: string;
@@ -54,19 +54,11 @@ export default function AchievementManager() {
   const loadAchievements = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filter) params.append('category', filter);
+      const paramsObj: any = {};
+      if (filter) paramsObj.category = filter;
 
-      const response = await fetch(
-        `${API_BASE_URL}/achievements?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
-          },
-        }
-      );
-
-      const data = await response.json();
+      const response = await apiClient.get('/achievements', { params: paramsObj });
+      const data = response.data;
       setAchievements(data.data || []);
     } catch (error) {
       console.error('Error loading achievements:', error);
@@ -97,30 +89,17 @@ export default function AchievementManager() {
     setLoading(true);
 
     try {
-      const method = editingId ? 'PATCH' : 'POST';
-      const url = editingId
-        ? `${API_BASE_URL}/achievements/${editingId}`
-        : `${API_BASE_URL}/achievements`;
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        resetForm();
-        loadAchievements();
+      if (editingId) {
+        await apiClient.patch(`/achievements/${editingId}`, formData);
       } else {
-        const error = await response.json();
-        alert(`Error: ${error.message}`);
+        await apiClient.post('/achievements', formData);
       }
-    } catch (error) {
+
+      resetForm();
+      loadAchievements();
+    } catch (error: any) {
       console.error('Error submitting form:', error);
-      alert('Failed to save achievement');
+      alert(error?.response?.data?.message || 'Failed to save achievement');
     } finally {
       setLoading(false);
     }
@@ -140,18 +119,8 @@ export default function AchievementManager() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/achievements/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (response.ok) {
+        await apiClient.delete(`/achievements/${id}`);
         loadAchievements();
-      } else {
-        alert('Failed to delete achievement');
-      }
     } catch (error) {
       console.error('Error deleting achievement:', error);
     } finally {
