@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -31,9 +31,9 @@ import { Role } from '../auth/constants/roles.enum';
 export class RankUpAchievementController {
   constructor(private rankUpAchievementService: RankUpAchievementService) {}
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ADMIN ENDPOINTS
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * POST /rank-up-achievements
@@ -46,9 +46,9 @@ export class RankUpAchievementController {
   @ApiOperation({ summary: 'Create a new rank-up achievement definition (admin only)' })
   async create(
     @Body() createDto: CreateRankUpAchievementDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ): Promise<RankUpAchievementResponseDto> {
-    return this.rankUpAchievementService.create(createDto, user._id);
+    return this.rankUpAchievementService.create(createDto, userId);
   }
 
   /**
@@ -81,9 +81,9 @@ export class RankUpAchievementController {
     return this.rankUpAchievementService.delete(id);
   }
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // USER ENDPOINTS
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * GET /rank-up-achievements
@@ -153,9 +153,9 @@ export class RankUpAchievementController {
     return this.rankUpAchievementService.findById(id);
   }
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // USER PROGRESS ENDPOINTS
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * GET /rank-up-achievements/validate/:targetRank
@@ -167,9 +167,9 @@ export class RankUpAchievementController {
   @ApiOperation({ summary: 'Validate if user can rank up to target rank' })
   async validateRankUp(
     @Param('targetRank') targetRank: RankCode,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ): Promise<RankUpValidationResponseDto> {
-    return this.rankUpAchievementService.validateRankUp(user._id, targetRank);
+    return this.rankUpAchievementService.validateRankUp(userId, targetRank);
   }
 
   /**
@@ -180,8 +180,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rank-up progress for all ranks' })
-  async getUserProgress(@CurrentUser() user: any): Promise<RankUpValidationResponseDto[]> {
-    return this.rankUpAchievementService.getUserRankUpProgress(user._id);
+  async getUserProgress(@CurrentUser('userId') userId: string): Promise<RankUpValidationResponseDto[]> {
+    return this.rankUpAchievementService.getUserRankUpProgress(userId);
   }
 }
+
 

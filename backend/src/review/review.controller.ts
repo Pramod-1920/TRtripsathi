@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -34,11 +34,11 @@ export class ReviewController {
     @Param('tripId') tripId: string,
     @Param('revieweeId') revieweeId: string,
     @Body() createDto: CreateReviewDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.reviewService.createReview(
       tripId,
-      user._id.toString(),
+      userId,
       revieweeId,
       createDto,
     );
@@ -81,12 +81,13 @@ export class ReviewController {
   @ApiOperation({ summary: 'Get all reviews given by a user' })
   async getReviewsGivenByUser(
     @Param('userId') userId: string,
+    @CurrentUser('userId') currentUserId: string,
     @CurrentUser() user: any,
     @Query('page') page = '1',
     @Query('limit') limit = '10',
   ) {
     // Users can only see their own given reviews, admin can see all
-    if (user.role !== 'admin' && user._id.toString() !== userId) {
+    if (user.role !== 'admin' && currentUserId !== userId) {
       return { error: 'Unauthorized' };
     }
 
@@ -141,10 +142,11 @@ export class ReviewController {
   async updateReview(
     @Param('reviewId') reviewId: string,
     @Body() updateDto: UpdateReviewDto,
+    @CurrentUser('userId') userId: string,
     @CurrentUser() user: any,
   ) {
     const isAdmin = user?.role === Role.Admin || false;
-    return this.reviewService.updateReview(reviewId, user._id.toString(), updateDto, isAdmin);
+    return this.reviewService.updateReview(reviewId, userId, updateDto, isAdmin);
   }
 
   /**
@@ -156,10 +158,12 @@ export class ReviewController {
   @ApiOperation({ summary: 'Delete a review' })
   async deleteReview(
     @Param('reviewId') reviewId: string,
+    @CurrentUser('userId') userId: string,
     @CurrentUser() user: any,
   ) {
     const isAdmin = user?.role === Role.Admin || false;
-    await this.reviewService.deleteReview(reviewId, user._id.toString(), isAdmin);
+    await this.reviewService.deleteReview(reviewId, userId, isAdmin);
     return { message: 'Review deleted successfully' };
   }
 }
+

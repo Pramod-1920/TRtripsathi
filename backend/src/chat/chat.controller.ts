@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -42,10 +42,10 @@ export class ChatController {
   @ApiOperation({ summary: 'Create or get person-to-person chat' })
   async createPersonToPersonChat(
     @Body() dto: CreatePersonToPersonChatDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.createOrGetPersonToPersonChat(
-      user._id.toString(),
+      userId,
       dto.recipientId,
     );
   }
@@ -59,10 +59,10 @@ export class ChatController {
   @ApiOperation({ summary: 'Create a group chat' })
   async createGroupChat(
     @Body() dto: CreateGroupChatDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.createGroupChat(
-      user._id.toString(),
+      userId,
       dto.name,
       dto.description,
       dto.memberIds,
@@ -78,10 +78,10 @@ export class ChatController {
   @ApiOperation({ summary: 'Create a campaign group chat (auto-deletes 24h after campaign)' })
   async createCampaignGroupChat(
     @Body() dto: CreateCampaignGroupChatDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.createCampaignGroupChat(
-      user._id.toString(),
+      userId,
       dto.campaignId,
       dto.name,
       dto.memberIds,
@@ -97,12 +97,12 @@ export class ChatController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all user conversations' })
   async getConversations(
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.chatService.getUserConversations(
-      user._id.toString(),
+      userId,
       parseInt(page),
       parseInt(limit),
     );
@@ -115,8 +115,8 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get conversations with unread messages' })
-  async getUnreadConversations(@CurrentUser() user: any) {
-    return this.chatService.getUnreadConversations(user._id.toString());
+  async getUnreadConversations(@CurrentUser('userId') userId: string) {
+    return this.chatService.getUnreadConversations(userId);
   }
 
   /**
@@ -140,12 +140,12 @@ export class ChatController {
   async addMembers(
     @Param('chatGroupId') chatGroupId: string,
     @Body() dto: AddMembersToGroupDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.addMembers(
       chatGroupId,
       dto.memberIds,
-      user._id.toString(),
+      userId,
     );
   }
 
@@ -159,12 +159,12 @@ export class ChatController {
   async removeMember(
     @Param('chatGroupId') chatGroupId: string,
     @Body() dto: RemoveMemberDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.removeMember(
       chatGroupId,
       dto.memberId,
-      user._id.toString(),
+      userId,
     );
   }
 
@@ -177,9 +177,9 @@ export class ChatController {
   @ApiOperation({ summary: 'Leave a group chat' })
   async leaveGroup(
     @Param('chatGroupId') chatGroupId: string,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
-    await this.chatService.leaveGroup(chatGroupId, user._id.toString());
+    await this.chatService.leaveGroup(chatGroupId, userId);
     return { message: 'Left group chat' };
   }
 
@@ -194,11 +194,11 @@ export class ChatController {
   @ApiOperation({ summary: 'Send a message' })
   async sendMessage(
     @Body() dto: SendMessageDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.sendMessage(
       dto.chatGroupId,
-      user._id.toString(),
+      userId,
       dto.messageType,
       dto.content,
       dto.attachmentUrl,
@@ -234,11 +234,11 @@ export class ChatController {
   @ApiOperation({ summary: 'Mark messages as read' })
   async markMessagesAsRead(
     @Body() dto: MarkMessageAsReadDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     await this.chatService.markMessagesAsRead(
       dto.messageIds,
-      user._id.toString(),
+      userId,
     );
     return { message: 'Messages marked as read' };
   }
@@ -252,11 +252,11 @@ export class ChatController {
   @ApiOperation({ summary: 'Get unread message count' })
   async getUnreadCount(
     @Param('chatGroupId') chatGroupId: string,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     const count = await this.chatService.getUnreadCount(
       chatGroupId,
-      user._id.toString(),
+      userId,
     );
     return { unreadCount: count };
   }
@@ -271,12 +271,12 @@ export class ChatController {
   async editMessage(
     @Param('messageId') messageId: string,
     @Body() dto: EditMessageDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.editMessage(
       messageId,
       dto.content,
-      user._id.toString(),
+      userId,
     );
   }
 
@@ -290,11 +290,11 @@ export class ChatController {
   async deleteMessage(
     @Param('messageId') messageId: string,
     @Body() dto: DeleteMessageDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.chatService.deleteMessage(
       messageId,
-      user._id.toString(),
+      userId,
       dto.reason,
     );
   }
@@ -320,3 +320,4 @@ export class ChatController {
     );
   }
 }
+

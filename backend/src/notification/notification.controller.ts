@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Patch,
@@ -26,12 +26,12 @@ export class NotificationController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get unread notifications' })
   async getUnreadNotifications(
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.notificationService.getUnreadNotifications(
-      user._id.toString(),
+      userId,
       parseInt(page),
       parseInt(limit),
     );
@@ -45,12 +45,12 @@ export class NotificationController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all notifications' })
   async getAllNotifications(
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.notificationService.getAllNotifications(
-      user._id.toString(),
+      userId,
       parseInt(page),
       parseInt(limit),
     );
@@ -63,9 +63,9 @@ export class NotificationController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get unread notification count' })
-  async getUnreadCount(@CurrentUser() user: any) {
+  async getUnreadCount(@CurrentUser('userId') userId: string) {
     const count = await this.notificationService.getUnreadCount(
-      user._id.toString(),
+      userId,
     );
     return { unreadCount: count };
   }
@@ -88,8 +88,8 @@ export class NotificationController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mark all notifications as read' })
-  async markAllAsRead(@CurrentUser() user: any) {
-    await this.notificationService.markAllAsRead(user._id.toString());
+  async markAllAsRead(@CurrentUser('userId') userId: string) {
+    await this.notificationService.markAllAsRead(userId);
     return { message: 'All notifications marked as read' };
   }
 
@@ -105,3 +105,4 @@ export class NotificationController {
     return { message: 'Notification deleted' };
   }
 }
+

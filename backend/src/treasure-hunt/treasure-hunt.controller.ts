@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -36,10 +36,10 @@ export class TreasureHuntController {
   @ApiOperation({ summary: 'Create a treasure hunt' })
   async createTreasureHunt(
     @Body() dto: CreateTreasureHuntDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.treasureHuntService.createTreasureHunt(
-      user._id.toString(),
+      userId,
       dto.name,
       dto.waypoints,
       dto.difficulty,
@@ -95,12 +95,12 @@ export class TreasureHuntController {
   async updateTreasureHunt(
     @Param('huntId') huntId: string,
     @Body() dto: UpdateTreasureHuntDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.treasureHuntService.updateTreasureHunt(
       huntId,
       dto,
-      user._id.toString(),
+      userId,
     );
   }
 
@@ -114,11 +114,11 @@ export class TreasureHuntController {
   async verifyWaypoint(
     @Param('huntId') huntId: string,
     @Body() dto: VerifyWaypointDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.treasureHuntService.verifyWaypoint(
       huntId,
-      user._id.toString(),
+      userId,
       dto.waypointOrder,
       dto.userLatitude,
       dto.userLongitude,
@@ -134,11 +134,11 @@ export class TreasureHuntController {
   @ApiOperation({ summary: 'Get your progress on a hunt' })
   async getUserProgress(
     @Param('huntId') huntId: string,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.treasureHuntService.getUserProgress(
       huntId,
-      user._id.toString(),
+      userId,
     );
   }
 
@@ -165,14 +165,15 @@ export class TreasureHuntController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get your treasure hunt progress' })
   async getUserTreasureProgress(
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.treasureHuntService.getUserTreasureProgress(
-      user._id.toString(),
+      userId,
       parseInt(page),
       parseInt(limit),
     );
   }
 }
+

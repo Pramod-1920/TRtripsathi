@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -26,9 +26,9 @@ import {
 export class AchievementController {
   constructor(private achievementService: AchievementService) {}
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ADMIN ENDPOINTS
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,9 +37,9 @@ export class AchievementController {
   @ApiOperation({ summary: 'Create a new achievement definition (admin only)' })
   async createAchievement(
     @Body() createDto: CreateAchievementDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
-    return this.achievementService.createAchievement(createDto, user._id);
+    return this.achievementService.createAchievement(createDto, userId);
   }
 
   @Get()
@@ -89,9 +89,9 @@ export class AchievementController {
     return { message: 'Achievement deleted successfully' };
   }
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // USER ENDPOINTS
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   @Get('users/:userId')
   @UseGuards(JwtAuthGuard)
@@ -115,9 +115,9 @@ export class AchievementController {
     );
   }
 
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // ADMIN: USER ACHIEVEMENT MANAGEMENT
-  // ──────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   @Post('admin/users/:userId/reset/:achievementId')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -153,3 +153,4 @@ export class AchievementController {
     };
   }
 }
+
