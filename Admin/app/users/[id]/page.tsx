@@ -33,6 +33,10 @@ const LANGUAGE_OPTIONS = [
 
 const OTHER_LANGUAGE_VALUE = 'Other';
 
+// In-memory map to track achievement popup tokens per profile for the current browser session.
+// Avoid using sessionStorage/localStorage to keep state server-based/client-storage free.
+const seenTokensRefMap: Record<string, Set<string>> = {};
+
 const RANK_TIERS = [
   { code: 'E', name: 'Novice Wanderer', minLevel: 1, maxLevel: 10, subRanks: ['Spark', 'Path', 'Rise'] },
   { code: 'D', name: 'Trail Hunter', minLevel: 11, maxLevel: 20, subRanks: ['Track', 'Hunt', 'Stalk'] },
@@ -337,28 +341,12 @@ export default function UserDetailPage() {
       return;
     }
 
-    const storageKey = `admin_seen_achievement_completion_ids_${profile._id}`;
-    const seenTokens = new Set<string>();
-
-    try {
-      const persisted = window.sessionStorage.getItem(storageKey);
-
-      if (persisted) {
-        const parsed = JSON.parse(persisted) as unknown;
-
-        if (Array.isArray(parsed)) {
-          parsed.forEach((item) => {
-            seenTokens.add(String(item));
-          });
-        }
-      }
-    } catch {
-      // Ignore malformed session data.
-    }
+    // Track seen achievement completion tokens in-memory for this session (no sessionStorage)
+    const seenTokensRef = (seenTokensRefMap[profile._id] ??= new Set<string>());
 
     const newlyCompleted = completedEntries.filter((entry) => {
       const token = getCompletionToken(entry);
-      return token.length > 2 && !seenTokens.has(token);
+      return token.length > 2 && !seenTokensRef.has(token);
     });
 
     if (newlyCompleted.length === 0) {
@@ -366,10 +354,8 @@ export default function UserDetailPage() {
     }
 
     newlyCompleted.forEach((entry) => {
-      seenTokens.add(getCompletionToken(entry));
+      seenTokensRef.add(getCompletionToken(entry));
     });
-
-    window.sessionStorage.setItem(storageKey, JSON.stringify(Array.from(seenTokens)));
 
     const popupItems = newlyCompleted.map((entry) => ({
       key: entry.key,

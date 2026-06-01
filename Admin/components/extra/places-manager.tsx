@@ -1194,12 +1194,12 @@ export function PlacesManager() {
                           disabled={busy}
                           onClick={async () => {
                             if (!selectedResolved) return;
-                            // Persist selection and weather to sessionStorage then navigate to campaign add
+                            // Pass selection and weather via query string and navigate to campaign add (no sessionStorage)
                             try {
                               const payload = { place: selectedResolved, weather: weatherData };
-                              sessionStorage.setItem('admin:selectedPlace', JSON.stringify(payload));
-                              // navigate to campaign add page using top-level router
-                              router.push('/campaigns/add');
+                              const encoded = encodeURIComponent(JSON.stringify(payload));
+                              // Navigate to campaign add page, passing the selection in the query string
+                              router.push(`/campaigns/add?selectedPlace=${encoded}`);
                             } catch {
                               addToast('error', 'Failed to select place.');
                             }

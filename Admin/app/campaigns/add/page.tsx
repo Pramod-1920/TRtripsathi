@@ -156,14 +156,16 @@ export default function AddCampaignPage() {
     };
   }, []);
 
-  // If an admin selected a place in PlacesManager, read it from sessionStorage and apply
+  // If an admin selected a place in PlacesManager, read it from the query string and apply
   useEffect(() => {
     if (loadingOptions) return; // wait until places are loaded
 
     try {
-      const raw = sessionStorage.getItem('admin:selectedPlace');
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const raw = params?.get('selectedPlace');
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { place?: { id?: string; name?: string; provinceId?: string; districtId?: string }; weather?: unknown };
+
+      const parsed = JSON.parse(decodeURIComponent(raw)) as { place?: { id?: string; name?: string; provinceId?: string; districtId?: string }; weather?: unknown };
       if (!parsed?.place) return;
 
       const place = parsed.place;
@@ -182,12 +184,17 @@ export default function AddCampaignPage() {
 
       // Attach weather if present (try to set as forecast summary)
       if (parsed.weather && typeof parsed.weather === 'object') {
-        // The existing weatherSummary shape expects { geocoded, forecast }
         setWeatherSummary({ geocoded: { lat: String((parsed as any).lat ?? ''), lon: String((parsed as any).lon ?? ''), display_name: place.name ?? '' }, forecast: parsed.weather as unknown as { daily?: MeteoDaily } });
       }
 
-      // Clear the session storage flag so it won't reapply
-      sessionStorage.removeItem('admin:selectedPlace');
+      // Remove the query param so it won't reapply on refresh
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('selectedPlace');
+        window.history.replaceState({}, '', url.toString());
+      } catch {
+        // ignore
+      }
     } catch {
       // ignore
     }
