@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Post,
@@ -17,6 +17,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Role } from '../auth/constants/roles.enum';
 import {
   CreateReportDto,
+  CreateFeedbackDto,
   UpdateReportStatusDto,
   AssignReportDto,
 } from './dto/report.dto';
@@ -25,6 +26,17 @@ import {
 @Controller('reports')
 export class ReportController {
   constructor(private reportService: ReportService) {}
+
+  @Post('feedback')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create system feedback' })
+  async createFeedback(
+    @Body() createDto: CreateFeedbackDto,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.reportService.createFeedback(userId, createDto);
+  }
 
   /**
    * Create a new report (user or trip)
@@ -36,11 +48,11 @@ export class ReportController {
   async createReport(
     @Param('targetId') targetId: string,
     @Body() createDto: CreateReportDto,
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
   ) {
     return this.reportService.createReport(
       targetId,
-      user._id.toString(),
+      userId,
       createDto,
     );
   }
@@ -56,8 +68,13 @@ export class ReportController {
   async getOpenReports(
     @Query('page') page = '1',
     @Query('limit') limit = '20',
+    @Query('category') category?: string,
   ) {
-    return this.reportService.getOpenReports(parseInt(page), parseInt(limit));
+    return this.reportService.getOpenReports(
+      parseInt(page),
+      parseInt(limit),
+      category,
+    );
   }
 
   /**
@@ -70,11 +87,13 @@ export class ReportController {
   @ApiOperation({ summary: 'Get all reports (admin only)' })
   async getAllReports(
     @Query('status') status?: string,
+    @Query('category') category?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.reportService.getAllReports(
       status,
+      category,
       parseInt(page),
       parseInt(limit),
     );
@@ -88,8 +107,8 @@ export class ReportController {
   @Roles(Role.Admin)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get report statistics (admin only)' })
-  async getReportStats() {
-    return this.reportService.getReportStats();
+  async getReportStats(@Query('category') category?: string) {
+    return this.reportService.getReportStats(category);
   }
 
   /**
@@ -116,12 +135,12 @@ export class ReportController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get reports assigned to you' })
   async getAssignedReports(
-    @CurrentUser() user: any,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.reportService.getAssignedReports(
-      user._id.toString(),
+      userId,
       parseInt(page),
       parseInt(limit),
     );
@@ -157,3 +176,4 @@ export class ReportController {
     return this.reportService.updateReportStatus(reportId, updateDto);
   }
 }
+

@@ -12,6 +12,7 @@
   HttpStatus,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Types } from 'mongoose';
 import { RankUpAchievementService } from './rank-up-achievement.service';
 import {
   CreateRankUpAchievementDto,
@@ -48,7 +49,8 @@ export class RankUpAchievementController {
     @Body() createDto: CreateRankUpAchievementDto,
     @CurrentUser('userId') userId: string,
   ): Promise<RankUpAchievementResponseDto> {
-    return this.rankUpAchievementService.create(createDto, userId);
+    const adminIdObj = new Types.ObjectId(userId);
+    return this.rankUpAchievementService.create(createDto, adminIdObj);
   }
 
   /**
@@ -169,7 +171,8 @@ export class RankUpAchievementController {
     @Param('targetRank') targetRank: RankCode,
     @CurrentUser('userId') userId: string,
   ): Promise<RankUpValidationResponseDto> {
-    return this.rankUpAchievementService.validateRankUp(userId, targetRank);
+    const userIdObj = new Types.ObjectId(userId);
+    return this.rankUpAchievementService.validateRankUp(userIdObj, targetRank);
   }
 
   /**
@@ -181,7 +184,8 @@ export class RankUpAchievementController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rank-up progress for all ranks' })
   async getUserProgress(@CurrentUser('userId') userId: string): Promise<RankUpValidationResponseDto[]> {
-    return this.rankUpAchievementService.getUserRankUpProgress(userId);
+    const userIdObj = new Types.ObjectId(userId);
+    return this.rankUpAchievementService.getUserRankUpProgress(userIdObj);
   }
 }
 

@@ -9,6 +9,7 @@
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AchievementService } from './achievement.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,7 +40,9 @@ export class AchievementController {
     @Body() createDto: CreateAchievementDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.achievementService.createAchievement(createDto, userId);
+    // service expects a Types.ObjectId for admin id
+    const adminIdObj = new Types.ObjectId(userId);
+    return this.achievementService.createAchievement(createDto, adminIdObj);
   }
 
   @Get()
