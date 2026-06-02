@@ -7,6 +7,37 @@ import { Header } from '@/components/header';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const shouldRetrySessionCheck = (error: unknown) => {
+  const maybeError = error as { response?: { status?: number } };
+  const status = maybeError.response?.status;
+
+  if (!status) {
+    return true;
+  }
+
+  return status >= 500;
+};
+
+async function getSessionWithStartupRetry() {
+  const maxAttempts = 8;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await apiClient.get('/auth/me');
+    } catch (error) {
+      if (!shouldRetrySessionCheck(error) || attempt === maxAttempts) {
+        throw error;
+      }
+
+      await sleep(750);
+    }
+  }
+
+  throw new Error('Unable to check admin session');
+}
+
 export default function LayoutWrapper({
   children,
 }: {
@@ -45,7 +76,7 @@ export default function LayoutWrapper({
       setLoading(true);
 
       try {
-        const response = await apiClient.get('/auth/me');
+        const response = await getSessionWithStartupRetry();
         const user = response.data as {
           id: string;
           phoneNumber: string;
@@ -115,22 +146,10 @@ export default function LayoutWrapper({
     };
   }, [isLoginPage, logout]);
 
-  // On tab close/unload, attempt to clear server session using sendBeacon so cookies are removed
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      try {
-        const url = `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000')}/auth/logout`;
-        const blob = new Blob([], { type: 'application/json' });
-        // sendBeacon will do a POST; server should accept and clear cookies
-        navigator.sendBeacon(url, blob);
-      } catch (_) {
-        // ignore
-      }
-    };
+  // Do not rely on navigator.sendBeacon to logout (CSRF protected endpoints require a token).
+  // Unload/logout via sendBeacon was removed because it may fail to clear server session.
+  // Use server-side session expiry and normal POST /auth/logout flows instead.
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
 
   // Handle pages restored from Back-Forward Cache (BFCache) and popstate navigation.
   // Some browsers restore the page instantly from cache after navigating back which can show protected UI
