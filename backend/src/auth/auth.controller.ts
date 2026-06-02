@@ -109,6 +109,14 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
     @Req() req: Request,
   ) {
+    // Defensive: prevent clients from setting role on signup even if validation
+    // rules change elsewhere or DTOs are bypassed. Enforce public signups are always
+    // regular users.
+    if ((req.body as any)?.role) {
+      // Explicitly reject attempts to set role during public signup
+      throw new BadRequestException('Role cannot be set during signup');
+    }
+
     const result = await this.authService.signup(signupData);
     this.setAuthCookies(response, result.accessToken, result.refreshToken);
     await this.audit.logEvent({
