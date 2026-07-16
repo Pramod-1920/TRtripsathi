@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiArrowRight, FiLock, FiPhone } from 'react-icons/fi';
-import { apiClient } from '@/lib/api';
+import { API_BASE_URL, apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
 export default function LoginPage() {
@@ -138,7 +138,7 @@ export default function LoginPage() {
 
         {/* Bottom Text */}
         <p className="text-center text-slate-400 text-sm mt-6">
-          Connects directly to the NestJS backend at {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}
+          Connects directly to the NestJS backend at {API_BASE_URL}
         </p>
       </div>
     </div>

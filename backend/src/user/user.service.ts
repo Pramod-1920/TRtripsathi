@@ -242,6 +242,7 @@ export class UserService {
       'firstName',
       'middleName',
       'lastName',
+      'age',
       'profilePhoto',
       'profilePhotoPublicId',
       'bio',

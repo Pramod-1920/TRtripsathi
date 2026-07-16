@@ -1,28 +1,52 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class ApiService {
-  static String baseUrl = 'http://10.0.2.2:3000';
+  static late String baseUrl;
+
+  static void configure() {
+    const configured = String.fromEnvironment('API_BASE_URL');
+    if (configured.isNotEmpty) {
+      baseUrl = configured;
+      return;
+    }
+    baseUrl = kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+  }
+
+  static String readableError(Object error) {
+    if (error is http.ClientException) {
+      return 'Cannot reach the TripSathi server. Check that the backend is running and try again.';
+    }
+    final text = error.toString().replaceFirst('Exception: ', '');
+    return text.isEmpty ? 'Something went wrong. Please try again.' : text;
+  }
+
   static final _storage = FlutterSecureStorage();
   static const _accessKey = 'jwt';
   static const _refreshKey = 'refresh';
+
   /// Optional callback to notify the app about auth state changes.
   /// Set this from your AuthProvider to get updates when tokens are stored/cleared.
   static void Function(bool isAuthenticated)? onAuthStateChanged;
 
   /// Login - expects backend route POST /auth/login
   /// Returns parsed JSON map on success and stores token in secure storage
-  static Future<Map<String, dynamic>> login(String phoneNumber, String password) async {
-  final uri = Uri.parse('$baseUrl/auth/login');
+  static Future<Map<String, dynamic>> login(
+      String phoneNumber, String password) async {
+    final uri = Uri.parse('$baseUrl/auth/login');
     final res = await http.post(uri,
-        headers: {'Content-Type': 'application/json'}, body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final token = body['accessToken'] ?? body['token'] ?? body['jwt'];
       final refresh = body['refreshToken'] ?? body['refresh'] ?? null;
-      if (token != null) await _storage.write(key: _accessKey, value: token as String);
-      if (refresh != null) await _storage.write(key: _refreshKey, value: refresh as String);
+      if (token != null)
+        await _storage.write(key: _accessKey, value: token as String);
+      if (refresh != null)
+        await _storage.write(key: _refreshKey, value: refresh as String);
       // Notify app that we're authenticated
       try {
         onAuthStateChanged?.call(true);
@@ -30,16 +54,11 @@ class ApiService {
       return body;
     }
     // Return parsed error body when possible for better UX
-    try {
-      final errorBody = jsonDecode(res.body);
-      throw Exception('Login failed: \\$errorBody');
-    } catch (_) {
-      throw Exception('Login failed: HTTP \\${res.statusCode}');
-    }
+    throw Exception(_errorMessage(res, 'Unable to sign in'));
   }
 
   static Future<Map<String, dynamic>> getProfile() async {
-  final uri = Uri.parse('$baseUrl/user/profile');
+    final uri = Uri.parse('$baseUrl/user/profile');
     final res = await _getWithAuth(uri);
     if (res.statusCode == 200) {
       return jsonDecode(res.body) as Map<String, dynamic>;
@@ -51,7 +70,8 @@ class ApiService {
   /// Get place hierarchy - GET /extra/places
   static Future<List<dynamic>> getPlaceHierarchy() async {
     final uri = Uri.parse('$baseUrl/extra/places');
-    final res = await http.get(uri, headers: {'Content-Type': 'application/json'});
+    final res =
+        await http.get(uri, headers: {'Content-Type': 'application/json'});
     if (res.statusCode == 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       return body['items'] as List<dynamic>? ?? [];
@@ -60,8 +80,9 @@ class ApiService {
   }
 
   /// Signup - POST /auth/signup
-  static Future<Map<String, dynamic>> signup(String phoneNumber, String password) async {
-  final uri = Uri.parse('$baseUrl/auth/signup');
+  static Future<Map<String, dynamic>> signup(
+      String phoneNumber, String password) async {
+    final uri = Uri.parse('$baseUrl/auth/signup');
     final res = await http.post(uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
@@ -70,25 +91,36 @@ class ApiService {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final token = body['accessToken'] ?? body['token'] ?? body['jwt'];
       final refresh = body['refreshToken'] ?? body['refresh'] ?? null;
-      if (token != null) await _storage.write(key: _accessKey, value: token as String);
-      if (refresh != null) await _storage.write(key: _refreshKey, value: refresh as String);
+      if (token != null)
+        await _storage.write(key: _accessKey, value: token as String);
+      if (refresh != null)
+        await _storage.write(key: _refreshKey, value: refresh as String);
       try {
         onAuthStateChanged?.call(true);
       } catch (_) {}
       return body;
     }
 
+    throw Exception(_errorMessage(res, 'Unable to create account'));
+  }
+
+  static String _errorMessage(http.Response response, String fallback) {
     try {
-      final errorBody = jsonDecode(res.body);
-      throw Exception('Signup failed: \\$errorBody');
-    } catch (_) {
-      throw Exception('Signup failed: HTTP \\${res.statusCode}');
-    }
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message'];
+        if (message is List) return message.join('\n');
+        if (message != null && message.toString().trim().isNotEmpty)
+          return message.toString();
+      }
+    } catch (_) {}
+    return '$fallback (${response.statusCode})';
   }
 
   /// Update profile - PATCH /user/profile
-  static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> updates) async {
-  final uri = Uri.parse('$baseUrl/user/profile');
+  static Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> updates) async {
+    final uri = Uri.parse('$baseUrl/user/profile');
     final res = await _patchWithAuth(uri, body: jsonEncode(updates));
 
     if (res.statusCode == 200) {
@@ -99,7 +131,7 @@ class ApiService {
       final errorBody = jsonDecode(res.body);
       throw Exception('Update profile failed: \\$errorBody');
     } catch (_) {
-      throw Exception('Update profile failed: HTTP \\${res.statusCode}');
+      throw Exception(_errorMessage(res, 'Unable to update profile'));
     }
   }
 
@@ -144,15 +176,20 @@ class ApiService {
     if (refresh == null) return false;
 
     try {
-  final uri = Uri.parse('$baseUrl/auth/refresh');
+      final uri = Uri.parse('$baseUrl/auth/refresh');
       // Send refresh token via Cookie header so backend's JwtRefreshGuard can read it
-      final res = await http.post(uri, headers: {'Content-Type': 'application/json', 'Cookie': 'refresh_token=$refresh'});
+      final res = await http.post(uri, headers: {
+        'Content-Type': 'application/json',
+        'Cookie': 'refresh_token=$refresh'
+      });
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         final newAccess = body['accessToken'] ?? body['token'] ?? body['jwt'];
         final newRefresh = body['refreshToken'] ?? body['refresh'] ?? null;
-        if (newAccess != null) await _storage.write(key: _accessKey, value: newAccess as String);
-        if (newRefresh != null) await _storage.write(key: _refreshKey, value: newRefresh as String);
+        if (newAccess != null)
+          await _storage.write(key: _accessKey, value: newAccess as String);
+        if (newRefresh != null)
+          await _storage.write(key: _refreshKey, value: newRefresh as String);
         try {
           onAuthStateChanged?.call(true);
         } catch (_) {}
@@ -174,8 +211,9 @@ class ApiService {
   static Future<void> logout() async {
     try {
       final token = await _storage.read(key: _accessKey);
-  final uri = Uri.parse('$baseUrl/auth/logout');
-      await http.post(uri, headers: token != null ? {'Authorization': 'Bearer $token'} : {});
+      final uri = Uri.parse('$baseUrl/auth/logout');
+      await http.post(uri,
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {});
     } catch (_) {}
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);

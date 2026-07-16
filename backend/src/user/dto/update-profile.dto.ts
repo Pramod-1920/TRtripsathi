@@ -5,6 +5,9 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   Matches,
@@ -43,6 +46,16 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @ApiPropertyOptional({
+    example: 25,
+    description: 'User age between 9 and 120',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(9)
+  @Max(120)
+  age?: number;
 
   @ApiPropertyOptional({
     example: '1995-07-12',

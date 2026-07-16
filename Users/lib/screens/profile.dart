@@ -149,6 +149,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Use AuthProvider to sign out and notify app
               final auth = Provider.of<AuthProvider>(context, listen: false);
               await auth.signOut();
+              if (!context.mounted) return;
+              Navigator.of(context)
+                  .pushNamedAndRemoveUntil('/login', (_) => false);
             },
           )
         ],
@@ -159,13 +162,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (snapshot.connectionState == ConnectionState.waiting)
             return const Center(child: CircularProgressIndicator());
           if (snapshot.hasError)
-            return Center(child: Text('Error: \\${snapshot.error}'));
+            return Center(child: Text('Error: ${snapshot.error}'));
           final data = snapshot.data ?? {};
           // If profile isn't completed yet, send user to onboarding
           if (data['profileCompleted'] == false) {
             // schedule navigation after build
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.of(context).pushReplacementNamed('/onboarding');
+              Navigator.of(context).pushReplacementNamed('/profile-setup');
             });
             return const Center(child: CircularProgressIndicator());
           }
@@ -194,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     fontSize: 12, color: Colors.black54)),
                             const SizedBox(height: 4),
                             Text(
-                              '\\${data['xp'] ?? 0}',
+                              '${data['xp'] ?? 0}',
                               style: const TextStyle(
                                   fontSize: 24, fontWeight: FontWeight.bold),
                             ),
@@ -208,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     fontSize: 12, color: Colors.black54)),
                             const SizedBox(height: 4),
                             Text(
-                              '\\${data['level'] ?? 1}',
+                              '${data['level'] ?? 1}',
                               style: const TextStyle(
                                   fontSize: 20, fontWeight: FontWeight.w600),
                             ),
@@ -306,13 +309,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                Text('Name: \\${data['firstName'] ?? data['fullName'] ?? '—'}',
+                Text('Name: ${data['firstName'] ?? data['fullName'] ?? '—'}',
                     style: const TextStyle(fontSize: 18)),
                 const SizedBox(height: 8),
-                Text('Phone: \\${data['phoneNumber'] ?? '—'}',
+                Text('Phone: ${data['phoneNumber'] ?? '—'}',
                     style: const TextStyle(fontSize: 16)),
                 const SizedBox(height: 8),
-                Text('Location: \\${data['location'] ?? '—'}',
+                Text('Location: ${data['location'] ?? '—'}',
                     style: const TextStyle(fontSize: 16)),
               ],
             ),

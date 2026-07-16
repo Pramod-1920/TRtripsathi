@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
-import { apiClient } from '@/lib/api';
+import { API_BASE_URL, apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
 export default function LayoutWrapper({
@@ -119,7 +119,7 @@ export default function LayoutWrapper({
   useEffect(() => {
     const handleBeforeUnload = () => {
       try {
-        const url = `${(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000')}/auth/logout`;
+        const url = `${API_BASE_URL}/auth/logout`;
         const blob = new Blob([], { type: 'application/json' });
         // sendBeacon will do a POST; server should accept and clear cookies
         navigator.sendBeacon(url, blob);

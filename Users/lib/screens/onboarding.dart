@@ -12,13 +12,15 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _firstController = TextEditingController();
+  final _middleController = TextEditingController();
   final _lastController = TextEditingController();
+  final _emailController = TextEditingController();
   final _ageController = TextEditingController();
+  final _landmarkController = TextEditingController();
 
   String? _selectedProvince;
   String? _selectedDistrict;
   String? _selectedPlace;
-  String? _experienceLevel;
 
   bool _loading = false;
   bool _loadingPlaces = true;
@@ -26,12 +28,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String? _error;
 
   List<dynamic> _placeHierarchy = [];
-
-  final List<String> _levels = [
-    'beginner',
-    'intermediate',
-    'advanced',
-  ];
 
   @override
   void initState() {
@@ -127,6 +123,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    final email = _emailController.text.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() {
+        _loading = false;
+        _error = 'Enter a valid email address';
+      });
+      return;
+    }
+
     if (_selectedProvince == null ||
         _selectedDistrict == null ||
         _selectedPlace == null) {
@@ -137,28 +142,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
+    if (_landmarkController.text.trim().isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'A nearby landmark is required';
+      });
+      return;
+    }
+
     final ageText = _ageController.text.trim();
 
     int? age;
 
-    if (ageText.isNotEmpty) {
-      age = int.tryParse(ageText);
+    if (ageText.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = 'Age is required';
+      });
+      return;
+    }
 
-      if (age == null) {
-        setState(() {
-          _loading = false;
-          _error = 'Age must be a number';
-        });
-        return;
-      }
+    age = int.tryParse(ageText);
 
-      if (age <= 8) {
-        setState(() {
-          _loading = false;
-          _error = 'Age must be greater than 8';
-        });
-        return;
-      }
+    if (age == null) {
+      setState(() {
+        _loading = false;
+        _error = 'Age must be a number';
+      });
+      return;
+    }
+
+    if (age <= 8 || age > 120) {
+      setState(() {
+        _loading = false;
+        _error = 'Age must be between 9 and 120';
+      });
+      return;
     }
 
     final locationParts = [
@@ -169,12 +188,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     final updates = <String, dynamic>{
       'firstName': _firstController.text.trim(),
+      'middleName': _middleController.text.trim(),
       'lastName': _lastController.text.trim(),
+      'email': email,
       'location': locationParts.join(', '),
       'province': _selectedProvince,
       'district': _selectedDistrict,
-      if (_experienceLevel != null) 'experienceLevel': _experienceLevel,
-      if (age != null) 'age': age,
+      'landmark': _landmarkController.text.trim(),
+      'age': age,
     };
 
     try {
@@ -191,16 +212,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (!mounted) return;
 
       setState(() {
-        _error = 'Something went wrong';
+        _error = ApiService.readableError(e);
       });
 
       debugPrint('ONBOARDING ERROR: $e');
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -221,7 +242,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Complete your profile'),
+        backgroundColor: const Color(0xFF0D9488),
+        foregroundColor: Colors.white,
+        title: const Text('Build your explorer profile',
+            style: TextStyle(fontWeight: FontWeight.w800)),
         centerTitle: true,
       ),
       body: _loadingPlaces
@@ -234,28 +258,66 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Welcome to Yatri',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                    Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFF064E4A), Color(0xFF0D9488)]),
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: const [
+                          BoxShadow(
+                              color: Color(0x280D9488),
+                              blurRadius: 24,
+                              offset: Offset(0, 12))
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Complete your profile to continue',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
+                      child: const Row(children: [
+                        CircleAvatar(
+                            radius: 29,
+                            backgroundColor: Colors.white24,
+                            child: Icon(Icons.person_pin_circle_rounded,
+                                color: Colors.white, size: 34)),
+                        SizedBox(width: 16),
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text('One last step',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w900)),
+                              SizedBox(height: 5),
+                              Text(
+                                  'Personalize your journey and unlock your explorer dashboard.',
+                                  style: TextStyle(
+                                      color: Colors.white70, height: 1.35)),
+                            ])),
+                      ]),
                     ),
                     const SizedBox(height: 30),
+                    const Text('ABOUT YOU',
+                        style: TextStyle(
+                            fontSize: 12,
+                            letterSpacing: 1.4,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0D9488))),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: _firstController,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'First Name',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _middleController,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Middle Name (Optional)',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -264,21 +326,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
                         labelText: 'Last Name',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_rounded),
                       ),
                     ),
                     const SizedBox(height: 16),
+                    TextField(
+                      controller: _emailController,
+                      textInputAction: TextInputAction.next,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email Address',
+                        hintText: 'explorer@example.com',
+                        prefixIcon: Icon(Icons.email_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _ageController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Age',
+                        hintText: 'Required',
+                        prefixIcon: Icon(Icons.cake_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    const Text('YOUR HOME BASE',
+                        style: TextStyle(
+                            fontSize: 12,
+                            letterSpacing: 1.4,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0D9488))),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedProvince,
                       decoration: const InputDecoration(
                         labelText: 'Province',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.map_rounded),
                       ),
                       items: provinces
                           .map(
                             (province) => DropdownMenuItem(
                               value: province,
-                              child: Text(province),
+                              child: Text(
+                                province,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           )
                           .toList(),
@@ -292,16 +387,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedDistrict,
                       decoration: const InputDecoration(
                         labelText: 'District',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.location_city_rounded),
                       ),
                       items: districts
                           .map(
                             (district) => DropdownMenuItem(
                               value: district,
-                              child: Text(district),
+                              child: Text(
+                                district,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           )
                           .toList(),
@@ -316,16 +416,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _selectedPlace,
                       decoration: const InputDecoration(
                         labelText: 'Place',
-                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.place_rounded),
                       ),
                       items: places
                           .map(
                             (place) => DropdownMenuItem(
                               value: place,
-                              child: Text(place),
+                              child: Text(
+                                place,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           )
                           .toList(),
@@ -340,33 +445,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextField(
-                      controller: _ageController,
-                      keyboardType: TextInputType.number,
+                      controller: _landmarkController,
+                      textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
-                        labelText: 'Age (Optional)',
-                        border: OutlineInputBorder(),
+                        labelText: 'Nearby Landmark',
+                        hintText: 'e.g. Near Durbar Square',
+                        prefixIcon: Icon(Icons.flag_rounded),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _experienceLevel,
-                      decoration: const InputDecoration(
-                        labelText: 'Experience Level',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _levels
-                          .map(
-                            (level) => DropdownMenuItem(
-                              value: level,
-                              child: Text(level),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _experienceLevel = value;
-                        });
-                      },
                     ),
                     const SizedBox(height: 24),
                     if (_error != null)
@@ -400,8 +485,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   void dispose() {
     _firstController.dispose();
+    _middleController.dispose();
     _lastController.dispose();
+    _emailController.dispose();
     _ageController.dispose();
+    _landmarkController.dispose();
 
     super.dispose();
   }

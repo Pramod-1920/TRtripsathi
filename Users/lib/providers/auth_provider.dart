@@ -19,8 +19,12 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    final token = await _storage.read(key: 'jwt');
-    _setAuth(token != null);
+    try {
+      final token = await _storage.read(key: 'jwt');
+      _setAuth(token != null);
+    } catch (_) {
+      _setAuth(false);
+    }
   }
 
   void _setAuth(bool value) {
@@ -37,7 +41,11 @@ class AuthProvider extends ChangeNotifier {
 
   /// Force check storage (useful if something changed outside provider)
   Future<void> refreshFromStorage() async {
-    final token = await _storage.read(key: 'jwt');
-    _setAuth(token != null);
+    try {
+      final token = await _storage.read(key: 'jwt');
+      _setAuth(token != null);
+    } catch (_) {
+      _setAuth(false);
+    }
   }
 }

@@ -28,14 +28,17 @@ function getPortFromEnv(): number {
   return port;
 }
 
-function getFrontendUrlFromEnv(): string {
+function getFrontendUrlsFromEnv(): string[] {
   const frontendUrl = process.env.FRONTEND_URL?.trim();
 
   if (!frontendUrl) {
     throw new Error('FRONTEND_URL is required in .env file');
   }
 
-  return frontendUrl;
+  return frontendUrl
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
 }
 
 function logMongoConnectionStatus(app: INestApplication): void {
@@ -79,11 +82,11 @@ async function waitForMongoConnection(app: INestApplication, timeoutMs = 30000):
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const frontendUrl = getFrontendUrlFromEnv();
+  const frontendUrls = getFrontendUrlsFromEnv();
 
   // Enable CORS first (before other middleware that may affect headers)
   app.enableCors({
-    origin: frontendUrl,
+    origin: frontendUrls,
     credentials: true,
   });
 
