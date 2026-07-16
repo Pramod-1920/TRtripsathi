@@ -1,0 +1,214 @@
+{
+  "provinces": [
+    {
+      "provinceNumber": 1,
+      "province": "KOSHI PROVINCE",
+      "districts": [
+        "TAPLEJUNG",
+        "SANKHUWASABHA",
+        "SOLUKHUMBU",
+        "OKHALDHUNGA",
+        "KHOTANG",
+        "BHOJPUR",
+        "DHANKUTA",
+        "TERHATHUM",
+        "PANCHTHAR",
+        "ILAM",
+        "JHAPA",
+        "MORANG",
+        "SUNSARI",
+        "UDAYAPUR"
+      ],
+      "places": {
+        "TAPLEJUNG": ["PATHIBHARA TEMPLE", "ANTU DANDA"],
+        "SANKHUWASABHA": ["MAKALU BASE CAMP", "KANYAM"],
+        "SOLUKHUMBU": ["EVEREST BASE CAMP", "NAMCHE BAZAAR", "KALA PATTAR"],
+        "OKHALDHUNGA": ["JIRI BAZAAR"],
+        "KHOTANG": ["KESARI MEMORIAL"],
+        "BHOJPUR": ["BHOJPUR DURBAR"],
+        "DHANKUTA": ["SUNDARIJAL GORGE"],
+        "TERHATHUM": ["ANTU DANDA"],
+        "PANCHTHAR": ["ARUN VALLEY"],
+        "ILAM": ["TEA GARDENS"],
+        "JHAPA": ["KANYAM", "BASANTPUR"],
+        "MORANG": ["CHISAPANI GORGE"],
+        "SUNSARI": ["ITAHARI BAZAAR"],
+        "UDAYAPUR": ["GAIGHAT"]
+      }
+    },
+    {
+      "provinceNumber": 2,
+      "province": "MADHESH PROVINCE",
+      "districts": [
+        "SAPTARI",
+        "SIRAHA",
+        "DHANUSA",
+        "MAHOTTARI",
+        "SARLAHI",
+        "RAUTAHAT",
+        "BARA",
+        "PARSA"
+      ],
+      "places": {
+        "SAPTARI": ["RAJBIRAJ BAZAAR"],
+        "SIRAHA": ["JANAKPUR TEMPLE AREA"],
+        "DHANUSA": ["JANAKPUR DHAM", "RAM NAVAMI SITE"],
+        "MAHOTTARI": ["JANAKPUR"],
+        "SARLAHI": ["MALANGWA"],
+        "RAUTAHAT": ["PARSA WILDLIFE RESERVE"],
+        "BARA": ["PARSA WILDLIFE RESERVE"],
+        "PARSA": ["PARSA WILDLIFE RESERVE", "HETAUDA"]
+      }
+    },
+    {
+      "provinceNumber": 3,
+      "province": "BAGMATI PROVINCE",
+      "districts": [
+        "DOLAKHA",
+        "SINDHUPALCHOWK",
+        "RASUWA",
+        "DHADING",
+        "NUWAKOT",
+        "KATHMANDU",
+        "BHAKTAPUR",
+        "LALITPUR",
+        "KAVREPALANCHOK",
+        "RAMECHHAP",
+        "SINDHULI",
+        "MAKWANPUR",
+        "CHITWAN"
+      ],
+      "places": {
+        "DOLAKHA": ["GAURI SHANKAR"],
+        "SINDHUPALCHOWK": ["LANGTANG BASE CAMP", "GOSAIKUNDA"],
+        "RASUWA": ["LANGTANG VILLAGE", "RASUWA WATERFALL"],
+        "DHADING": ["NILKANTHA CAVE"],
+        "NUWAKOT": ["NUWAKOT DURBAR", "TAMANG HERITAGE TRAIL"],
+        "KATHMANDU": ["PASHUPATINATH TEMPLE", "BOUDHANATH STUPA", "KATHMANDU DURBAR SQUARE", "MONKEY TEMPLE"],
+        "BHAKTAPUR": ["BHAKTAPUR DURBAR SQUARE", "CHANGU NARAYAN"],
+        "LALITPUR": ["PATAN DURBAR SQUARE"],
+        "KAVREPALANCHOK": ["NAMOBUDDHA", "INDRESHWAR MAHADEV"],
+        "RAMECHHAP": ["RAMECHHAP BAZAAR"],
+        "SINDHULI": ["SINDHULI GADHI"],
+        "MAKWANPUR": ["HETAUDA", "MAKWANPUR GADHI"],
+        "CHITWAN": ["CHITWAN NATIONAL PARK", "POKHARA GATEWAY"]
+      }
+    },
+    {
+      "provinceNumber": 4,
+      "province": "GANDAKI PROVINCE",
+      "districts": [
+        "GORKHA",
+        "MANANG",
+        "MUSTANG",
+        "MYAGDI",
+        "KASKI",
+        "LAMJUNG",
+        "TANAHU",
+        "NAWALPARASI (BARDAGHAT SUSTA EAST)",
+        "SYANGJA",
+        "PARBAT",
+        "BAGLUNG"
+      ],
+      "places": {
+        "GORKHA": ["GORKHA DURBAR", "MANAKAMANA TEMPLE"],
+        "MANANG": ["BRAGA", "NGWAL"],
+        "MUSTANG": ["JOMSOM", "MARPHA", "KAGBENI"],
+        "MYAGDI": ["DHAULAGIRI BASE CAMP"],
+        "KASKI": ["POKHARA LAKE", "PHEWA LAKE", "SARANKOT"],
+        "LAMJUNG": ["MANAKAMANA TEMPLE"],
+        "TANAHU": ["SHREENAGAR HILL"],
+        "NAWALPARASI (BARDAGHAT SUSTA EAST)": ["BARDIYA GATEWAY"],
+        "SYANGJA": ["BEGNAS LAKE"],
+        "PARBAT": ["KUSMA"],
+        "BAGLUNG": ["BAGLUNG BAZAAR"]
+      }
+    },
+    {
+      "provinceNumber": 5,
+      "province": "LUMBINI PROVINCE",
+      "districts": [
+        "RUKUM EAST",
+        "ROLPA",
+        "PYUTHAN",
+        "GULMI",
+        "ARGHAKHANCHI",
+        "PALPA",
+        "NAWALPARASI (BARDAGHAT SUSTA WEST)",
+        "RUPANDEHI",
+        "KAPILVASTU",
+        "DANG",
+        "BANKE",
+        "BARDIYA"
+      ],
+      "places": {
+        "RUKUM EAST": ["RUKUM GADHI"],
+        "ROLPA": ["ROLPA BAZAAR"],
+        "PYUTHAN": ["PYUTHAN BAZAAR"],
+        "GULMI": ["RIDI BAZAAR"],
+        "ARGHAKHANCHI": ["ARGHAKHANCHI GADHI"],
+        "PALPA": ["AMAR NARAYAN TEMPLE"],
+        "NAWALPARASI (BARDAGHAT SUSTA WEST)": ["BARDIA NATIONAL PARK"],
+        "RUPANDEHI": ["LUMBINI BUDDHIST PILGRIMAGE SITE"],
+        "KAPILVASTU": ["LUMBINI", "TILAURAKOT"],
+        "DANG": ["DANG BAZAAR"],
+        "BANKE": ["BARDIYA NATIONAL PARK"],
+        "BARDIYA": ["BARDIYA NATIONAL PARK", "THAKURDWARA"]
+      }
+    },
+    {
+      "provinceNumber": 6,
+      "province": "KARNALI PROVINCE",
+      "districts": [
+        "DOLPA",
+        "MUGU",
+        "HUMLA",
+        "JUMLA",
+        "KALIKOT",
+        "DAILEKH",
+        "SURKHET",
+        "SALYAN",
+        "JAJARKOT",
+        "RUKUM WEST"
+      ],
+      "places": {
+        "DOLPA": ["SHEY GOMPA"],
+        "MUGU": ["MUGU BAZAAR"],
+        "HUMLA": ["SIMIKOT"],
+        "JUMLA": ["RARA LAKE"],
+        "KALIKOT": ["KALIKOT GADHI"],
+        "DAILEKH": ["DAILEKH BAZAAR"],
+        "SURKHET": ["SURKHET BAZAAR"],
+        "SALYAN": ["SALYAN GADHI"],
+        "JAJARKOT": ["JAJARKOT BAZAAR"],
+        "RUKUM WEST": ["MUSIKOT"]
+      }
+    },
+    {
+      "provinceNumber": 7,
+      "province": "SUDUR PASHCHIMANCHAL PROVINCE",
+      "districts": [
+        "BAJURA",
+        "BAJHANG",
+        "DARCHULA",
+        "BAITADI",
+        "DADELDHURA",
+        "KAILALI",
+        "KANCHANPUR",
+        "DOTI",
+        "ACHHAM"
+      ],
+      "places": {
+        "BAJURA": ["BAJURA BAZAAR"],
+        "BAJHANG": ["BAJHANG DURBAR"],
+        "DARCHULA": ["DARCHULA BAZAAR", "MAHAKALI RIVER"],
+        "BAITADI": ["BAITADI DURBAR"],
+        "DADELDHURA": ["DADELDHURA BAZAAR"],
+        "KAILALI": ["KAILALI BAZAAR"],
+        "KANCHANPUR": ["KANCHANPUR DURBAR"],
+        "DOTI": ["DOTI BAZAAR"],
+        "ACHHAM": ["ACHHAM GADHI"]
+      }
+    }
+  ]
+}
