@@ -1,112 +1,381 @@
-# TRTripSathi
+# TRTripSathi — Backend and Admin Project Documentation
 
-TRTripSathi is a travel-engagement platform with three applications:
+## 1. Document purpose
 
-- `backend/` — NestJS API using MongoDB, JWT authentication, profiles, XP, achievements, campaigns, trips, reviews, chat, notifications, and administrative services.
-- `Admin/` — Next.js admin dashboard.
-- `Users/` — Flutter user application targeting web and mobile.
+This document describes the current TRTripSathi system for developers, reviewers, and AI research. It explains the product purpose, architecture, backend modules, admin capabilities, authentication, data flows, implementation status, limitations, and how to run the project.
 
-This document records the current project state as of July 17, 2026, the work completed during the latest development cycle, and the most important work still required.
+The repository contains three applications:
 
-## Current local architecture
-
-| Application | Technology | Local address |
+| Application | Directory | Responsibility |
 | --- | --- | --- |
-| Backend API | NestJS | `http://localhost:8080` |
-| Admin dashboard | Next.js | `http://localhost:3000` |
-| Flutter web | Flutter web server | `http://localhost:8081` |
+| Backend API | `backend/` | Authentication, business rules, MongoDB persistence, gamification, trips, campaigns, moderation, and admin APIs |
+| Admin dashboard | `Admin/` | Browser-based operations console for admins |
+| User client | `Users/` | Flutter mobile/web client consuming the backend API |
 
-The backend CORS allowlist currently accepts the Admin and Flutter web origins through:
+This README focuses on the backend and admin applications. It describes code that is present in the repository; a feature marked partial or planned should not be treated as production-complete.
 
-```env
-FRONTEND_URL=http://localhost:3000,http://localhost:8081
+## 2. Product overview
+
+TRTripSathi is a travel and exploration platform intended to let users discover places, create or join trips and campaigns, upload evidence, communicate with other travelers, earn XP, unlock levels/badges/achievements, and build a travel profile.
+
+The admin side gives authorized staff control over users, campaign approval, content and media moderation, Nepal place data, activities, difficulty rules, XP rules, level-up rules, badges, achievements, reviews, reports, and operational analytics.
+
+## 3. Technology and architecture
+
+### Backend
+
+- NestJS 11 and TypeScript
+- MongoDB through Mongoose
+- JWT access and refresh authentication
+- HTTP-only cookies plus bearer-token support
+- Role-based authorization (`admin`, `moderator`, `user`)
+- Cloudinary signed media uploads
+- Redis integration for revocation/rate-limiting support
+- Swagger/OpenAPI at `/api/docs`
+- Helmet, CSRF protection, request validation, request logging, and rate limiting
+- Scheduled campaign lifecycle processing
+
+### Admin
+
+- Next.js 16 and React 19
+- TypeScript, Tailwind CSS, Lucide/react-icons, Recharts
+- Axios API client with credentials, CSRF header support, and token-refresh retry logic
+- Zustand session store
+- Route pages under `Admin/app/` and reusable managers under `Admin/components/`
+
+### Runtime flow
+
+```text
+Admin browser / Flutter client
+        |
+        v
+Next.js API client or Flutter HTTP client
+        |
+        v
+NestJS controllers -> guards/validation -> services -> Mongoose schemas -> MongoDB
+        |
+        +-> Redis (revocation/rate limiting where configured)
+        +-> Cloudinary (images and media)
 ```
 
-Do not commit real database passwords, JWT secrets, Cloudinary credentials, or production URLs.
+Default local addresses:
 
-## Work completed
+| Service | URL |
+| --- | --- |
+| Backend | `http://localhost:8080` |
+| Admin | `http://localhost:3000` |
+| Flutter web | `http://localhost:8081` |
+| Swagger | `http://localhost:8080/api/docs` |
 
-### Flutter entry experience
+## 4. Backend modules and implemented functions
 
-- Added an animated TripSathi splash screen.
-- Added a branded HTML loading screen for Flutter web.
-- Added a custom Flutter web bootstrap containing the generated `flutter_js` and `flutter_build_config` tokens.
-- Added a three-page introduction explaining discovery, travel streaks, XP, badges, and community.
-- Added first-launch detection with `SharedPreferences`.
-- New users follow `Splash → Introduction → Login/Signup`.
-- Returning users follow `Splash → Login`.
-- Splash navigation uses a direct, timer-driven transition so browser storage cannot leave it stuck.
-- Added storage error handling around secure storage and preferences.
+### Authentication and authorization (`auth`)
 
-### Flutter authentication
+Implemented:
 
-- Rebuilt login with responsive Material 3 styling, validation, loading state, password visibility, and readable errors.
-- Rebuilt signup as a two-step experience with an explorer-identity selection.
-- Added password requirements that match the NestJS signup DTO:
-  - at least six characters;
-  - uppercase letter;
-  - lowercase letter;
-  - number;
-  - supported special character.
-- Added password and confirm-password visibility controls.
-- Added phone-number validation for exactly ten digits.
-- Corrected the Flutter API URL from port `3000` to backend port `8080`.
-- Web defaults to `http://localhost:8080`.
-- Android emulator defaults to `http://10.0.2.2:8080`.
-- Added support for `--dart-define=API_BASE_URL=...` to override the API address.
-- Successful signup now opens profile setup.
-- Successful login opens the user dashboard/profile.
-- Logout clears authentication and returns to login.
+- Phone-number/password signup and login
+- Password hashing with bcrypt
+- Access-token and refresh-token generation
+- HTTP-only `access_token` and `refresh_token` cookies
+- Bearer-token authentication for API clients
+- Refresh-token rotation/revocation using a stored hash
+- Logout and token revocation
+- Current-user endpoint (`GET /auth/me`)
+- Admin-only authorization through roles guards
+- Failed-login tracking and account lockout behavior
+- Auth endpoint rate limiting
+- DTO validation for passwords and phone numbers
 
-### Flutter profile setup
+Main endpoints: `POST /auth/signup`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /auth/admin-only`.
 
-- Redesigned the screen with a branded hero, clear sections, icons, improved spacing, and Material 3 fields.
-- Added required first name, age, email, province, district, place, and landmark inputs.
-- Added optional middle name.
-- Added last name input.
-- Age is validated between 9 and 120.
-- Email format is validated before submission.
-- Added responsive dropdown behavior for long province, district, place, and rank labels.
-- Dropdowns use available width and truncate long values instead of producing `RenderFlex` overflow.
-- Replaced the generic profile error with the actual backend error.
-- Removed client-controlled experience/rank selection. New accounts begin at the backend-controlled `F` rank.
+### Users and profiles (`user`)
 
-### Flutter dashboard fixes
+Implemented:
 
-- Fixed escaped Dart interpolation that displayed literal placeholders for XP, level, name, phone, and location.
-- Preserved profile loading, rank badge display, achievement popups, refresh behavior, and logout.
-- Redirects incomplete profiles back to profile setup.
+- Profile creation and editing
+- Name, age, email, phone, location, province, district, landmark, bio, profile photo, and experience data
+- Profile-completion state
+- Public/user search and profile lookup
+- User XP history and XP event triggering
+- Achievement event triggering
+- Referrer assignment and ratings
+- Photo-verification request creation
+- Admin user listing, search, detail view, profile editing, and deletion
+- Admin XP add/simulation/history edit/history delete
+- Admin achievement event triggering
+- Admin campaign quota updates
+- Admin photo-verification review
 
-### Backend updates
+Main route groups: `/user/profile`, `/user/search`, `/user/:id`, `/user/xp/events`, `/user/achievements/events`, `/user/photos/verification-requests`, and `/user/admin/...`.
 
-- Backend runs locally on port `8080`.
-- Added comma-separated CORS origin support.
-- Added Flutter web origin `http://localhost:8081` alongside Admin origin `http://localhost:3000`.
-- Verified the live Flutter signup preflight returns HTTP `204` with the correct `Access-Control-Allow-Origin` value.
-- Added validated `age` support to `UpdateProfileDto`.
-- Added `age` to the profile update allowlist.
-- Age accepts integers from 9 through 120.
-- Existing email update validation and uniqueness checks are used by profile setup.
-- Backend builds successfully with `npm run build`.
+### XP, levels, ranks, achievements, and badges
 
-### Admin dashboard fixes
+The gamification system is driven mainly by user services and configurable `Extra` records.
 
-- Identified browser-extension DOM mutation (`cz-shortcut-listen`) as the hydration-warning source.
-- Added narrowly scoped hydration-warning suppression to the root body.
-- Corrected login requests that previously went to the Next.js server and returned `404`.
-- Removed hard-coded API localhost fallbacks from Admin source code.
-- Admin reads `NEXT_PUBLIC_API_URL` from `Admin/.env.local` and fails clearly when it is missing.
-- Centralized logout and authentication calls around the configured API URL.
+- XP event processing and XP ledger/history
+- Rule-based XP values and repeat policies
+- Conditions for difficulty, activity, district, host status, solo/group status, ratings, and exploration
+- Level calculation from total XP
+- Rank progression from level
+- Rank progress and next-rank information in profile/XP responses
+- Achievement progress and reward XP
+- Rank-up achievement support
+- Admin manual XP corrections with a reason
+- Configurable rank badge definitions
 
-## Running the project locally
+The repository also contains dedicated `achievement`, `badge`, and `xp-ledger` modules. The active admin configuration path is primarily `Extra` plus `UserService`.
 
-### 1. Backend
+Default rank bands currently represented by the backend are `F`, `E`, `D`, `C`, `B`, `A`, `S`, `SS`, `SSS`, `Mythic`, and `Heroic`.
 
-Create `backend/.env` with valid values. Never copy production credentials into documentation.
+### Extra configuration (`extra`)
+
+`Extra` is the admin-configurable catalog for system rules and supporting data. Categories include:
+
+- `places`: provinces, districts, and place catalog data
+- `activities`: campaign/activity types
+- `difficulty`: difficulty definitions and approval/XP behavior
+- `xp`: XP event rules
+- `level-up`: level and progression requirements
+- `badge`: rank badge definitions and images
+- `achievement`: achievement definitions and reward configuration
+
+Implemented admin operations include create, list, detail, update, delete, place hierarchy retrieval, bulk place seeding, and difficulty management. Place seed data is available in `backend/nepal_province_district.json`.
+
+### Trips (`trip`)
+
+Implemented:
+
+- Authenticated trip creation, listing, detail, and updates
+- Trip deletion restricted to admins
+- Joining trips
+- Participant listing
+- Check-in
+- Admin participant approval
+- Admin completion confirmation
+
+### Campaigns (`campaign`)
+
+Campaigns are the main planned travel/activity workflow.
+
+Implemented:
+
+- Campaign creation and editing
+- Solo and group hike types
+- Scheduled and instant campaign behavior where allowed
+- Location, activity, difficulty, duration, cost, participant limit, photos, and join-mode data
+- Open-join and request-join flows
+- Campaign listing and detail retrieval
+- Joining, leaving, and confirming participation
+- Participant role changes
+- Planning data and task creation/editing
+- Phase transitions
+- Submit, approve, reject, and verification workflows
+- Campaign completion/verification and XP-related lifecycle hooks
+- Admin soft-delete to a bin, restore, and permanent delete
+- Scheduled lifecycle processing
+
+Main route family: `/campaigns`.
+
+Important rules currently enforced include date ordering, join-window checks, approval status, participant limits, duplicate participation prevention, and restrictions on non-admin instant campaigns.
+
+### Reviews, reports, and moderation
+
+Reviews (`review`) support:
+
+- Rating a participant/user after a trip
+- User review lists and statistics
+- Reviews given by a user
+- Trip review lookup
+- Admin review listing, editing, and deletion
+
+Reports (`report`) support:
+
+- Reporting a target
+- Open/all report queues
+- Report statistics
+- Reports by target
+- Assigned reports
+- Admin assignment
+- Admin/moderator status updates
+
+Media (`media`) supports media records and moderation flows, including pending media, moderation statistics, approval, and rejection. User photo verification is handled through user endpoints and the admin photo queue.
+
+### Chat (`chat`)
+
+Implemented chat functions include:
+
+- Person-to-person conversations
+- General groups and campaign groups
+- Conversation listing and unread counts
+- Group detail, add/remove member, and leave group
+- Message send, list, edit, delete, mark-read, search, and unread-count operations
+
+### Notifications (`notification`)
+
+Implemented:
+
+- User notification listing
+- Unread notification listing and count
+- Mark one notification read
+- Mark all notifications read
+- Delete notification
+
+### Treasure hunts (`treasure-hunt`)
+
+The backend contains a treasure-hunt module for admin hunt creation and authenticated retrieval/progress flows, including hunt lookup by ID and trip association. The admin navigation currently does not expose a complete treasure-hunt management screen, so this area should be considered backend-supported but admin UI coverage is limited.
+
+### Cloudinary and media uploads
+
+Authenticated clients can request Cloudinary upload signatures through `POST /cloudinary/signature`. Admin campaign, badge, and profile screens use signed/direct upload flows for images. Credentials remain server configuration and must not be committed.
+
+### Admin utilities and weather
+
+The backend includes an admin module with weather/geocoding support used by place-management screens. These integrations depend on the external service configuration and network availability.
+
+## 5. Backend security and request behavior
+
+The application currently includes:
+
+- Global `ValidationPipe` with whitelist and non-whitelisted-field rejection
+- Global exception formatting through `HttpExceptionFilter`
+- CORS configured from comma-separated `FRONTEND_URL`
+- Credentials enabled for cookie authentication
+- Helmet security headers
+- CSRF double-submit cookie protection for state-changing requests
+- Auth rate limits: five requests/minute and twenty requests/hour for key auth routes
+- Admin security headers middleware
+- Request logging middleware
+- JWT guards and role guards
+- Refresh-token revocation service
+
+Production requirements still include HTTPS, strong unique secrets, a production Redis strategy, credential rotation, startup environment validation, and monitoring.
+
+## 6. Admin dashboard capabilities
+
+### Authentication and session behavior
+
+The admin portal provides:
+
+- Admin login at `/login`
+- Cookie-based session handling
+- `GET /auth/me` session validation
+- Automatic access-token refresh after a 401 response
+- CSRF token attachment for state-changing requests
+- Rejection/redirect of non-admin users
+- Logout and inactivity/session cleanup
+
+### Navigation and pages
+
+| Admin area | Current capability |
+| --- | --- |
+| Dashboard | User/profile overview and high-level operational statistics |
+| Users | Paginated user list, search/filtering, profile detail, editing, deletion, XP history, XP correction, and achievements |
+| Photo Queue | Review and approve/reject photo-verification requests |
+| Analytics | User growth/profile data plus campaign totals, upcoming/ongoing/open counts, participants, average duration, and top hosts |
+| Campaign Add | Create campaign with activity/place/difficulty data, scheduling, participants, media, and campaign rules |
+| Campaign Details | View/edit campaign details, participants, planning, tasks, media, and lifecycle actions |
+| Campaign Approval | Review submitted campaigns and approve/reject them |
+| Campaign Bin | Review deleted campaigns, restore them, or permanently delete them |
+| Campaign Reviews | View, update, and delete reviews |
+| My Campaign | View campaigns available to the admin user and join where applicable |
+| Places | Manage Nepal place hierarchy and place catalog entries |
+| Difficulty | Configure difficulty records and approval behavior |
+| Activities | Manage activity/extra records used by campaigns |
+| XP | Manage XP rules and simulate XP behavior |
+| Badge | Manage rank badges and assign badges to profiles |
+| Level Up | Manage level-up and progression requirements |
+| Achievements | Create, edit, list, and delete achievement definitions |
+| Chat | View conversations/messages and search messages |
+| Treasure Hunt | Page exists at `/treasurehunt`; backend support exists, but coverage should be verified before treating it as complete |
+
+## 7. Main admin workflows
+
+### New admin setup
+
+1. Start backend and Admin.
+2. Log in with an account whose backend role is `admin`.
+3. Configure `Extra` data in this order: Places, Activities, Difficulty, XP, Level Up, Badge, Achievement.
+4. Review users and photo-verification requests.
+5. Review submitted campaigns from Campaign Approval.
+
+### Campaign lifecycle
+
+```text
+Create -> Submit -> Admin approve/reject -> Join/request -> Plan/tasks
+       -> Campaign window -> Completion/photo verification -> XP/achievement updates
+       -> Completed or failed -> Bin/restore/permanent delete (admin)
+```
+
+### XP lifecycle
+
+```text
+User/admin event -> XP rule matching -> XP ledger -> level/rank calculation
+                 -> achievement progress -> reward XP/rank badge visibility
+```
+
+## 8. Data model areas
+
+MongoDB schemas currently cover:
+
+- Auth accounts and refresh-token state
+- User profiles
+- Trips and trip participants
+- Campaigns and campaign participants
+- Extra configuration/catalog records
+- XP ledger/history
+- Achievements and rank-up achievements
+- Badges
+- Reviews
+- Reports
+- Notifications
+- Chat groups and messages
+- Visited places
+- Treasure hunts and user treasure progress
+- Media and photo-verification records
+
+Profiles are separate from authentication records and are linked through `authId`.
+
+## 9. What is built and ready
+
+### Implemented and connected
+
+- Backend compiles through `npm run build`.
+- Admin login/session integration is connected to backend auth.
+- User/profile administration is connected to backend APIs.
+- Campaign creation, listing, details, approval, bin, restore, and lifecycle screens are connected.
+- Extra configuration screens are connected for places, difficulty, activities, XP, badges, level-up rules, and achievements.
+- Photo-verification queue is connected.
+- Analytics page calculates current user and campaign metrics from available API data.
+- Backend Swagger documentation is generated from controllers.
+- Flutter client has authentication/profile flows that use the same backend.
+
+### Implemented but should be treated as operational/partial
+
+- Treasure-hunt admin coverage is incomplete/needs verification.
+- Media moderation APIs/components exist, but the main sidebar does not currently expose a dedicated media page.
+- Chat admin UI exists, but full moderation policy and pagination behavior should be tested.
+- Redis-backed distributed rate limiting is not guaranteed; an in-memory limiter is used in the bootstrap path.
+- External geocoding/weather and Cloudinary flows depend on credentials and network services.
+
+## 10. Known limitations and unfinished work
+
+- OTP phone verification and email verification are not implemented as complete production flows.
+- Forgot-password/account-recovery flow is not complete.
+- Signup/profile XP copy must match actual server-side XP awards; the signup UI currently claims a reward that is not verified as a transactional backend event.
+- Explorer identity selection is currently a UI concept and is not persisted as a full product feature.
+- Required profile rules should be enforced consistently on the backend, not only in Flutter.
+- The Flutter profile screen is still partly a profile/dashboard hybrid; a dedicated user home dashboard remains future work.
+- Automated end-to-end coverage for auth, campaign lifecycle, XP idempotency, media, and admin operations is incomplete.
+- Existing lint/analyzer debt remains in parts of Admin and Flutter.
+- Production deployment, secrets management, backup/restore, health checks, observability, and CI need formalization.
+
+## 11. Environment configuration
+
+Create `backend/.env` with real local or deployment values:
 
 ```env
 PORT=8080
-MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@VALID_CLUSTER_HOST/tripsathi
+MONGODB_URI=mongodb+srv://USERNAME:PASSWORD@HOST/tripsathi
 JWT_SECRET=replace_me
 JWT_ACCESS_SECRET=replace_me
 JWT_REFRESH_SECRET=replace_me
@@ -118,25 +387,35 @@ CLOUDINARY_API_KEY=replace_me
 CLOUDINARY_API_SECRET=replace_me
 ```
 
-Run:
-
-```powershell
-cd backend
-npm install
-npm start
-```
-
-Only one backend process should listen on port `8080`. If code or `.env` changes, stop the existing process before restarting it.
-
-### 2. Admin
-
 Create `Admin/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
-Run:
+Never commit real passwords, JWT secrets, Cloudinary credentials, or production URLs.
+
+## 12. Running locally
+
+### Backend
+
+```powershell
+cd backend
+npm install
+npm run start:dev
+```
+
+Useful commands:
+
+```powershell
+npm run build
+npm test
+npm run test:e2e
+npm run seed:places
+npm run seed:xp
+```
+
+### Admin
 
 ```powershell
 cd Admin
@@ -144,9 +423,9 @@ npm install
 npm run dev
 ```
 
-### 3. Flutter web
+Open `http://localhost:3000`.
 
-Run:
+### Flutter client
 
 ```powershell
 cd Users
@@ -154,110 +433,20 @@ flutter pub get
 flutter run -d web-server --web-port 8081
 ```
 
-Open `http://localhost:8081`. After web bootstrap changes, use `Ctrl+Shift+R` or an Incognito window to bypass cached files.
+## 13. AI research handoff prompt
 
-Chrome remote-debugging launch has failed on the current development machine. The reliable workaround is `-d web-server`, or `flutter run -d edge`.
+Use the following context when asking another AI to research or extend this project:
 
-### 4. Flutter Android emulator
+> TRTripSathi is a full-stack travel-engagement platform. The NestJS backend in `backend/` is the source of truth for authentication, users/profiles, trips, campaigns, campaign participants, places, activities, difficulty, XP, levels, ranks, achievements, badges, reviews, reports, notifications, chat, media/photo verification, visited places, and treasure hunts. MongoDB is accessed through Mongoose. Authentication uses JWT access/refresh cookies, bearer-token support, CSRF protection, validation, rate limiting, and role guards. The Next.js admin dashboard in `Admin/` consumes these APIs and provides admin login, user/profile management, campaign creation/details/approval/bin, analytics, photo verification, reviews, chat, and Extra configuration screens for places, activities, difficulty, XP, level-up rules, badges, and achievements. Before proposing changes, inspect the actual controllers, DTOs, services, schemas, and admin API calls. Treat the “implemented but partial” and “known limitations” sections of this README as important constraints. Use Swagger at `/api/docs` for the generated API contract and distinguish code that exists from features that are fully tested and production-ready.
 
-The default emulator API host is `http://10.0.2.2:8080`.
+## 14. Source-of-truth locations
 
-```powershell
-flutter run -d <android-device-id>
-```
-
-Android development still requires the Android SDK to be installed and configured on this machine.
-
-## Important behavior and limitations
-
-- Explorer identity selection is currently a signup UI concept only. It is not persisted in MongoDB.
-- The signup button displays “earn 50 XP,” but no verified backend event currently awards that XP. This copy must be removed or the reward must be implemented transactionally.
-- Introduction completion is stored locally, not against the user account. Clearing browser storage shows onboarding again.
-- Flutter web token storage uses `flutter_secure_storage_web`, which currently prevents WebAssembly compatibility. JavaScript web builds still work.
-- The profile screen is still a basic profile/dashboard hybrid and is not the intended final product dashboard.
-- Existing Flutter analysis contains style-level notices in legacy files, although the newly changed splash, profile-setup, and authentication screens compile.
-- The Admin project has existing unrelated lint debt. The latest API and layout changes did not introduce targeted lint errors.
-- Package upgrades are available in Flutter, but several require constraint and compatibility review rather than a blind bulk upgrade.
-
-## Highest-priority next work
-
-### P0 — Make authentication and onboarding production-safe
-
-Why: account creation is the first critical user journey. Any inconsistency loses users and can leave partial accounts.
-
-- Add automated end-to-end tests for signup, login, profile completion, logout, token refresh, duplicate phone, duplicate email, expired token, and backend-unavailable states.
-- Decide how partial signup should work when account creation succeeds but profile completion fails.
-- Add a resumable profile-setup state after login.
-- Enforce required profile fields on the backend, not only in Flutter.
-- Add OTP phone verification and email verification.
-- Add forgot-password and account-recovery flows.
-- Confirm refresh-token behavior on Flutter web and native mobile separately.
-
-### P0 — Secure configuration and credentials
-
-Why: database, JWT, and media credentials grant access to production data and services.
-
-- Rotate any credentials that have been shared, logged, committed, or exposed during development.
-- Replace placeholder JWT secrets with strong environment-specific secrets.
-- Add safe `.env.example` files to each application.
-- Confirm all real `.env` files are ignored by Git.
-- Validate required environment variables during startup with clear messages.
-- Use a secrets manager in deployment.
-
-### P1 — Build the real user dashboard
-
-Why: engagement promises made during onboarding need a useful destination.
-
-- Create a dedicated home dashboard instead of using the profile screen as the landing page.
-- Show a daily streak, today’s quest, XP progress, rank, next reward, recent activity, and recommended nearby places.
-- Add bottom navigation for Home, Explore, Trips, Achievements, and Profile.
-- Add skeleton states, empty states, retry actions, and offline messaging.
-- Ensure every screen works at narrow phone widths, tablets, and web desktop widths.
-
-### P1 — Implement the engagement system honestly
-
-Why: rewards increase retention only when they are consistent, understandable, and protected against abuse.
-
-- Decide whether explorer identity is cosmetic, recommendation data, or an achievement path.
-- Persist the selected identity if it affects the experience.
-- Implement daily check-ins and streak rules on the backend.
-- Implement daily/weekly quests and XP ledger events.
-- Award signup/profile-completion XP server-side exactly once, or remove the 50 XP claim.
-- Add idempotency and abuse protection to all XP-awarding actions.
-- Add notification preferences and reminder scheduling.
-
-### P1 — Improve profile data design
-
-Why: asking for age directly becomes stale and is less reliable than date of birth.
-
-- Decide whether to collect age or date of birth. The backend already supports age calculation from `dateOfBirth`.
-- If date of birth is adopted, replace the numeric age field with a date picker and calculate age only on the server.
-- Decide which fields are truly required and document that contract in one shared source.
-- Add profile photo upload and editing.
-- Add privacy controls for location, age, email, and public profile visibility.
-
-### P2 — Quality, maintenance, and deployment
-
-- Resolve remaining Flutter analyzer notices and Admin lint debt.
-- Add backend unit/integration tests and Flutter widget/golden tests.
-- Add CI for formatting, linting, tests, and builds.
-- Upgrade dependencies in small verified groups.
-- Add structured logging and error monitoring.
-- Add health/readiness endpoints covering MongoDB and other required services.
-- Define development, staging, and production URLs and CORS policies.
-- Add deployment documentation and database backup/restore procedures.
-
-## Recommended next milestone
-
-The next milestone should be **a tested, resumable authentication and profile-completion journey followed by a real home dashboard**.
-
-Suggested order:
-
-1. Add backend-required profile validation and end-to-end authentication tests.
-2. Make incomplete profile setup resumable after every login.
-3. Implement a dedicated dashboard shell and bottom navigation.
-4. Implement daily streak and quest APIs with idempotent XP awards.
-5. Connect dashboard widgets to those real APIs.
-6. Add verification, password recovery, monitoring, and deployment configuration.
-
-This order first stabilizes account access, then delivers the daily engagement value promised by the onboarding experience.
+- Backend composition: `backend/src/app.module.ts`
+- Backend bootstrap/security: `backend/src/main.ts`
+- Backend controllers/services/schemas: `backend/src/<module>/`
+- Admin routes: `Admin/app/`
+- Admin reusable managers: `Admin/components/`
+- Admin API helpers: `Admin/lib/`
+- Authentication notes: `backend/src/auth/AUTH_README.md`
+- Seed scripts: `backend/scripts/`
+- Admin-specific guide: `Admin/README.md`
