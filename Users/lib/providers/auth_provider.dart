@@ -15,6 +15,7 @@ class AuthProvider extends ChangeNotifier {
     };
   }
 
+<<<<<<< HEAD
   /// Call once at startup (before runApp) to eagerly hydrate auth state.
   Future<void> initialize() async {
     try {
@@ -22,6 +23,14 @@ class AuthProvider extends ChangeNotifier {
       _isAuthenticated = token != null;
     } catch (_) {
       _isAuthenticated = false;
+=======
+  Future<void> _init() async {
+    try {
+      final token = await _storage.read(key: 'jwt');
+      _setAuth(token != null);
+    } catch (_) {
+      _setAuth(false);
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
     }
   }
 
@@ -39,7 +48,11 @@ class AuthProvider extends ChangeNotifier {
 
   /// Force check storage (useful if something changed outside provider)
   Future<void> refreshFromStorage() async {
-    final token = await _storage.read(key: 'jwt');
-    _setAuth(token != null);
+    try {
+      final token = await _storage.read(key: 'jwt');
+      _setAuth(token != null);
+    } catch (_) {
+      _setAuth(false);
+    }
   }
 }

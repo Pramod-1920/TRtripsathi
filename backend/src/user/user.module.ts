@@ -7,6 +7,7 @@ import { UserController } from './user.controller';
 import { User, UserSchema } from './schemas/user.schema';
 import { UserService } from './user.service';
 import { AuditModule } from '../audit/audit.module';
+import { BadgeModule } from '../badge/badge.module';
 
 @Module({
   imports: [
@@ -17,6 +18,8 @@ import { AuditModule } from '../audit/audit.module';
     ]),
     CloudinaryModule,
     forwardRef(() => AuditModule),
+    // Import BadgeModule so UserService can include persisted user badges in profile responses
+    forwardRef(() => BadgeModule),
   ],
   controllers: [UserController],
   providers: [UserService],

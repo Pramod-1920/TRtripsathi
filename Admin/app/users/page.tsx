@@ -18,11 +18,25 @@ interface User {
   province?: string | null;
   district?: string | null;
   landmark?: string | null;
+<<<<<<< HEAD
   isActive?: boolean;
   deactivatedAt?: string | null;
+=======
+  experienceLevel?: string | null;
+  level?: number;
+  xp?: number;
+  totalXp?: number;
+  badge?: string;
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
   profileCompleted: boolean;
   isProfilePublic?: boolean;
   createdAt?: string;
+  currentRankBadge?: {
+    rankCode?: string;
+    imageUrl?: string;
+    name?: string;
+  } | null;
+  badgeCount?: number;
 }
 
 export default function UsersPage() {
@@ -282,9 +296,31 @@ export default function UsersPage() {
             {users.map((user) => (
               <tr key={user._id} className="group transition-colors hover:bg-accent/30">
                 <td className="px-6 py-4">
+<<<<<<< HEAD
                   <div>
                     <p className="font-medium text-foreground">{user.firstName} {user.lastName}</p>
                     <p className="text-xs text-muted-foreground">{user.location || 'No location provided'}</p>
+=======
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="font-medium text-slate-900">{user.firstName} {user.lastName}</p>
+                      <p className="text-xs text-slate-500">
+                        {user.badgeCount ?? 0} badge{user.badgeCount !== 1 ? 's' : ''} earned
+                      </p>
+                    </div>
+                    {user.currentRankBadge?.imageUrl && (
+                      <div className="shrink-0">
+                        <img
+                          src={user.currentRankBadge.imageUrl}
+                          alt={user.currentRankBadge.name || 'Rank badge'}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded border border-slate-200"
+                          style={{ objectFit: 'cover' }}
+                        />
+                      </div>
+                    )}
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
                   </div>
                 </td>
                 <td className="px-6 py-4">

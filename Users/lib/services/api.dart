@@ -2,9 +2,28 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class ApiService {
-  static String baseUrl = 'http://10.0.2.2:3000';
+  static late String baseUrl;
+
+  static void configure() {
+    const configured = String.fromEnvironment('API_BASE_URL');
+    if (configured.isNotEmpty) {
+      baseUrl = configured;
+      return;
+    }
+    baseUrl = kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080';
+  }
+
+  static String readableError(Object error) {
+    if (error is http.ClientException) {
+      return 'Cannot reach the TripSathi server. Check that the backend is running and try again.';
+    }
+    final text = error.toString().replaceFirst('Exception: ', '');
+    return text.isEmpty ? 'Something went wrong. Please try again.' : text;
+  }
+
   static final _storage = FlutterSecureStorage();
   static const _accessKey = 'jwt';
   static const _refreshKey = 'refresh';
@@ -13,6 +32,7 @@ class ApiService {
   /// Set this from your AuthProvider to get updates when tokens are stored/cleared.
   static void Function(bool isAuthenticated)? onAuthStateChanged;
 
+<<<<<<< HEAD
   // ============ Auth Endpoints ============
 
   /// POST /auth/signup - Create a new account
@@ -38,6 +58,25 @@ class ApiService {
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       await _storeTokens(body);
+=======
+  /// Login - expects backend route POST /auth/login
+  /// Returns parsed JSON map on success and stores token in secure storage
+  static Future<Map<String, dynamic>> login(
+      String phoneNumber, String password) async {
+    final uri = Uri.parse('$baseUrl/auth/login');
+    final res = await http.post(uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final token = body['accessToken'] ?? body['token'] ?? body['jwt'];
+      final refresh = body['refreshToken'] ?? body['refresh'] ?? null;
+      if (token != null)
+        await _storage.write(key: _accessKey, value: token as String);
+      if (refresh != null)
+        await _storage.write(key: _refreshKey, value: refresh as String);
+      // Notify app that we're authenticated
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
       try {
         onAuthStateChanged?.call(true);
       } catch (_) {}
@@ -60,6 +99,7 @@ class ApiService {
 
       return body;
     }
+<<<<<<< HEAD
 
     try {
       final errorBody = jsonDecode(res.body);
@@ -74,12 +114,22 @@ class ApiService {
   }) async {
     final uri = Uri.parse('$baseUrl/cloudinary/signature');
     final res = await _postWithAuth(uri, body: jsonEncode({'folder': folder}));
+=======
+    // Return parsed error body when possible for better UX
+    throw Exception(_errorMessage(res, 'Unable to sign in'));
+  }
+
+  static Future<Map<String, dynamic>> getProfile() async {
+    final uri = Uri.parse('$baseUrl/user/profile');
+    final res = await _getWithAuth(uri);
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
     if (res.statusCode == 200) {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
     throw Exception('Failed to get upload signature: HTTP ${res.statusCode}');
   }
 
+<<<<<<< HEAD
   static Future<Map<String, dynamic>> _uploadProfileImageToCloudinary(
     File image,
   ) async {
@@ -95,6 +145,16 @@ class ApiService {
         timestamp.isEmpty ||
         signature.isEmpty) {
       throw Exception('Invalid upload signature response');
+=======
+  /// Get place hierarchy - GET /extra/places
+  static Future<List<dynamic>> getPlaceHierarchy() async {
+    final uri = Uri.parse('$baseUrl/extra/places');
+    final res =
+        await http.get(uri, headers: {'Content-Type': 'application/json'});
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      return body['items'] as List<dynamic>? ?? [];
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
     }
 
     final uploadUri =
@@ -114,24 +174,45 @@ class ApiService {
     throw Exception('Image upload failed: HTTP ${res.statusCode} ${res.body}');
   }
 
+<<<<<<< HEAD
   /// POST /auth/login - Login with phone and password
   static Future<Map<String, dynamic>> login(
       String phoneNumber, String password) async {
     final uri = Uri.parse('$baseUrl/auth/login');
+=======
+  /// Signup - POST /auth/signup
+  static Future<Map<String, dynamic>> signup(
+      String phoneNumber, String password) async {
+    final uri = Uri.parse('$baseUrl/auth/signup');
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
     final res = await http.post(uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
 
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
+<<<<<<< HEAD
       await _storeTokens(body);
+=======
+      final token = body['accessToken'] ?? body['token'] ?? body['jwt'];
+      final refresh = body['refreshToken'] ?? body['refresh'] ?? null;
+      if (token != null)
+        await _storage.write(key: _accessKey, value: token as String);
+      if (refresh != null)
+        await _storage.write(key: _refreshKey, value: refresh as String);
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
       try {
         onAuthStateChanged?.call(true);
       } catch (_) {}
       return body;
     }
 
+    throw Exception(_errorMessage(res, 'Unable to create account'));
+  }
+
+  static String _errorMessage(http.Response response, String fallback) {
     try {
+<<<<<<< HEAD
       final errorBody = jsonDecode(res.body);
       throw Exception('Login failed: $errorBody');
     } catch (_) {
@@ -197,6 +278,20 @@ class ApiService {
   }
 
   /// PATCH /user/profile - Update own profile
+=======
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message'];
+        if (message is List) return message.join('\n');
+        if (message != null && message.toString().trim().isNotEmpty)
+          return message.toString();
+      }
+    } catch (_) {}
+    return '$fallback (${response.statusCode})';
+  }
+
+  /// Update profile - PATCH /user/profile
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
   static Future<Map<String, dynamic>> updateProfile(
       Map<String, dynamic> updates) async {
     final uri = Uri.parse('$baseUrl/user/profile');
@@ -210,7 +305,11 @@ class ApiService {
       final errorBody = jsonDecode(res.body);
       throw Exception('Update profile failed: $errorBody');
     } catch (_) {
+<<<<<<< HEAD
       throw Exception('Update profile failed: HTTP ${res.statusCode}');
+=======
+      throw Exception(_errorMessage(res, 'Unable to update profile'));
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
     }
   }
 
@@ -592,6 +691,7 @@ class ApiService {
     return res;
   }
 
+<<<<<<< HEAD
   /// DELETE request with auth and refresh
   static Future<http.Response> _deleteWithAuth(Uri uri) async {
     final headers = await _getAuthHeaders();
@@ -601,8 +701,58 @@ class ApiService {
       if (refreshed) {
         final headers2 = await _getAuthHeaders();
         return http.delete(uri, headers: headers2);
+=======
+  static Future<bool> _attemptRefresh() async {
+    final refresh = await _storage.read(key: _refreshKey);
+    if (refresh == null) return false;
+
+    try {
+      final uri = Uri.parse('$baseUrl/auth/refresh');
+      // Send refresh token via Cookie header so backend's JwtRefreshGuard can read it
+      final res = await http.post(uri, headers: {
+        'Content-Type': 'application/json',
+        'Cookie': 'refresh_token=$refresh'
+      });
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final newAccess = body['accessToken'] ?? body['token'] ?? body['jwt'];
+        final newRefresh = body['refreshToken'] ?? body['refresh'] ?? null;
+        if (newAccess != null)
+          await _storage.write(key: _accessKey, value: newAccess as String);
+        if (newRefresh != null)
+          await _storage.write(key: _refreshKey, value: newRefresh as String);
+        try {
+          onAuthStateChanged?.call(true);
+        } catch (_) {}
+        return true;
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
       }
     }
+<<<<<<< HEAD
     return res;
+=======
+
+    // If refresh failed, clear stored tokens and notify app
+    await _storage.delete(key: _accessKey);
+    await _storage.delete(key: _refreshKey);
+    try {
+      onAuthStateChanged?.call(false);
+    } catch (_) {}
+    return false;
+  }
+
+  static Future<void> logout() async {
+    try {
+      final token = await _storage.read(key: _accessKey);
+      final uri = Uri.parse('$baseUrl/auth/logout');
+      await http.post(uri,
+          headers: token != null ? {'Authorization': 'Bearer $token'} : {});
+    } catch (_) {}
+    await _storage.delete(key: _accessKey);
+    await _storage.delete(key: _refreshKey);
+    try {
+      onAuthStateChanged?.call(false);
+    } catch (_) {}
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
   }
 }

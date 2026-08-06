@@ -60,7 +60,7 @@ npm run dev
 
 Important env:
 
-- `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:5000`)
+- `NEXT_PUBLIC_API_URL` (required; configure it in `.env.local`)
 
 ## Backend app
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
-import { apiClient } from '@/lib/api';
+import { API_BASE_URL, apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -146,9 +146,24 @@ export default function LayoutWrapper({
     };
   }, [isLoginPage, logout]);
 
+<<<<<<< HEAD
   // Do not rely on navigator.sendBeacon to logout (CSRF protected endpoints require a token).
   // Unload/logout via sendBeacon was removed because it may fail to clear server session.
   // Use server-side session expiry and normal POST /auth/logout flows instead.
+=======
+  // On tab close/unload, attempt to clear server session using sendBeacon so cookies are removed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        const url = `${API_BASE_URL}/auth/logout`;
+        const blob = new Blob([], { type: 'application/json' });
+        // sendBeacon will do a POST; server should accept and clear cookies
+        navigator.sendBeacon(url, blob);
+      } catch (_) {
+        // ignore
+      }
+    };
+>>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
 
 
   // Handle pages restored from Back-Forward Cache (BFCache) and popstate navigation.
