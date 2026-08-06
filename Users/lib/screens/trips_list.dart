@@ -12,8 +12,6 @@ class TripsListScreen extends StatefulWidget {
 
 class _TripsListScreenState extends State<TripsListScreen> {
   late TripsProvider _tripsProvider;
-  String? _selectedStatus;
-  String? _selectedDifficulty;
 
   @override
   void initState() {
@@ -87,7 +85,7 @@ class _TripsListScreenState extends State<TripsListScreen> {
 class TripCard extends StatelessWidget {
   final dynamic trip;
 
-  const TripCard({required this.trip});
+  const TripCard({super.key, required this.trip});
 
   @override
   Widget build(BuildContext context) {

@@ -46,7 +46,6 @@ export class AuthService {
 
   async signup(signupData: SignupDto) {
     const phoneNumber = signupData.phoneNumber.trim();
-    const role = signupData.role ?? Role.User;
 
     const userInUse = await this.authModel.findOne({ phoneNumber });
     if (userInUse) {
@@ -57,10 +56,13 @@ export class AuthService {
     const createdUser = await this.authModel.create({
       phoneNumber,
       password: hashedPassword,
-      role,
+      role: Role.User,
     });
 
-    await this.userService.createProfile(createdUser._id.toString());
+    await this.userService.createProfile(createdUser._id.toString(), {
+      firstName: signupData.firstName ?? null,
+      middleName: signupData.middleName ?? null,
+    });
 
     const tokens = await this.issueTokens(
       createdUser._id.toString(),
@@ -82,6 +84,10 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid phone number or password');
+    }
+
+    if (user.isActive === false) {
+      throw new ForbiddenException('This account has been deactivated');
     }
 
     if (user.lockUntil && user.lockUntil > new Date()) {
@@ -115,7 +121,7 @@ export class AuthService {
   async refreshTokens(userId: string, refreshToken: string) {
     const user = await this.authModel.findById(userId);
 
-    if (!user || !user.refreshTokenHash) {
+    if (!user || user.isActive === false || !user.refreshTokenHash) {
       throw new UnauthorizedException('Access denied');
     }
 

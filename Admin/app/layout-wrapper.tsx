@@ -53,7 +53,7 @@ export default function LayoutWrapper({
   const setSession = useAuthStore((state) => state.setSession);
   const logout = useAuthStore((state) => state.logout);
 
-  const sidebarWidthClass = sidebarCollapsed ? 'md:pl-20' : 'md:pl-72';
+  const sidebarWidthClass = sidebarCollapsed ? 'md:pl-20' : 'md:pl-60';
 
   const toggleSidebar = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {

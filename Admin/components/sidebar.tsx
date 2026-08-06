@@ -15,6 +15,7 @@ import {
   FiChevronRight,
   FiGrid,
   FiShield,
+  FiMessageSquare,
   FiX,
 } from 'react-icons/fi';
 import clsx from 'clsx';
@@ -45,6 +46,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/dashboard', label: 'Dashboard', icon: FiHome },
     { href: '/users', label: 'Users', icon: FiUsers },
     { href: '/photo-verification-queue', label: 'Photo Queue', icon: FiShield },
+    { href: '/reports', label: 'Reports', icon: FiMessageSquare },
     { href: '/analytics', label: 'Analytics', icon: FiBarChart2 },
   ];
   const myItems = [
@@ -63,14 +65,10 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/extra/places', label: 'Places' },
     { href: '/extra/difficulty', label: 'Difficulty' },
     { href: '/extra/activities', label: 'Activities' },
-    { href: '/extra/xp', label: 'XP' },
-    { href: '/extra/badge', label: 'Badge' },
-    { href: '/extra/level-up', label: 'Level Up' },
-    { href: '/extra/achievement', label: 'Achievements' },
   ];
 
   const isCampaignSectionActive = pathname.startsWith('/campaigns');
-  const sidebarWidthClass = collapsed ? 'md:w-20' : 'md:w-72';
+  const sidebarWidthClass = collapsed ? 'md:w-20' : 'md:w-60';
   const isMySectionActive = pathname === '/profile' || pathname.startsWith('/my-campaign');
   const isExtraSectionActive = pathname.startsWith('/extra');
   const [myOpen, setMyOpen] = useState<boolean>(() => isMySectionActive);
@@ -90,7 +88,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
+          'fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
           sidebarWidthClass,
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}

@@ -6,20 +6,30 @@ export class Report extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   reporterId: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, required: true })
-  targetId: Types.ObjectId; // ObjectId of user or trip being reported
-
   @Prop({
     type: String,
     required: true,
-    enum: ['user', 'trip'],
+    enum: ['feedback', 'report'],
+    default: 'report',
   })
-  targetType: string;
+  category: string;
+
+  @Prop({ type: Types.ObjectId })
+  targetId?: Types.ObjectId; // ObjectId of user or trip being reported
+
+  @Prop({
+    type: String,
+    enum: ['user', 'trip', 'system'],
+  })
+  targetType?: string;
 
   @Prop({
     type: String,
     required: true,
     enum: [
+      'bug',
+      'feature_request',
+      'general_feedback',
       'harassment',
       'spam',
       'inappropriate_content',
@@ -60,6 +70,7 @@ export const ReportSchema = SchemaFactory.createForClass(Report);
 
 // Indexes for efficient moderation
 ReportSchema.index({ status: 1, createdAt: -1 });
+ReportSchema.index({ category: 1, status: 1, createdAt: -1 });
 ReportSchema.index({ targetId: 1, targetType: 1 });
 ReportSchema.index({ reporterId: 1 });
 ReportSchema.index({ assignedTo: 1, status: 1 });

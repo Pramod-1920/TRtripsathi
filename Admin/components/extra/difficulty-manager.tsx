@@ -70,14 +70,6 @@ function getLocalValidationErrors(items: DifficultyTier[]): DifficultyValidation
       errors.push({ index, field: 'label', message: 'Label is required.' });
     }
 
-    if (!Number.isFinite(item.xpMultiplier) || item.xpMultiplier < 0.5 || item.xpMultiplier > 10) {
-      errors.push({
-        index,
-        field: 'xpMultiplier',
-        message: 'Multiplier must be between 0.5 and 10.',
-      });
-    }
-
     if (normalizedId) {
       if (usedIds.has(normalizedId)) {
         errors.push({
@@ -237,7 +229,7 @@ export function DifficultyManager() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Difficulty</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Manage campaign difficulty tiers, approval behavior, ordering, and XP multipliers.
+            Manage campaign difficulty tiers, approval behavior, and ordering.
           </p>
         </div>
 
@@ -273,21 +265,20 @@ export function DifficultyManager() {
       {success && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{success}</div>}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-[980px] w-full divide-y divide-slate-200">
+        <table className="min-w-[780px] w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">ID</th>
               <th className="px-4 py-3">Label</th>
               <th className="px-4 py-3">Admin Approval</th>
-              <th className="px-4 py-3">XP Multiplier</th>
               <th className="px-4 py-3">Enabled</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
                   Loading difficulty settings...
                 </td>
               </tr>
@@ -295,7 +286,7 @@ export function DifficultyManager() {
 
             {!loading && !hasRows && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
                   No difficulty tiers found.
                 </td>
               </tr>
@@ -375,27 +366,6 @@ export function DifficultyManager() {
                     </label>
                     {getError(index, 'adminApprovalRequired') && (
                       <p className="mt-1 text-xs text-red-600">{getError(index, 'adminApprovalRequired')}</p>
-                    )}
-                  </td>
-
-                  <td className="px-4 py-3 align-top">
-                    <input
-                      type="number"
-                      min={0.5}
-                      max={10}
-                      step={0.1}
-                      value={row.xpMultiplier}
-                      onChange={(event) => {
-                        const nextValue = Number(event.target.value);
-                        updateRow(index, {
-                          ...row,
-                          xpMultiplier: Number.isFinite(nextValue) ? nextValue : row.xpMultiplier,
-                        });
-                      }}
-                      className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {getError(index, 'xpMultiplier') && (
-                      <p className="mt-1 text-xs text-red-600">{getError(index, 'xpMultiplier')}</p>
                     )}
                   </td>
 

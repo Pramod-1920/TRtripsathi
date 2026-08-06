@@ -16,6 +16,12 @@ export class Auth extends Document {
   @Prop({ type: String, enum: Role, default: Role.User, required: true })
   role!: Role;
 
+  @Prop({ type: Boolean, default: true })
+  isActive!: boolean;
+
+  @Prop({ type: Date, default: null })
+  deactivatedAt?: Date | null;
+
   // Current refresh token hash storage (single active session model)
   @Prop({ type: String, default: null })
   refreshTokenHash?: string | null;

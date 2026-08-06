@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { FiEdit, FiTrash2, FiSearch, FiPlus } from 'react-icons/fi';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
+import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 interface User {
   _id: string;
@@ -17,10 +18,8 @@ interface User {
   province?: string | null;
   district?: string | null;
   landmark?: string | null;
-  experienceLevel?: string | null;
-  level?: number;
-  xp?: number;
-  badge?: string;
+  isActive?: boolean;
+  deactivatedAt?: string | null;
   profileCompleted: boolean;
   isProfilePublic?: boolean;
   createdAt?: string;
@@ -29,12 +28,14 @@ interface User {
 export default function UsersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'complete' | 'incomplete'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'complete' | 'incomplete'>('all');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<User | null>(null);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
@@ -101,20 +102,22 @@ export default function UsersPage() {
   };
 
   async function handleDeleteUser(userId: string) {
-    const confirmed = window.confirm('Delete this profile and linked auth account?');
-
-    if (!confirmed) {
-      return;
-    }
-
     setDeleting(prev => new Set([...prev, userId]));
     setDeleteError(null);
+    setActionNotice(null);
 
     try {
-      await apiClient.delete(`/user/admin/profiles/${userId}`);
-      if (users.length === 1 && page > 1) {
+      const response = await apiClient.delete(`/user/admin/profiles/${userId}`);
+      const action = response.data?.action as 'deactivated' | 'deleted' | undefined;
+
+      if (action === 'deactivated') {
+        setActionNotice('User deactivated. Their sessions were revoked and they can no longer sign in.');
+        setRefreshKey((current) => current + 1);
+      } else if (users.length === 1 && page > 1) {
+        setActionNotice('User permanently deleted.');
         setPage((currentPage) => Math.max(1, currentPage - 1));
       } else {
+        setActionNotice('User permanently deleted.');
         setRefreshKey((current) => current + 1);
       }
     } catch (err: unknown) {
@@ -122,6 +125,7 @@ export default function UsersPage() {
       setDeleteError(errorMessage);
       console.error('Delete error:', err);
     } finally {
+      setPendingDeleteUser(null);
       setDeleting(prev => {
         const next = new Set(prev);
         next.delete(userId);
@@ -131,9 +135,9 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-8 text-foreground">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold">Users Management</h1>
+    <div className="p-4 text-foreground sm:p-6 lg:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 sm:mb-8">
+        <h1 className="text-2xl font-bold sm:text-3xl">Users Management</h1>
         <button
           type="button"
           onClick={() => setRefreshKey((current) => current + 1)}
@@ -159,6 +163,20 @@ export default function UsersPage() {
             className="font-bold text-destructive hover:opacity-80"
           >
             ✕
+          </button>
+        </div>
+      )}
+
+      {actionNotice && (
+        <div className="mb-6 flex items-center justify-between rounded-lg border border-secondary/30 bg-secondary/10 p-4 text-sm text-secondary">
+          <span>{actionNotice}</span>
+          <button
+            type="button"
+            onClick={() => setActionNotice(null)}
+            className="ml-3 font-bold hover:opacity-80"
+            aria-label="Dismiss notification"
+          >
+            ×
           </button>
         </div>
       )}
@@ -194,6 +212,8 @@ export default function UsersPage() {
               className="rounded-lg border border-border bg-background px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary/40"
             >
             <option value="all">All Profiles</option>
+            <option value="active">Active Users</option>
+            <option value="inactive">Inactive Users</option>
             <option value="complete">Completed</option>
             <option value="incomplete">Incomplete</option>
           </select>
@@ -202,24 +222,69 @@ export default function UsersPage() {
 
       {/* Users Table */}
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full">
+        {/* Mobile user cards */}
+        <div className="divide-y divide-border xl:hidden">
+          {users.map((user) => (
+            <article key={user._id} className="flex items-center gap-3 p-3 sm:px-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {[user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unnamed user'}
+                  </p>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${user.isActive === false ? 'bg-slate-200 text-slate-700' : getStatusBadge(user.profileCompleted)}`}>
+                    {user.isActive === false ? 'Inactive' : user.profileCompleted ? 'Complete' : 'Incomplete'}
+                  </span>
+                </div>
+                <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                  {user.location ? (
+                    <span className="truncate">{user.location}</span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-1">
+                <Link
+                  href={`/users/${user._id}`}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-primary transition-colors hover:bg-primary/10"
+                  title="Edit user"
+                  aria-label={`Edit ${user.firstName || 'user'}`}
+                >
+                  <FiEdit size={17} />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteUser(user)}
+                  disabled={deleting.has(user._id)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={`${user.isActive === false ? 'Permanently delete' : 'Deactivate'} ${user.firstName || 'user'}`}
+                  title={deleting.has(user._id) ? 'Processing user' : user.isActive === false ? 'Permanently delete user' : 'Deactivate user'}
+                >
+                  <FiTrash2 size={17} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {/* Desktop user table */}
+        <div className="hidden overflow-x-auto xl:block">
+        <table className="w-full min-w-[940px]">
           <thead className="border-b border-border bg-muted/40">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Name</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Location</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Experience</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Profile</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">Created</th>
-              <th className="px-6 py-3 text-right text-sm font-semibold text-foreground">Actions</th>
+              <th className="sticky right-0 w-44 bg-muted px-4 py-3 text-right text-sm font-semibold text-foreground shadow-[-1px_0_0_0_var(--border)]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {users.map((user) => (
-              <tr key={user._id} className="transition-colors hover:bg-accent/30">
+              <tr key={user._id} className="group transition-colors hover:bg-accent/30">
                 <td className="px-6 py-4">
                   <div>
                     <p className="font-medium text-foreground">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-muted-foreground">{user.badge || 'No badge yet'}</p>
+                    <p className="text-xs text-muted-foreground">{user.location || 'No location provided'}</p>
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -227,32 +292,30 @@ export default function UsersPage() {
                   <p className="text-xs text-muted-foreground">{user.province || ''} {user.district ? `• ${user.district}` : ''}</p>
                 </td>
                 <td className="px-6 py-4">
-                  <p className="text-sm font-medium text-foreground">Level {user.level ?? 1}</p>
-                  <p className="text-xs text-muted-foreground">{user.experienceLevel || 'beginner'}</p>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(user.profileCompleted)}`}>
-                    {user.profileCompleted ? 'Completed' : 'Incomplete'}
+                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${user.isActive === false ? 'bg-slate-200 text-slate-700' : getStatusBadge(user.profileCompleted)}`}>
+                    {user.isActive === false ? 'Inactive' : user.profileCompleted ? 'Completed' : 'Incomplete'}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-sm text-muted-foreground">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</td>
-                <td className="px-6 py-4">
+                <td className="sticky right-0 w-44 bg-card px-4 py-4 shadow-[-1px_0_0_0_var(--border)] transition-colors group-hover:bg-accent">
                   <div className="flex items-center justify-end gap-2">
                     <Link
                       href={`/users/${user._id}`}
-                      className="rounded-lg p-2 text-primary transition-colors hover:bg-primary/10"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
                       title="View Details"
                     >
-                      <FiEdit size={18} />
+                      <FiEdit size={16} />
+                      Edit
                     </Link>
                     <button
                       type="button"
-                      onClick={() => void handleDeleteUser(user._id)}
+                      onClick={() => setPendingDeleteUser(user)}
                       disabled={deleting.has(user._id)}
-                      className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={deleting.has(user._id) ? 'Deleting...' : 'Delete User'}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={deleting.has(user._id) ? 'Processing...' : user.isActive === false ? 'Permanently delete user' : 'Deactivate user'}
                     >
-                      {deleting.has(user._id) ? '⏳' : <FiTrash2 size={18} />}
+                      <FiTrash2 size={16} />
+                      {deleting.has(user._id) ? 'Working' : user.isActive === false ? 'Delete' : 'Deactivate'}
                     </button>
                   </div>
                 </td>
@@ -260,6 +323,7 @@ export default function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Empty State */}
@@ -270,13 +334,13 @@ export default function UsersPage() {
       )}
 
       {/* Pagination */}
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           Showing {total === 0 ? 0 : (page - 1) * limit + 1}
           -
           {Math.min(page * limit, total)} of {total} profiles
         </p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 self-end sm:self-auto">
           <button
             type="button"
             disabled={page <= 1}
@@ -298,6 +362,30 @@ export default function UsersPage() {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={Boolean(pendingDeleteUser)}
+        title={pendingDeleteUser?.isActive === false ? 'Permanently delete user?' : 'Deactivate user?'}
+        description={pendingDeleteUser
+          ? pendingDeleteUser.isActive === false
+            ? `This is the second deletion step. ${[pendingDeleteUser.firstName, pendingDeleteUser.lastName].filter(Boolean).join(' ') || 'This user'} and their linked authentication account will be permanently deleted. This cannot be undone.`
+            : `${[pendingDeleteUser.firstName, pendingDeleteUser.lastName].filter(Boolean).join(' ') || 'This user'} will be marked inactive, signed out, and prevented from signing in. Their data will remain available for later permanent deletion.`
+          : ''}
+        confirmLabel={pendingDeleteUser?.isActive === false ? 'Delete permanently' : 'Deactivate user'}
+        cancelLabel="Keep user"
+        intent="danger"
+        isProcessing={pendingDeleteUser ? deleting.has(pendingDeleteUser._id) : false}
+        onConfirm={() => {
+          if (pendingDeleteUser) {
+            void handleDeleteUser(pendingDeleteUser._id);
+          }
+        }}
+        onCancel={() => {
+          if (!pendingDeleteUser || !deleting.has(pendingDeleteUser._id)) {
+            setPendingDeleteUser(null);
+          }
+        }}
+      />
     </div>
   );
 }

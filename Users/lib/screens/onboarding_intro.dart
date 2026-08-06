@@ -36,7 +36,7 @@ class _IntroOnboardingScreenState extends State<IntroOnboardingScreen>
       title: 'Earn XP & Rank',
       subtitle: 'Level Up Your Skills',
       description:
-          'Complete trips, earn experience points, unlock badges, and climb the leaderboard. Show your expertise!',
+          'Earn XP when a campaign is completed and verified. Build your rank, unlock badges, and climb the leaderboard.',
       icon: Icons.stars,
       color: const Color(0xFFA0794C),
     ),
@@ -136,7 +136,7 @@ class _IntroOnboardingScreenState extends State<IntroOnboardingScreen>
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 20,
                     offset: const Offset(0, -5),
                   ),
@@ -249,7 +249,6 @@ class OnboardingPageView extends StatefulWidget {
 class _OnboardingPageViewState extends State<OnboardingPageView>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _slideAnimation;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
 
@@ -259,10 +258,6 @@ class _OnboardingPageViewState extends State<OnboardingPageView>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
-    );
-
-    _slideAnimation = Tween<double>(begin: 50, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
 
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
@@ -290,7 +285,7 @@ class _OnboardingPageViewState extends State<OnboardingPageView>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            widget.page.color.withOpacity(0.05),
+            widget.page.color.withValues(alpha: 0.05),
             Colors.white,
           ],
         ),
@@ -311,9 +306,9 @@ class _OnboardingPageViewState extends State<OnboardingPageView>
                     height: 140,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: widget.page.color.withOpacity(0.1),
+                      color: widget.page.color.withValues(alpha: 0.1),
                       border: Border.all(
-                        color: widget.page.color.withOpacity(0.2),
+                        color: widget.page.color.withValues(alpha: 0.2),
                         width: 2,
                       ),
                     ),
@@ -353,12 +348,14 @@ class _OnboardingPageViewState extends State<OnboardingPageView>
                         Text(
                           widget.page.subtitle,
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: widget.page.color.withOpacity(0.7),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 18,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                color: widget.page.color.withValues(alpha: 0.7),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 18,
+                              ),
                         ),
                       ],
                     ),
@@ -379,7 +376,7 @@ class _OnboardingPageViewState extends State<OnboardingPageView>
                       widget.page.description,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: Colors.black.withOpacity(0.6),
+                            color: Colors.black.withValues(alpha: 0.6),
                             height: 1.6,
                             fontSize: 16,
                           ),

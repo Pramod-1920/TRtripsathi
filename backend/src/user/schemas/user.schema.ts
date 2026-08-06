@@ -11,6 +11,12 @@ export class User extends Document {
   @Prop({ type: Boolean, default: false })
   profileCompleted!: boolean;
 
+  @Prop({ type: Boolean, default: true })
+  isActive!: boolean;
+
+  @Prop({ type: Date, default: null })
+  deactivatedAt?: Date | null;
+
   @Prop({ type: Number, default: 0 })
   xp!: number;
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -16,11 +17,23 @@ class ApiService {
 
   /// POST /auth/signup - Create a new account
   static Future<Map<String, dynamic>> signup(
-      String phoneNumber, String password) async {
+    String phoneNumber,
+    String password, {
+    String? firstName,
+    String? middleName,
+    File? profileImage,
+  }) async {
     final uri = Uri.parse('$baseUrl/auth/signup');
-    final res = await http.post(uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phoneNumber': phoneNumber, 'password': password}));
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'phoneNumber': phoneNumber,
+        'password': password,
+        if (firstName != null) 'firstName': firstName,
+        if (middleName != null) 'middleName': middleName,
+      }),
+    );
 
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -28,6 +41,23 @@ class ApiService {
       try {
         onAuthStateChanged?.call(true);
       } catch (_) {}
+
+      // If the user picked a profile photo, upload to Cloudinary and then patch profile.
+      // This requires auth (we already stored the JWT above).
+      if (profileImage != null) {
+        final upload = await _uploadProfileImageToCloudinary(profileImage);
+        final secureUrl = upload['secure_url'] as String?;
+        final publicId = upload['public_id'] as String?;
+        if (secureUrl != null && secureUrl.isNotEmpty) {
+          await updateProfile({
+            if (firstName != null) 'firstName': firstName,
+            if (middleName != null) 'middleName': middleName,
+            'profilePhoto': secureUrl,
+            if (publicId != null) 'profilePhotoPublicId': publicId,
+          });
+        }
+      }
+
       return body;
     }
 
@@ -37,6 +67,51 @@ class ApiService {
     } catch (_) {
       throw Exception('Signup failed: HTTP ${res.statusCode}');
     }
+  }
+
+  static Future<Map<String, dynamic>> _getCloudinarySignature({
+    String folder = 'profile_images',
+  }) async {
+    final uri = Uri.parse('$baseUrl/cloudinary/signature');
+    final res = await _postWithAuth(uri, body: jsonEncode({'folder': folder}));
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to get upload signature: HTTP ${res.statusCode}');
+  }
+
+  static Future<Map<String, dynamic>> _uploadProfileImageToCloudinary(
+    File image,
+  ) async {
+    final sig = await _getCloudinarySignature(folder: 'profile_images');
+    final cloudName = (sig['cloudName'] ?? '').toString();
+    final apiKey = (sig['apiKey'] ?? '').toString();
+    final timestamp = (sig['timestamp'] ?? '').toString();
+    final signature = (sig['signature'] ?? '').toString();
+    final folder = (sig['folder'] ?? '').toString();
+
+    if (cloudName.isEmpty ||
+        apiKey.isEmpty ||
+        timestamp.isEmpty ||
+        signature.isEmpty) {
+      throw Exception('Invalid upload signature response');
+    }
+
+    final uploadUri =
+        Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+    final req = http.MultipartRequest('POST', uploadUri);
+    req.fields['api_key'] = apiKey;
+    req.fields['timestamp'] = timestamp;
+    req.fields['signature'] = signature;
+    if (folder.isNotEmpty) req.fields['folder'] = folder;
+    req.files.add(await http.MultipartFile.fromPath('file', image.path));
+
+    final streamed = await req.send();
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode == 200) {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    }
+    throw Exception('Image upload failed: HTTP ${res.statusCode} ${res.body}');
   }
 
   /// POST /auth/login - Login with phone and password
@@ -456,7 +531,7 @@ class ApiService {
   /// Store tokens from response
   static Future<void> _storeTokens(Map<String, dynamic> body) async {
     final token = body['accessToken'] ?? body['token'] ?? body['jwt'];
-    final refresh = body['refreshToken'] ?? body['refresh'] ?? null;
+    final refresh = body['refreshToken'] ?? body['refresh'];
     if (token != null) {
       await _storage.write(key: _accessKey, value: token as String);
     }

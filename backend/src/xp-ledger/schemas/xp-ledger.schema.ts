@@ -21,7 +21,6 @@ export class XpLedger extends Document {
       'achievement_unlock',
       'hosting_trip',
       'level_milestone',
-      'daily_streak',
       'admin_award',
       'admin_deduct',
     ],

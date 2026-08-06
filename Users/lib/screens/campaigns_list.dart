@@ -76,13 +76,16 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
   }
 
   void _joinCampaign(String campaignId) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       await _campaignsProvider.joinCampaign(campaignId);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      messenger.showSnackBar(
         const SnackBar(content: Text('Successfully joined campaign!')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      messenger.showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
     }
@@ -94,6 +97,7 @@ class CampaignCard extends StatelessWidget {
   final VoidCallback onJoin;
 
   const CampaignCard({
+    super.key,
     required this.campaign,
     required this.onJoin,
   });

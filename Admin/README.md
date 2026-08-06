@@ -234,7 +234,6 @@ Join result:
 Primary endpoint:
 
 - user: `POST /user/xp/events`
-- admin for profile: `POST /user/admin/profiles/:id/xp/events`
 
 XP rules are configured in **Extra category `xp`** (JSON in `value`).
 
@@ -249,15 +248,6 @@ Rule capabilities include:
 - repeat-penalty behavior
 
 If no matching rule exists, fallback XP logic runs.
-
-Admin direct XP add:
-
-- `POST /user/admin/profiles/:id/xp/add`
-- constrained to 1..500 XP per action + reason required
-- updates XP/level/rank
-- this is manual correction/ops style flow
-
----
 
 ## 10. Rank system (how users rank up)
 
@@ -407,16 +397,10 @@ To avoid broken flows, configure in this order:
 - `POST /campaigns/:id/restore`
 - `DELETE /campaigns/:id/permanent`
 
-## User/XP/Achievement
+## User management
 
 - `GET /user/admin/profiles`
 - `PATCH /user/admin/profiles/:id`
-- `POST /user/admin/profiles/:id/xp/events`
-- `POST /user/admin/profiles/:id/xp/simulate`
-- `POST /user/admin/profiles/:id/xp/add`
-- `PATCH /user/admin/profiles/:id/xp/history/:historyId`
-- `DELETE /user/admin/profiles/:id/xp/history/:historyId`
-- `POST /user/admin/profiles/:id/achievements/events`
 - `GET /user/admin/photo-verification-requests`
 - `PATCH /user/admin/profiles/:id/photos/verification-requests/:requestCode`
 

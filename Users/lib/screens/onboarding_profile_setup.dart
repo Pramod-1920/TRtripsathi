@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api.dart';
@@ -22,8 +19,6 @@ class ProfileSetupScreen extends StatefulWidget {
 class _ProfileSetupScreenState extends State<ProfileSetupScreen>
     with TickerProviderStateMixin {
   final _bioController = TextEditingController();
-  final ImagePicker _imagePicker = ImagePicker();
-  XFile? _selectedImage;
 
   final Map<String, String> _levels = {
     'Beginner': 'F',
@@ -76,7 +71,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
 
     final updates = <String, dynamic>{
       'experienceLevel': _levels[_selectedLevel],
-      if (_bioController.text.trim().isNotEmpty) 'bio': _bioController.text.trim(),
+      if (_bioController.text.trim().isNotEmpty)
+        'bio': _bioController.text.trim(),
     };
 
     try {
@@ -98,11 +94,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
 
       debugPrint('ONBOARDING ERROR: $e');
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -146,7 +142,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                             'Help us personalize your adventure recommendations.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.black.withOpacity(0.7),
+                              color: Colors.black.withValues(alpha: 0.7),
                               fontSize: 16,
                             ),
                           ),
@@ -156,7 +152,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                         const SizedBox(height: 26),
                         const Text(
                           'Select Experience Level',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 12),
                         Wrap(
@@ -179,14 +176,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                         const SizedBox(height: 30),
                         const Text(
                           'Select Favorite Activities',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 12),
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
                           children: _activityOptions.map((activity) {
-                            final selected = _selectedActivities.contains(activity.label);
+                            final selected =
+                                _selectedActivities.contains(activity.label);
                             return _pillChip(
                               label: activity.label,
                               icon: activity.icon,
@@ -207,7 +206,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                         const SizedBox(height: 30),
                         const Text(
                           'Short Bio (Optional)',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 10),
                         TextField(
@@ -216,7 +216,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                           decoration: InputDecoration(
                             hintText: 'Tell us about your outdoor journey...',
                             hintStyle: TextStyle(
-                              color: Colors.black.withOpacity(0.35),
+                              color: Colors.black.withValues(alpha: 0.35),
                               fontSize: 20,
                             ),
                             filled: true,
@@ -236,12 +236,15 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: accent, width: 1.6),
+                              borderSide:
+                                  const BorderSide(color: accent, width: 1.6),
                             ),
                           ),
                         ),
                         const SizedBox(height: 14),
-                        if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+                        if (_error != null)
+                          Text(_error!,
+                              style: const TextStyle(color: Colors.red)),
                       ],
                     ),
                   ),
@@ -272,8 +275,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                 ),
               ),
               child: _loading
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                  : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('Finish Setup'), SizedBox(width: 12), Icon(Icons.arrow_forward_rounded, size: 28)]),
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.4, color: Colors.white))
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                          Text('Finish Setup'),
+                          SizedBox(width: 12),
+                          Icon(Icons.arrow_forward_rounded, size: 28)
+                        ]),
             ),
           ),
         ),
@@ -281,7 +294,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
     );
   }
 
-  Widget _buildHeader(Color accent) { /* preserved */
+  Widget _buildHeader(Color accent) {
+    /* preserved */
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 14, 24, 14),
       decoration: const BoxDecoration(
@@ -297,9 +311,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
             children: [
               Row(
                 children: const [
-                  Icon(Icons.explore_outlined, color: Color(0xFFB24A00), size: 32),
+                  Icon(Icons.explore_outlined,
+                      color: Color(0xFFB24A00), size: 32),
                   SizedBox(width: 8),
-                  Text('Yatri', style: TextStyle(color: Color(0xFFB24A00), fontSize: 46 / 2, fontWeight: FontWeight.w700)),
+                  Text('Yatri',
+                      style: TextStyle(
+                          color: Color(0xFFB24A00),
+                          fontSize: 46 / 2,
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
               const Spacer(),
@@ -310,35 +329,53 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                   if (!mounted) return;
                   Navigator.pushReplacementNamed(context, '/dashboard');
                 },
-                child: const Text('Skip', style: TextStyle(color: Color(0xFFB24A00), fontSize: 17, fontWeight: FontWeight.w500)),
+                child: const Text('Skip',
+                    style: TextStyle(
+                        color: Color(0xFFB24A00),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w500)),
               ),
             ],
           ),
           const SizedBox(height: 12),
           const Row(
             children: [
-              Text('Step 3 of 3', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              Text('Step 3 of 3',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               Spacer(),
-              Text('Profile Completion', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFB24A00))),
+              Text('Profile Completion',
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFB24A00))),
             ],
           ),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(value: 1, minHeight: 9, valueColor: AlwaysStoppedAnimation<Color>(accent), backgroundColor: const Color(0xFFE2D8D0)),
+            child: LinearProgressIndicator(
+                value: 1,
+                minHeight: 9,
+                valueColor: AlwaysStoppedAnimation<Color>(accent),
+                backgroundColor: const Color(0xFFE2D8D0)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPhotoUploader(Color accent) { /* preserved */
+  Widget _buildPhotoUploader(Color accent) {
+    /* preserved */
     return Center(child: Column(children: [/* ... preserved UI ... */]));
   }
 
-  Future<void> _pickPhoto() async { /* preserved */ }
-
-  Widget _pillChip({required String label, required bool selected, required Color selectedColor, required VoidCallback onTap, IconData? icon}) { /* preserved */
+  Widget _pillChip(
+      {required String label,
+      required bool selected,
+      required Color selectedColor,
+      required VoidCallback onTap,
+      IconData? icon}) {
+    /* preserved */
     final borderColor = selected ? selectedColor : const Color(0xFF9D8478);
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -351,7 +388,19 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
           border: Border.all(color: borderColor),
           borderRadius: BorderRadius.circular(18),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [if (icon != null) ...[Icon(icon, size: 20, color: selected ? Colors.white : const Color(0xFF222222)), const SizedBox(width: 8)], Text(label, style: TextStyle(color: selected ? Colors.white : const Color(0xFF222222), fontSize: 31 / 2, fontWeight: FontWeight.w500))]),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon,
+                size: 20,
+                color: selected ? Colors.white : const Color(0xFF222222)),
+            const SizedBox(width: 8)
+          ],
+          Text(label,
+              style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF222222),
+                  fontSize: 31 / 2,
+                  fontWeight: FontWeight.w500))
+        ]),
       ),
     );
   }

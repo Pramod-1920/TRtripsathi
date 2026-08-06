@@ -6,7 +6,7 @@ class CampaignsProvider extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   int _currentPage = 1;
-  int _pageSize = 20;
+  final int _pageSize = 20;
   int _totalCampaigns = 0;
 
   List<dynamic> get campaigns => _campaigns;

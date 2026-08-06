@@ -1,11 +1,20 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
-import { Role } from '../constants/roles.enum';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 
 export class SignupDto {
   @ApiProperty({ example: '9876543210', description: 'User phone number (10 digits)' })
   @Matches(/^\d{10}$/, { message: 'Phone number must be exactly 10 digits' })
   phoneNumber: string;
+
+  @ApiPropertyOptional({ example: 'John', description: 'User first name' })
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @ApiPropertyOptional({ example: 'M', description: 'User middle name' })
+  @IsOptional()
+  @IsString()
+  middleName?: string;
 
   @ApiProperty({
     example: 'Password@123',
@@ -20,13 +29,4 @@ export class SignupDto {
   })
   password: string;
 
-  @ApiProperty({
-    example: Role.User,
-    enum: Role,
-    required: false,
-    description: 'Role for the new account. Defaults to user if not provided.',
-  })
-  @IsOptional()
-  @IsEnum(Role)
-  role?: Role;
 }

@@ -16,6 +16,12 @@ import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './schemas/user.schema';
 
+const REMOVED_XP_EVENT_KEYS = new Set([
+  'daily_streak',
+  'daily-streak',
+  'daily streak',
+]);
+
 type LevelUpRule = {
   rankCode: string;
   requiredXp: number;
@@ -631,6 +637,10 @@ export class UserService {
       const parsed = JSON.parse(value) as Partial<XpRuleDefinition>;
       const eventKey = this.normalizeKey(parsed.eventKey);
       const repeat = parsed.repeat ?? 'always';
+
+      if (REMOVED_XP_EVENT_KEYS.has(eventKey)) {
+        return null;
+      }
 
       const baseXp = Number(
         parsed.baseXp
@@ -1783,6 +1793,10 @@ export class UserService {
       throw new BadRequestException('eventKey is required');
     }
 
+    if (REMOVED_XP_EVENT_KEYS.has(normalizedEventKey)) {
+      throw new BadRequestException('The daily streak XP event has been removed');
+    }
+
     const rules = await this.getEnabledXpRules();
     const matchingRules = rules.filter((rule) => rule.eventKey === normalizedEventKey);
     const existingHistory = profile.xpHistory ?? [];
@@ -2787,7 +2801,13 @@ export class UserService {
     await this.cloudinaryService.deleteImage(previousPublicId);
   }
 
-  async createProfile(authId: string) {
+  async createProfile(
+    authId: string,
+    initial?: {
+      firstName?: string | null;
+      middleName?: string | null;
+    },
+  ) {
     const created = await this.userModel.create({
       authId: this.toObjectId(authId),
       profileCompleted: false,
@@ -2797,6 +2817,8 @@ export class UserService {
       experienceLevel: ExperienceLevel.F,
       badge: '',
       isProfilePublic: true,
+      ...(initial?.firstName?.trim() ? { firstName: initial.firstName.trim() } : {}),
+      ...(initial?.middleName?.trim() ? { middleName: initial.middleName.trim() } : {}),
     });
 
     return this.applyLevelProgression(created);
@@ -2968,7 +2990,7 @@ export class UserService {
     page: number;
     limit: number;
     q?: string;
-    status?: 'all' | 'complete' | 'incomplete';
+    status?: 'all' | 'active' | 'inactive' | 'complete' | 'incomplete';
   }) {
     const page = pagination.page ?? 1;
     const limit = pagination.limit ?? 10;
@@ -2977,7 +2999,11 @@ export class UserService {
     const status = pagination.status ?? 'all';
     const filter: Record<string, unknown> = {};
 
-    if (status === 'complete') {
+    if (status === 'active') {
+      filter.isActive = { $ne: false };
+    } else if (status === 'inactive') {
+      filter.isActive = false;
+    } else if (status === 'complete') {
       filter.profileCompleted = true;
     } else if (status === 'incomplete') {
       filter.profileCompleted = false;
@@ -3138,6 +3164,11 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    // Safety: disallow changing auth role or admin flags via profile update endpoint.
+    if ((updates as any)?.role !== undefined || Object.prototype.hasOwnProperty.call(updates, 'adminFlags')) {
+      throw new BadRequestException('Cannot modify role or adminFlags via profile endpoint');
+    }
+
     await this.applyAuthContactUpdates(profile.authId.toString(), updates);
 
     const sanitizedUpdates = this.sanitizeProfileUpdates(updates);
@@ -3163,13 +3194,34 @@ export class UserService {
   }
 
   async adminDeleteProfile(profileId: string) {
-    const profile = await this.userModel.findByIdAndDelete(
-      this.toObjectId(profileId),
-    );
+    const objectId = this.toObjectId(profileId);
+    const profile = await this.userModel.findById(objectId);
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
+
+    if (profile.isActive !== false) {
+      const deactivatedAt = new Date();
+      profile.isActive = false;
+      profile.deactivatedAt = deactivatedAt;
+      await profile.save();
+
+      await this.authModel.findByIdAndUpdate(profile.authId, {
+        isActive: false,
+        deactivatedAt,
+        refreshTokenHash: null,
+        refreshTokens: [],
+      });
+
+      return {
+        action: 'deactivated' as const,
+        isActive: false,
+        message: 'User deactivated successfully',
+      };
+    }
+
+    await this.userModel.findByIdAndDelete(objectId);
 
     if (profile.profilePhotoPublicId) {
       await this.cloudinaryService.deleteImage(profile.profilePhotoPublicId);
@@ -3177,7 +3229,10 @@ export class UserService {
 
     await this.authModel.findByIdAndDelete(profile.authId);
 
-    return { message: 'Profile deleted successfully' };
+    return {
+      action: 'deleted' as const,
+      message: 'User permanently deleted successfully',
+    };
   }
 
   async adminUpdateCampaignQuota(profileId: string, body: { campaignQuota: number; resetToJanFirst?: boolean }) {

@@ -38,6 +38,28 @@ export class ExtraService {
     private readonly placesService: PlacesService,
   ) {}
 
+  private assertXpEventIsSupported(
+    category: ExtraCategory,
+    value?: string | null,
+  ) {
+    if (category !== ExtraCategory.Xp || !value?.trim()) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(value) as { eventKey?: unknown };
+      const eventKey = String(parsed.eventKey ?? '').trim().toLowerCase();
+
+      if (['daily_streak', 'daily-streak', 'daily streak'].includes(eventKey)) {
+        throw new BadRequestException('The daily streak XP event has been removed');
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+    }
+  }
+
   private async generateExtraCode(): Promise<string> {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
@@ -63,6 +85,8 @@ export class ExtraService {
   }
 
   async createExtra(dto: CreateExtraDto) {
+    this.assertXpEventIsSupported(dto.category, dto.value);
+
     const extra = await this.extraModel.create({
       extraCode: await this.createUniqueExtraCode(),
       category: dto.category,
@@ -121,6 +145,11 @@ export class ExtraService {
     if (!extra) {
       throw new NotFoundException('Extra item not found');
     }
+
+    this.assertXpEventIsSupported(
+      dto.category ?? extra.category,
+      dto.value !== undefined ? dto.value : extra.value,
+    );
 
     if (dto.category) {
       extra.category = dto.category;

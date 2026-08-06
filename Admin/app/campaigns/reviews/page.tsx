@@ -140,7 +140,6 @@ export default function ReviewsPage() {
                                   setLoading(false);
                                 }
                               }}
-                              className="rounded bg-green-600 text-white px-2 py-1"
                               className="rounded-full bg-secondary px-2 py-1 text-secondary-foreground hover:bg-secondary/90"
                             >
                               Save

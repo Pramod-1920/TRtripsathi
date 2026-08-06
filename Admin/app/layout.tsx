@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="en"
       className={`${headingFont.variable} ${bodyFont.variable} h-full antialiased`}
     >
-      <body className="min-h-screen bg-background m-0 p-0">
+      <body suppressHydrationWarning className="min-h-screen bg-background m-0 p-0">
         <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>

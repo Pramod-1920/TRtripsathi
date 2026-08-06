@@ -7,7 +7,6 @@ import { apiClient } from '@/lib/api';
 import { fetchCampaigns, Campaign } from '@/lib/campaigns';
 
 type Profile = {
-  experienceLevel?: string | null;
   profileCompleted?: boolean;
   createdAt?: string;
 };
@@ -75,11 +74,6 @@ export default function AnalyticsPage() {
 
     const activeUsersToday = createdAtValues.filter((value) => value >= now - oneDay).length;
     const completedProfiles = profiles.filter((profile) => profile.profileCompleted).length;
-    const experienceCounts = profiles.reduce<Record<string, number>>((accumulator, profile) => {
-      const level = profile.experienceLevel || 'unknown';
-      accumulator[level] = (accumulator[level] ?? 0) + 1;
-      return accumulator;
-    }, {});
 
     return {
       userGrowth,
@@ -88,7 +82,6 @@ export default function AnalyticsPage() {
       completedProfiles,
       avgSessionDuration: '24 min',
       userRetention: profiles.length ? Math.round((completedProfiles / profiles.length) * 100) : 0,
-      experienceCounts,
       createdAtValues,
     };
   }, [profiles, referenceNow]);
@@ -155,7 +148,6 @@ export default function AnalyticsPage() {
     return buckets;
   }, [analyticsData.createdAtValues, referenceNow]);
 
-  const experienceEntries = Object.entries(analyticsData.experienceCounts);
   // placeholder static visits removed; we rely on computed metrics
 
   return (
@@ -267,7 +259,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Top Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Top Hosts */}
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold">Top Hosts</h2>
@@ -279,30 +271,6 @@ export default function AnalyticsPage() {
               <div key={host} className="flex items-center justify-between">
                 <span className="text-sm text-foreground">{i + 1}. {host}</span>
                 <span className="rounded-full bg-primary/15 px-2 py-1 text-xs font-medium text-primary">{count} campaigns</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Experience Level Distribution */}
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold">Experience Level</h2>
-          <div className="space-y-4">
-            {experienceEntries.length === 0 && (
-              <p className="text-sm text-muted-foreground">No experience data yet.</p>
-            )}
-            {experienceEntries.map(([level, count]) => (
-              <div key={level}>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-foreground">{level}</span>
-                  <span className="text-xs font-medium text-muted-foreground">{count}</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${analyticsData.totalProfiles ? (count / analyticsData.totalProfiles) * 100 : 0}%` }}
-                  />
-                </div>
               </div>
             ))}
           </div>

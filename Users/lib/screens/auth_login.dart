@@ -27,14 +27,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final phone = _phoneController.text.trim();
-      final password = _passwordController.text.trim();
+      final password = _passwordController.text;
 
       if (phone.isEmpty) {
         throw Exception('Phone number is required');
       }
 
-      if (password.length < 8) {
-        throw Exception('Please enter your Password');
+      if(!RegExp(r'^\d{10}$').hasMatch(phone)) {
+        throw Exception('Phone number must be 10 digits');
+      }
+
+      if (password.isEmpty) {
+        throw Exception('Password is required');
       }
 
       await ApiService.login(phone, password);
@@ -49,11 +53,11 @@ class _LoginScreenState extends State<LoginScreen> {
         _error = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -81,25 +85,22 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Spacer(),
-
                 Center(
                   child: Container(
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(28),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.travel_explore,
                       size: 55,
-                      color: Colors.blue,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 30),
-
                 const Center(
                   child: Text(
                     'Yatri',
@@ -109,9 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 Center(
                   child: Text(
                     'Explore Nepal with travelers like you',
@@ -122,9 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 40),
-
                 TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
@@ -133,21 +130,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     labelText: 'Phone Number',
                     hintText: 'Enter your phone number',
                     prefixIcon: const Icon(Icons.phone_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(
-                        color: Colors.blue,
-                        width: 2,
-                      ),
-                    ),
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -162,24 +147,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         });
                       },
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                      ),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(
-                        color: Colors.blue,
-                        width: 2,
+                        _obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -187,7 +162,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Text('Forgot Password?'),
                   ),
                 ),
-
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Container(
@@ -205,21 +179,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 24),
-
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
                     onPressed: _loading ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
                     child: _loading
                         ? const SizedBox(
                             height: 24,
@@ -238,9 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
-
                 const SizedBox(height: 26),
-
                 Row(
                   children: [
                     Expanded(
@@ -265,25 +228,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 24),
-
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: OutlinedButton.icon(
                     onPressed: _googleLogin,
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                    icon: const Text(
+                      'G',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF4285F4),
                       ),
-                      side: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                    icon: Image.network(
-                      'https://developers.google.com/identity/images/g-logo.png',
-                      height: 22,
                     ),
                     label: const Text(
                       'Continue with Google',
@@ -295,9 +252,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 30),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -320,7 +275,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                 ),
-
                 const Spacer(),
               ],
             ),

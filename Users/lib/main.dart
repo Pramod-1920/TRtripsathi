@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,9 +18,42 @@ import 'screens/profile/profile.dart';
 import 'screens/dashboard/dashboard.dart';
 import 'screens/auth/signup.dart';
 import 'services/api.dart';
+import 'ui/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: Colors.white,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
+              SizedBox(height: 12),
+              Text(
+                'Something went wrong while rendering this screen.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  };
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    // ignore: avoid_print
+    print('Unhandled platform error: $error');
+    return true;
+  };
 
   // Load environment variables (guarded: mobile builds may not include a .env file)
   try {
@@ -28,14 +63,18 @@ Future<void> main() async {
     print('No .env file found or failed to load: $e');
   }
 
-  // Read BACKEND_URL from .env (trim/normalize). Fall back to emulator default.
-  var envUrl = dotenv.env['BACKEND_URL']?.trim() ?? '';
+  // Prefer BACKEND_URL passed via `--dart-define` (works reliably on real phones),
+  // then fall back to `.env`, then emulator default.
+  final dartEnvUrl = const String.fromEnvironment('BACKEND_URL', defaultValue: '').trim();
+  var envUrl = dartEnvUrl.isNotEmpty ? dartEnvUrl : (dotenv.env['BACKEND_URL']?.trim() ?? '');
+
   if (envUrl.isNotEmpty) {
     if (!envUrl.startsWith('http')) envUrl = 'http://$envUrl';
     // If no explicit port provided, assume 3000 (common backend dev port)
     if (!RegExp(r':\d+$').hasMatch(envUrl)) envUrl = '$envUrl:3000';
     ApiService.baseUrl = envUrl;
   } else {
+    // Android emulator special-case: host machine is reachable via 10.0.2.2.
     ApiService.baseUrl = 'http://10.0.2.2:3000';
   }
 
@@ -43,11 +82,15 @@ Future<void> main() async {
   // ignore: avoid_print
   print('Backend URL: ${ApiService.baseUrl}');
 
-  runApp(const MyApp());
+  final authProvider = AuthProvider();
+  await authProvider.initialize();
+
+  runApp(MyApp(authProvider: authProvider));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final AuthProvider authProvider;
+  const MyApp({super.key, required this.authProvider});
 
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
@@ -62,6 +105,7 @@ class _MyAppState extends State<MyApp> {
   bool _profileSetupDone = false;
   bool _loading = true;
   bool _showSplash = true;
+  String? _startupError;
 
   @override
   void initState() {
@@ -70,14 +114,25 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _checkOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 8),
+      );
 
-    setState(() {
-      _introDone = prefs.getBool('intro_done') ?? false;
-      _accountCreated = prefs.getBool('account_created') ?? false;
-      _profileSetupDone = prefs.getBool('onboarding_done') ?? false;
-      _loading = false;
-    });
+      setState(() {
+        _introDone = prefs.getBool('intro_done') ?? false;
+        _accountCreated = prefs.getBool('account_created') ?? false;
+        _profileSetupDone = prefs.getBool('onboarding_done') ?? false;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _startupError = 'Failed to initialize app storage. Please restart app.';
+        _loading = false;
+      });
+      // ignore: avoid_print
+      print('Onboarding init failed: $e');
+    }
   }
 
   void _completeSplash() {
@@ -99,9 +154,50 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
+    if (_startupError != null) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 44,
+                    color: Colors.orange,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _startupError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _loading = true;
+                        _startupError = null;
+                      });
+                      _checkOnboarding();
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<AuthProvider>(create: (_) => widget.authProvider),
         ChangeNotifierProvider(create: (_) => TripsProvider()),
         ChangeNotifierProvider(create: (_) => ReviewsProvider()),
         ChangeNotifierProvider(create: (_) => CampaignsProvider()),
@@ -113,15 +209,17 @@ class _MyAppState extends State<MyApp> {
             debugShowCheckedModeBanner: false,
             navigatorKey: MyApp.navigatorKey,
             title: 'Yatri',
-            theme: ThemeData(
-              primarySwatch: Colors.blue,
-              useMaterial3: true,
+            themeMode: ThemeMode.light,
+            theme: AppTheme.light(),
+            builder: (context, child) => ColoredBox(
+              color: Colors.white,
+              child: child ?? const SizedBox.shrink(),
             ),
             home: _showSplash
                 ? SplashScreen(onComplete: _completeSplash)
                 : _getInitialScreen(auth),
             routes: {
-              '/': (_) => const LoginScreen(),
+              '/login': (_) => const LoginScreen(),
               '/signup': (_) => const SignupScreen(),
               '/onboarding': (_) => const IntroOnboardingScreen(),
               '/profile-setup': (_) => const ProfileSetupScreen(),

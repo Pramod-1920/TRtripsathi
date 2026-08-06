@@ -1,17 +1,33 @@
 import { IsString, IsEnum, MinLength, MaxLength, IsOptional } from 'class-validator';
 
+export const reportCategories = ['feedback', 'report'] as const;
+export const reportStatuses = ['open', 'investigating', 'resolved', 'dismissed'] as const;
+export const reportTargetTypes = ['user', 'trip'] as const;
+export const feedbackReasons = ['bug', 'feature_request', 'general_feedback', 'other'] as const;
+export const playerReportReasons = [
+  'harassment',
+  'spam',
+  'inappropriate_content',
+  'safety_concern',
+  'fraud',
+  'other',
+] as const;
+
 export class CreateReportDto {
-  @IsEnum(['user', 'trip'])
+  @IsEnum(reportTargetTypes)
   targetType: string;
 
-  @IsEnum([
-    'harassment',
-    'spam',
-    'inappropriate_content',
-    'safety_concern',
-    'fraud',
-    'other',
-  ])
+  @IsEnum(playerReportReasons)
+  reason: string;
+
+  @IsString()
+  @MinLength(20)
+  @MaxLength(500)
+  description: string;
+}
+
+export class CreateFeedbackDto {
+  @IsEnum(feedbackReasons)
   reason: string;
 
   @IsString()
@@ -21,7 +37,7 @@ export class CreateReportDto {
 }
 
 export class UpdateReportStatusDto {
-  @IsEnum(['open', 'investigating', 'resolved', 'dismissed'])
+  @IsEnum(reportStatuses)
   status: string;
 
   @IsOptional()
@@ -37,8 +53,9 @@ export class AssignReportDto {
 export class ReportResponseDto {
   _id: string;
   reporterId: string;
-  targetId: string;
-  targetType: string;
+  category: string;
+  targetId?: string;
+  targetType?: string;
   reason: string;
   description: string;
   status: string;
@@ -50,13 +67,17 @@ export class ReportResponseDto {
 }
 
 export class ReportStatsDto {
-  totalReports: number;
-  openReports: number;
-  investigatingReports: number;
-  resolvedReports: number;
-  dismissedReports: number;
+  total: number;
+  open: number;
+  investigating: number;
+  resolved: number;
+  dismissed: number;
   topReasons: {
     reason: string;
     count: number;
   }[];
+  byCategory: {
+    feedback: number;
+    report: number;
+  };
 }

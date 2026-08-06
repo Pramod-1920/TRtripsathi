@@ -1,16 +1,29 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { apiClient } from '@/lib/api';
+
+type ReportCategory = 'feedback' | 'report';
+type ReportStatus = 'open' | 'investigating' | 'resolved' | 'dismissed';
+
+interface ReportUser {
+  _id: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+}
 
 interface Report {
   _id: string;
-  reporterId: { _id: string; name: string };
-  targetId: string;
-  targetType: string;
+  reporterId?: ReportUser;
+  category?: ReportCategory;
+  targetId?: string;
+  targetType?: string;
   reason: string;
   description: string;
-  status: 'open' | 'investigating' | 'resolved' | 'dismissed';
-  assignedTo?: { _id: string; name: string };
+  status: ReportStatus;
+  assignedTo?: ReportUser;
   resolution?: string;
   createdAt: string;
   resolvedAt?: string;
@@ -23,14 +36,59 @@ interface ReportStats {
   resolved: number;
   dismissed: number;
   topReasons: Array<{ reason: string; count: number }>;
+  byCategory?: {
+    feedback: number;
+    report: number;
+  };
+}
+
+const statusFilters: ReportStatus[] = ['open', 'investigating', 'resolved', 'dismissed'];
+
+const reasonLabels: Record<string, string> = {
+  bug: 'Bug',
+  feature_request: 'Feature request',
+  general_feedback: 'General feedback',
+  harassment: 'Harassment',
+  spam: 'Spam',
+  inappropriate_content: 'Inappropriate content',
+  safety_concern: 'Safety concern',
+  fraud: 'Fraud',
+  other: 'Other',
+};
+
+function formatReason(reason: string) {
+  return reasonLabels[reason] ?? reason.replaceAll('_', ' ');
+}
+
+function getReporterName(user?: ReportUser) {
+  if (!user) return 'Unknown';
+  if (user.name) return user.name;
+  const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+  return fullName || user.phoneNumber || 'Unknown';
+}
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'open':
+      return 'bg-destructive/15 text-destructive';
+    case 'investigating':
+      return 'bg-primary/15 text-primary';
+    case 'resolved':
+      return 'bg-secondary/20 text-secondary';
+    case 'dismissed':
+      return 'bg-muted text-muted-foreground';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
 }
 
 export default function ReportManager() {
+  const [category, setCategory] = useState<ReportCategory>('feedback');
   const [reports, setReports] = useState<Report[]>([]);
   const [stats, setStats] = useState<ReportStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('open');
+  const [filterStatus, setFilterStatus] = useState<ReportStatus>('open');
   const [page, setPage] = useState(1);
   const [totalReports, setTotalReports] = useState(0);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -38,125 +96,155 @@ export default function ReportManager() {
   const itemsPerPage = 20;
 
   useEffect(() => {
-    fetchReports();
-    fetchStats();
-  }, [filterStatus, page]);
+    setPage(1);
+    setSelectedReport(null);
+  }, [category]);
 
-  const fetchReports = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const endpoint =
-        filterStatus === 'open' ? '/api/reports/admin/open' : `/api/reports/admin/all?status=${filterStatus}`;
-      const response = await fetch(`${endpoint}&page=${page}&limit=${itemsPerPage}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      setReports(data.data || []);
-      setTotalReports(data.total || 0);
-    } catch (err) {
-      setError('Failed to load reports');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    let active = true;
 
-  const fetchStats = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/reports/admin/stats', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      setStats(data);
-    } catch (err) {
-      console.error('Failed to load stats', err);
-    }
-  };
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open':
-        return 'bg-destructive/15 text-destructive';
-      case 'investigating':
-        return 'bg-primary/15 text-primary';
-      case 'resolved':
-        return 'bg-secondary/20 text-secondary';
-      case 'dismissed':
-        return 'bg-muted text-muted-foreground';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
-  };
+        const [listResponse, statsResponse] = await Promise.all([
+          apiClient.get('/reports/admin/all', {
+            params: {
+              category,
+              status: filterStatus,
+              page,
+              limit: itemsPerPage,
+            },
+          }),
+          apiClient.get('/reports/admin/stats', {
+            params: { category },
+          }),
+        ]);
 
-  const updateReportStatus = async (reportId: string, newStatus: string, resolution?: string) => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const payload: any = { status: newStatus };
-      if (resolution) payload.resolution = resolution;
+        if (!active) return;
 
-      const response = await fetch(`/api/reports/${reportId}/status`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        setSelectedReport(null);
-        setResolutionText('');
-        fetchReports();
-        fetchStats();
+        setReports(listResponse.data?.data ?? []);
+        setTotalReports(listResponse.data?.total ?? 0);
+        setStats(statsResponse.data);
+      } catch {
+        if (active) {
+          setError('Failed to load admin report data.');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
-    } catch (err) {
-      setError('Failed to update report');
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [category, filterStatus, page]);
+
+  const categoryTitle = category === 'feedback' ? 'System Feedback' : 'Player Reports';
+  const totalPages = Math.max(1, Math.ceil(totalReports / itemsPerPage));
+
+  const categoryCounts = useMemo(
+    () => ({
+      feedback: stats?.byCategory?.feedback ?? 0,
+      report: stats?.byCategory?.report ?? 0,
+    }),
+    [stats],
+  );
+
+  const updateReportStatus = async (
+    reportId: string,
+    newStatus: ReportStatus,
+    resolution?: string,
+  ) => {
+    try {
+      await apiClient.patch(`/reports/${reportId}/status`, {
+        status: newStatus,
+        ...(resolution ? { resolution } : {}),
+      });
+
+      setSelectedReport(null);
+      setResolutionText('');
+      setPage(1);
+
+      const statsResponse = await apiClient.get('/reports/admin/stats', {
+        params: { category },
+      });
+      setStats(statsResponse.data);
+    } catch {
+      setError('Failed to update report status.');
     }
   };
 
   if (error) {
-    return <div className="p-4 text-destructive">{error}</div>;
+    return <div className="p-6 text-destructive">{error}</div>;
   }
 
   return (
     <div className="space-y-6 p-6 text-foreground">
-      <h1 className="text-3xl font-bold">Report Management</h1>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Reports</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{categoryTitle}</p>
+        </div>
 
-      {/* Stats Cards */}
+        <div className="flex rounded-lg border border-border bg-muted/40 p-1">
+          {[
+            { value: 'feedback' as const, label: 'Feedback', count: categoryCounts.feedback },
+            { value: 'report' as const, label: 'Reports', count: categoryCounts.report },
+          ].map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setCategory(item.value)}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+                category === item.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {item.label} ({item.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+          <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
             <div className="text-xs text-muted-foreground">Total</div>
             <div className="text-2xl font-bold">{stats.total}</div>
           </div>
-          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 shadow-sm">
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 shadow-sm">
             <div className="text-xs text-destructive">Open</div>
             <div className="text-2xl font-bold text-destructive">{stats.open}</div>
           </div>
-          <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 shadow-sm">
+          <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 shadow-sm">
             <div className="text-xs text-primary">Investigating</div>
             <div className="text-2xl font-bold text-primary">{stats.investigating}</div>
           </div>
-          <div className="rounded-xl border border-secondary/35 bg-secondary/15 p-4 shadow-sm">
+          <div className="rounded-lg border border-secondary/35 bg-secondary/15 p-4 shadow-sm">
             <div className="text-xs text-secondary">Resolved</div>
             <div className="text-2xl font-bold text-secondary">{stats.resolved}</div>
           </div>
-          <div className="rounded-xl border border-border bg-muted/50 p-4 shadow-sm">
+          <div className="rounded-lg border border-border bg-muted/50 p-4 shadow-sm">
             <div className="text-xs text-muted-foreground">Dismissed</div>
             <div className="text-2xl font-bold text-muted-foreground">{stats.dismissed}</div>
           </div>
         </div>
       )}
 
-      {/* Top Reasons */}
       {stats && stats.topReasons.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <h2 className="text-lg font-semibold mb-3">Top Report Reasons</h2>
-          <div className="space-y-2">
-            {stats.topReasons.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between">
-                <span className="text-foreground">{item.reason}</span>
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <h2 className="mb-3 text-lg font-semibold">Top Reasons</h2>
+          <div className="grid gap-2 md:grid-cols-2">
+            {stats.topReasons.map((item) => (
+              <div key={item.reason} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                <span className="text-sm text-foreground">{formatReason(item.reason)}</span>
                 <span className="font-semibold text-primary">{item.count}</span>
               </div>
             ))}
@@ -164,16 +252,16 @@ export default function ReportManager() {
         </div>
       )}
 
-      {/* Status Filter */}
-      <div className="flex space-x-2">
-        {['open', 'investigating', 'resolved', 'dismissed'].map((status) => (
+      <div className="flex flex-wrap gap-2">
+        {statusFilters.map((status) => (
           <button
             key={status}
+            type="button"
             onClick={() => {
               setFilterStatus(status);
               setPage(1);
             }}
-            className={`px-4 py-2 rounded ${
+            className={`rounded-md px-4 py-2 text-sm font-medium ${
               filterStatus === status
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-foreground hover:bg-accent'
@@ -184,70 +272,76 @@ export default function ReportManager() {
         ))}
       </div>
 
-      {/* Reports List */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full">
-          <thead className="border-b border-border bg-muted/40">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold">ID</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Reporter</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Target</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Reason</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {loading ? (
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px]">
+            <thead className="border-b border-border bg-muted/40">
               <tr>
-                <td colSpan={7} className="px-6 py-4 text-center">
-                  Loading...
-                </td>
+                <th className="px-6 py-3 text-left text-sm font-semibold">ID</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">From</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Target</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Reason</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Action</th>
               </tr>
-            ) : reports.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                  No reports found
-                </td>
-              </tr>
-            ) : (
-              reports.map((report) => (
-                <tr key={report._id} className="hover:bg-accent/40">
-                  <td className="px-6 py-4 text-sm font-mono">{report._id.slice(-8)}</td>
-                  <td className="px-6 py-4 text-sm">{report.reporterId?.name || 'Unknown'}</td>
-                  <td className="px-6 py-4 text-sm">{report.targetType}</td>
-                  <td className="px-6 py-4 text-sm">{report.reason}</td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(report.status)}`}>
-                      {report.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {new Date(report.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <button
-                      onClick={() => setSelectedReport(report)}
-                      className="text-primary hover:underline"
-                    >
-                      View
-                    </button>
+            </thead>
+            <tbody className="divide-y">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center">
+                    Loading...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : reports.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center text-muted-foreground">
+                    No {category === 'feedback' ? 'feedback' : 'reports'} found
+                  </td>
+                </tr>
+              ) : (
+                reports.map((report) => (
+                  <tr key={report._id} className="hover:bg-accent/40">
+                    <td className="px-6 py-4 text-sm font-mono">{report._id.slice(-8)}</td>
+                    <td className="px-6 py-4 text-sm">{getReporterName(report.reporterId)}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {report.category === 'feedback'
+                        ? 'System'
+                        : `${report.targetType ?? 'Target'} ${report.targetId ? report.targetId.slice(-8) : ''}`}
+                    </td>
+                    <td className="px-6 py-4 text-sm">{formatReason(report.reason)}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold ${getStatusColor(report.status)}`}>
+                        {report.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {new Date(report.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedReport(report)}
+                        className="text-primary hover:underline"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Pagination */}
         {totalReports > 0 && (
           <div className="flex items-center justify-between border-t border-border px-6 py-4">
             <div className="text-sm text-muted-foreground">
-              Page {page} of {Math.ceil(totalReports / itemsPerPage)} ({totalReports} total)
+              Page {page} of {totalPages} ({totalReports} total)
             </div>
             <div className="space-x-2">
               <button
+                type="button"
                 onClick={() => setPage(Math.max(1, page - 1))}
                 disabled={page === 1}
                 className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
@@ -255,8 +349,9 @@ export default function ReportManager() {
                 Previous
               </button>
               <button
+                type="button"
                 onClick={() => setPage(page + 1)}
-                disabled={page * itemsPerPage >= totalReports}
+                disabled={page >= totalPages}
                 className="rounded-md bg-muted px-3 py-1 hover:bg-accent disabled:opacity-50"
               >
                 Next
@@ -266,26 +361,36 @@ export default function ReportManager() {
         )}
       </div>
 
-      {/* Report Detail Modal */}
       {selectedReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm">
-          <div className="mx-4 max-h-screen w-full max-w-2xl overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl">
-            <h2 className="text-2xl font-bold mb-4">Report Details</h2>
+          <div className="mx-4 max-h-screen w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-xl">
+            <h2 className="mb-4 text-2xl font-bold">
+              {selectedReport.category === 'feedback' ? 'Feedback Details' : 'Report Details'}
+            </h2>
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-muted-foreground">Reporter</label>
-                <p className="font-semibold">{selectedReport.reporterId?.name}</p>
+                <label className="text-sm text-muted-foreground">Submitted By</label>
+                <p className="font-semibold">{getReporterName(selectedReport.reporterId)}</p>
               </div>
 
               <div>
-                <label className="text-sm text-muted-foreground">Target Type</label>
-                <p className="font-semibold">{selectedReport.targetType}</p>
+                <label className="text-sm text-muted-foreground">Category</label>
+                <p className="font-semibold">{selectedReport.category === 'feedback' ? 'Feedback' : 'Player report'}</p>
+              </div>
+
+              <div>
+                <label className="text-sm text-muted-foreground">Target</label>
+                <p className="font-semibold">
+                  {selectedReport.category === 'feedback'
+                    ? 'System'
+                    : `${selectedReport.targetType ?? 'Target'} ${selectedReport.targetId ?? ''}`}
+                </p>
               </div>
 
               <div>
                 <label className="text-sm text-muted-foreground">Reason</label>
-                <p className="font-semibold">{selectedReport.reason}</p>
+                <p className="font-semibold">{formatReason(selectedReport.reason)}</p>
               </div>
 
               <div>
@@ -295,7 +400,7 @@ export default function ReportManager() {
 
               <div>
                 <label className="text-sm text-muted-foreground">Current Status</label>
-                <p className={`font-semibold px-2 py-1 rounded-full text-sm w-fit ${getStatusColor(selectedReport.status)}`}>
+                <p className={`w-fit rounded-full px-2 py-1 text-sm font-semibold ${getStatusColor(selectedReport.status)}`}>
                   {selectedReport.status}
                 </p>
               </div>
@@ -311,30 +416,33 @@ export default function ReportManager() {
                 <div className="mt-6 space-y-3 border-t border-border pt-4">
                   <textarea
                     value={resolutionText}
-                    onChange={(e) => setResolutionText(e.target.value)}
+                    onChange={(event) => setResolutionText(event.target.value)}
                     placeholder="Resolution note (optional)"
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     rows={3}
                   />
 
-                  <div className="flex space-x-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     {selectedReport.status === 'open' && (
                       <button
+                        type="button"
                         onClick={() => updateReportStatus(selectedReport._id, 'investigating', resolutionText)}
-                        className="flex-1 rounded-full bg-primary py-2 text-primary-foreground hover:bg-primary/90"
+                        className="flex-1 rounded-md bg-primary py-2 text-primary-foreground hover:bg-primary/90"
                       >
                         Mark Investigating
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={() => updateReportStatus(selectedReport._id, 'resolved', resolutionText)}
-                      className="flex-1 rounded-full bg-secondary py-2 text-secondary-foreground hover:bg-secondary/90"
+                      className="flex-1 rounded-md bg-secondary py-2 text-secondary-foreground hover:bg-secondary/90"
                     >
                       Resolve
                     </button>
                     <button
+                      type="button"
                       onClick={() => updateReportStatus(selectedReport._id, 'dismissed', resolutionText)}
-                      className="flex-1 rounded-full bg-muted py-2 text-foreground hover:bg-accent"
+                      className="flex-1 rounded-md bg-muted py-2 text-foreground hover:bg-accent"
                     >
                       Dismiss
                     </button>
@@ -344,8 +452,9 @@ export default function ReportManager() {
             </div>
 
             <button
+              type="button"
               onClick={() => setSelectedReport(null)}
-              className="mt-6 w-full rounded-full bg-muted py-2 hover:bg-accent"
+              className="mt-6 w-full rounded-md bg-muted py-2 hover:bg-accent"
             >
               Close
             </button>

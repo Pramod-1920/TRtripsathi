@@ -16,7 +16,6 @@ type PhotoVerificationQueueItem = {
   location?: string | null;
   province?: string | null;
   district?: string | null;
-  badge?: string | null;
   profileCompleted?: boolean;
   requestCode: string;
   campaignId: string;
@@ -146,7 +145,7 @@ export default function PhotoVerificationQueuePage() {
     setSuccess('');
 
     try {
-      const response = await apiClient.patch(
+      await apiClient.patch(
         `/user/admin/profiles/${item.profileId}/photos/verification-requests/${item.requestCode}`,
         {
           status,
@@ -154,13 +153,9 @@ export default function PhotoVerificationQueuePage() {
         },
       );
 
-      const xpAwarded = Number((response.data as { xp?: { totalAwarded?: number } })?.xp?.totalAwarded ?? 0);
-
       setSuccess(
         status === 'approved'
-          ? xpAwarded > 0
-            ? `Request approved. +${xpAwarded} XP added to the profile.`
-            : 'Request approved.'
+          ? 'Request approved.'
           : 'Request rejected.',
       );
 
@@ -282,7 +277,6 @@ export default function PhotoVerificationQueuePage() {
                           {[item.firstName, item.middleName, item.lastName].filter(Boolean).join(' ') || 'Unnamed profile'}
                         </Link>
                         <p className="mt-1 text-xs text-slate-500">Profile ID: {item.profileId}</p>
-                        <p className="text-xs text-slate-500">{item.badge || 'No badge yet'}</p>
                         <p className="text-xs text-slate-500">{item.location || 'No location'}{item.district ? ` • ${item.district}` : ''}</p>
                       </div>
                     </div>
