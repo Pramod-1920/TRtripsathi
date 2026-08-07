@@ -69,6 +69,9 @@ export class Campaign {
   @Prop({ type: String, required: true, default: null })
   category!: string;
 
+  @Prop({ type: String, default: null })
+  subcategory?: string | null;
+
   @Prop({ type: String, enum: ['solo', 'group'], required: true, default: 'group' })
   hikeType!: 'solo' | 'group';
 

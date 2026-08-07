@@ -9,6 +9,7 @@ export default function ExtraActivitiesPage() {
       title="Activities"
       description="Create, edit, and delete campaign activities used by campaign creation."
       itemLabel="Activity"
+      enableSubcategories
       showValueField={false}
       showDescriptionField={false}
     />

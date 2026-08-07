@@ -36,6 +36,7 @@ type CampaignFormState = {
   title: string;
   description: string;
   category: string;
+  subcategory: string;
   hikeType: 'solo' | 'group' | '';
   province: string;
   district: string;
@@ -55,6 +56,7 @@ const defaultFormState: CampaignFormState = {
   title: '',
   description: '',
   category: '',
+  subcategory: '',
   hikeType: '',
   province: '',
   district: '',
@@ -75,6 +77,7 @@ function toFormState(campaign: Campaign): CampaignFormState {
     title: campaign.title ?? '',
     description: campaign.description ?? '',
     category: campaign.category ?? '',
+    subcategory: campaign.subcategory ?? '',
     hikeType: campaign.hikeType ?? '',
     province: campaign.province ?? '',
     district: campaign.district ?? '',
@@ -360,7 +363,7 @@ export default function CampaignDetailsByIdPage() {
   }, [difficultyOptions, form.difficulty]);
 
   const categoryOptionNames = useMemo(() => {
-    const sortedByCreatedAt = [...categoryOptions].sort((first, second) => {
+    const sortedByCreatedAt = categoryOptions.filter((item) => !item.parentId).sort((first, second) => {
       const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
       const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
       return firstTime - secondTime;
@@ -374,6 +377,28 @@ export default function CampaignDetailsByIdPage() {
       )
     );
   }, [categoryOptions]);
+
+  const selectedCategoryOption = useMemo(
+    () => categoryOptions.find(
+      (item) => !item.parentId && item.name.trim() === form.category.trim(),
+    ),
+    [categoryOptions, form.category],
+  );
+
+  const subcategoryOptionNames = useMemo(() => {
+    const names = selectedCategoryOption
+      ? categoryOptions
+        .filter((item) => item.parentId === selectedCategoryOption._id)
+        .map((item) => item.name.trim())
+        .filter(Boolean)
+      : [];
+
+    if (form.subcategory.trim() && !names.includes(form.subcategory.trim())) {
+      names.push(form.subcategory.trim());
+    }
+
+    return names;
+  }, [categoryOptions, form.subcategory, selectedCategoryOption]);
 
   const displayLocation = useMemo(() => {
     const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()]
@@ -468,7 +493,7 @@ export default function CampaignDetailsByIdPage() {
 
         updatePhotoField(index, 'url', data.secure_url ?? data.url ?? '');
         updatePhotoField(index, 'publicId', data.public_id ?? '');
-      } catch (e) {
+      } catch {
         setError('Image upload failed.');
       }
     })();
@@ -583,6 +608,7 @@ export default function CampaignDetailsByIdPage() {
       title: form.title.trim(),
       ...(form.description.trim() ? { description: form.description.trim() } : {}),
       category: form.category.trim(),
+      subcategory: form.subcategory.trim(),
       hikeType: form.hikeType,
       ...(form.province.trim() ? { province: form.province.trim() } : {}),
       ...(form.district.trim() ? { district: form.district.trim() } : {}),
@@ -641,7 +667,7 @@ export default function CampaignDetailsByIdPage() {
     try {
       await deleteCampaign(campaignId, deleteReason);
       closeDeleteModal();
-      window.location.href = '/campaigns/details';
+      window.location.replace('/campaigns/details');
     } catch {
       setError('Unable to delete campaign.');
     } finally {
@@ -996,8 +1022,8 @@ export default function CampaignDetailsByIdPage() {
             {!campaign?.participants || campaign.participants.length === 0 ? (
               <p className="mt-3 text-sm text-slate-600">No participants have joined this campaign.</p>
             ) : (
-              <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-white">
-                <table className="w-full text-sm">
+              <div className="mt-3 max-h-56 overflow-auto overscroll-x-contain rounded-lg border border-slate-200 bg-white">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead className="bg-slate-50 text-left text-slate-600">
                     <tr>
                       <th className="px-3 py-2 font-medium">User ID</th>
@@ -1047,7 +1073,11 @@ export default function CampaignDetailsByIdPage() {
             <label className="mb-1 block text-sm font-medium text-slate-900">Activity</label>
             <select
               value={form.category}
-              onChange={(event) => updateField('category', event.target.value)}
+              onChange={(event) => setForm((current) => ({
+                ...current,
+                category: event.target.value,
+                subcategory: '',
+              }))}
               disabled={readonly || categoryLoading}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
             >
@@ -1066,6 +1096,23 @@ export default function CampaignDetailsByIdPage() {
               </p>
             )}
           </div>
+
+          {subcategoryOptionNames.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-900">Activity Subcategory</label>
+              <select
+                value={form.subcategory}
+                onChange={(event) => updateField('subcategory', event.target.value)}
+                disabled={readonly || categoryLoading}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+              >
+                <option value="">General {form.category}</option>
+                {subcategoryOptionNames.map((subcategoryName) => (
+                  <option key={subcategoryName} value={subcategoryName}>{subcategoryName}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-900">Type</label>

@@ -354,8 +354,8 @@ export function PlacesManager() {
         setWeatherData(weatherResp.data ?? null);
       } catch (err) {
         let message = 'Failed to load weather.';
-        if (err && typeof err === 'object' && 'message' in err && typeof (err as any).message === 'string') {
-          message = (err as any).message as string;
+        if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+          message = err.message;
         } else if (typeof err === 'string') {
           message = err;
         }

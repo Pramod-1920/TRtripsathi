@@ -115,7 +115,9 @@ export default function CampaignApprovalPage() {
 
         if (!active) return;
         setDifficulties(difficultyItems.filter((item) => item.enabled !== false));
-        setActivities(activityItems.items.filter((item) => item.enabled !== false));
+        setActivities(
+          activityItems.items.filter((item) => item.enabled !== false && !item.parentId),
+        );
         setProvinces(placeItems.provinces.filter((item) => item.deleted !== true));
       } catch {
         if (active) {
@@ -271,7 +273,7 @@ export default function CampaignApprovalPage() {
   const canReview = isAdmin && statusFilter === 'submitted';
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Campaign Approval Queue</h1>
@@ -405,8 +407,8 @@ export default function CampaignApprovalPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[1100px]">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               <th className="px-4 py-3 text-left">
@@ -468,7 +470,10 @@ export default function CampaignApprovalPage() {
                   <p>{campaign.creator?.name ?? 'Unknown'}</p>
                   <p className="text-xs text-slate-500">{campaign.creator?.phoneNumber ?? 'N/A'}</p>
                 </td>
-                <td className="px-4 py-4 text-sm text-slate-700">{campaign.category ?? 'N/A'}</td>
+                <td className="px-4 py-4 text-sm text-slate-700">
+                  <p>{campaign.category ?? 'N/A'}</p>
+                  {campaign.subcategory && <p className="text-xs text-slate-500">{campaign.subcategory}</p>}
+                </td>
                 <td className="px-4 py-4 text-sm text-slate-700">{campaign.difficulty ?? 'N/A'}</td>
                 <td className="px-4 py-4 text-sm text-slate-700">
                   <span className="inline-flex items-center gap-1">

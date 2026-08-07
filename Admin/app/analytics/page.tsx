@@ -7,12 +7,16 @@ import { apiClient } from '@/lib/api';
 import { fetchCampaigns, Campaign } from '@/lib/campaigns';
 
 type Profile = {
+  _id: string;
+  role: 'user';
   profileCompleted?: boolean;
   createdAt?: string;
 };
 
 export default function AnalyticsPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [totalProfiles, setTotalProfiles] = useState(0);
+  const [completedProfiles, setCompletedProfiles] = useState(0);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,13 +27,39 @@ export default function AnalyticsPage() {
 
     async function loadAnalytics() {
       try {
-        const response = await apiClient.get('/user/admin/profiles', {
-          params: { page: 1, limit: 1000 },
-        });
+        const [response, completedResponse] = await Promise.all([
+          apiClient.get('/user/admin/profiles', {
+            params: { page: 1, limit: 100 },
+          }),
+          apiClient.get('/user/admin/profiles', {
+            params: { page: 1, limit: 1, status: 'complete' },
+          }),
+        ]);
 
         if (active) {
+          const items = (response.data?.items ?? []) as Array<Partial<Profile>>;
+          const userProfiles = items.filter(
+            (profile): profile is Profile =>
+              profile.role === 'user' && typeof profile._id === 'string',
+          );
+          const allRowsAreUsers = userProfiles.length === items.length;
+          const completedItems = (completedResponse.data?.items ?? []) as Array<Partial<Profile>>;
+          const allCompletedRowsAreUsers = completedItems.every(
+            (profile) => profile.role === 'user',
+          );
+
           setReferenceNow(Date.now());
-          setProfiles(response.data?.items ?? []);
+          setProfiles(userProfiles);
+          setTotalProfiles(
+            allRowsAreUsers
+              ? Number(response.data?.pagination?.total ?? userProfiles.length)
+              : userProfiles.length,
+          );
+          setCompletedProfiles(
+            allCompletedRowsAreUsers
+              ? Number(completedResponse.data?.pagination?.total ?? 0)
+              : 0,
+          );
           // load campaigns for campaign-related metrics
           try {
             const cResp = await fetchCampaigns({ page: 1, limit: 200, includeFuture: true });
@@ -73,18 +103,16 @@ export default function AnalyticsPage() {
       : Number((((last7Days - previous7Days) / previous7Days) * 100).toFixed(1));
 
     const activeUsersToday = createdAtValues.filter((value) => value >= now - oneDay).length;
-    const completedProfiles = profiles.filter((profile) => profile.profileCompleted).length;
-
     return {
       userGrowth,
       activeUsersToday,
-      totalProfiles: profiles.length,
+      totalProfiles,
       completedProfiles,
       avgSessionDuration: '24 min',
-      userRetention: profiles.length ? Math.round((completedProfiles / profiles.length) * 100) : 0,
+      userRetention: totalProfiles ? Math.round((completedProfiles / totalProfiles) * 100) : 0,
       createdAtValues,
     };
-  }, [profiles, referenceNow]);
+  }, [completedProfiles, profiles, referenceNow, totalProfiles]);
 
   const campaignStats = useMemo(() => {
     const now = referenceNow;
@@ -225,7 +253,7 @@ export default function AnalyticsPage() {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
                     <p className="text-4xl font-bold text-foreground">
-                      {Math.round((analyticsData.completedProfiles / analyticsData.totalProfiles) * 100)}%
+                      {analyticsData.userRetention}%
                     </p>
                     <p className="text-xs text-muted-foreground">Completed</p>
                   </div>
@@ -246,7 +274,7 @@ export default function AnalyticsPage() {
                     fill="none"
                     stroke="hsl(var(--primary))"
                     strokeWidth="8"
-                    strokeDasharray={`${2 * Math.PI * 70 * (analyticsData.completedProfiles / analyticsData.totalProfiles)} ${2 * Math.PI * 70}`}
+                    strokeDasharray={`${2 * Math.PI * 70 * (analyticsData.userRetention / 100)} ${2 * Math.PI * 70}`}
                   />
                 </svg>
               </div>

@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
 import { ExperienceLevel } from '../auth/constants/experience-level.enum';
+import { Role } from '../auth/constants/roles.enum';
 import { CloudinaryService } from '../config/cloudinary/cloudinary.service';
 import { BadgeService } from '../badge/badge.service';
 import { ExtraCategory } from '../extra/constants/extra-category.enum';
@@ -3002,6 +3003,10 @@ export class UserService {
     const search = pagination.q?.trim();
     const status = pagination.status ?? 'all';
     const filter: Record<string, unknown> = {};
+    const userAuthIds = await this.authModel.distinct('_id', {
+      role: Role.User,
+    });
+    filter.authId = { $in: userAuthIds };
 
     if (status === 'active') {
       filter.isActive = { $ne: false };
@@ -3049,6 +3054,7 @@ export class UserService {
 
         return {
           ...syncedItem,
+          role: Role.User,
           nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
         };
       }),
@@ -3092,8 +3098,12 @@ export class UserService {
     const limit = pagination.limit ?? 20;
     const skip = (page - 1) * limit;
     const status = pagination.status ?? 'pending';
+    const userAuthIds = await this.authModel.distinct('_id', {
+      role: Role.User,
+    });
 
     const pipeline: PipelineStage[] = [
+      { $match: { authId: { $in: userAuthIds } } },
       { $unwind: '$photoVerificationRequests' },
     ];
 
@@ -3188,6 +3198,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    await this.assertManagedUser(profile);
+
     const levelUpRules = await this.getLevelUpRules();
     const syncedProfile = await this.applyLevelProgression(profile);
     return this.attachAuthContactInfo(syncedProfile, levelUpRules);
@@ -3202,6 +3214,8 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
+
+    await this.assertManagedUser(profile);
 
     // Safety: disallow changing auth role or admin flags via profile update endpoint.
     if ((updates as any)?.role !== undefined || Object.prototype.hasOwnProperty.call(updates, 'adminFlags')) {
@@ -3239,6 +3253,8 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
+
+    await this.assertManagedUser(profile);
 
     if (profile.isActive !== false) {
       const deactivatedAt = new Date();
@@ -3281,6 +3297,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    await this.assertManagedUser(profile);
+
     profile.campaignQuota = Math.max(0, Math.floor(Number(body.campaignQuota ?? 0)));
 
     if (body.resetToJanFirst) {
@@ -3293,12 +3311,25 @@ export class UserService {
     return { message: 'Campaign quota updated' };
   }
 
+  private async assertManagedUser(profile: User): Promise<void> {
+    const isUser = await this.authModel.exists({
+      _id: profile.authId,
+      role: Role.User,
+    });
+
+    if (!isUser) {
+      // Return the same response as an unknown profile so this management API
+      // does not disclose or permit mutations of privileged accounts.
+      throw new NotFoundException('User profile not found');
+    }
+  }
+
   private async attachAuthContactInfo(profile: User, rules?: LevelUpRule[]) {
     const levelUpRules = rules ?? await this.getLevelUpRules();
     const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
     const auth = await this.authModel
       .findById(profile.authId)
-      .select('phoneNumber email');
+      .select('phoneNumber email role');
     const rankBadgeDefinitions = await this.getRankBadgeDefinitions();
     const unlockedRankBadges = this.getUnlockedRankBadges(
       snapshot.experienceLevel ?? ExperienceLevel.F,
@@ -3339,6 +3370,7 @@ export class UserService {
       ...profile.toObject(),
       phoneNumber: auth?.phoneNumber ?? null,
       email: auth?.email ?? null,
+      role: auth?.role ?? null,
       totalXp: snapshot.totalXp,
       xp: snapshot.xp,
       level: snapshot.level,

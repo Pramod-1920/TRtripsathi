@@ -35,6 +35,7 @@ const OTHER_LANGUAGE_VALUE = 'Other';
 
 type Profile = {
   _id: string;
+  role: 'user';
   firstName?: string | null;
   middleName?: string | null;
   lastName?: string | null;
@@ -67,44 +68,6 @@ type Profile = {
     reviewedAt?: string;
     reviewNote?: string;
   }>;
-<<<<<<< HEAD
-=======
-  xpHistory?: Array<{
-    _id?: string;
-    eventKey?: string;
-    ruleCode?: string;
-    ruleName?: string;
-    points?: number;
-    contextKey?: string;
-    context?: Record<string, unknown>;
-    awardedAt?: string;
-  }>;
-  currentRankBadge?: {
-    rankCode?: string;
-    imageUrl?: string;
-    publicId?: string;
-    name?: string;
-    isCurrentRank?: boolean;
-  } | null;
-  rankBadges?: Array<{
-    rankCode?: string;
-    imageUrl?: string;
-    publicId?: string;
-    name?: string;
-    isCurrentRank?: boolean;
-  }>;
-  userBadges?: Array<{
-    _id?: string;
-    userId?: string;
-    badgeCode?: string;
-    tier?: string;
-    name?: string;
-    description?: string;
-    iconUrl?: string;
-    unlockedAt?: string;
-  }>;
-  badgeCount?: number;
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
 };
 
 export default function UserDetailPage() {
@@ -126,6 +89,11 @@ export default function UserDetailPage() {
     try {
       const response = await apiClient.get(`/user/admin/profiles/${userId}`);
       const profile = response.data as Profile;
+      if (profile.role !== 'user') {
+        setFormData(null);
+        setError('User profile not found.');
+        return;
+      }
       const loadedLanguages = Array.isArray(profile.languagesKnown) ? profile.languagesKnown : [];
       const knownOptionValues = new Set(LANGUAGE_OPTIONS);
       const customLoadedLanguages = loadedLanguages.filter((language) => !knownOptionValues.has(language));
@@ -357,7 +325,7 @@ export default function UserDetailPage() {
 
     try {
       await apiClient.delete(`/user/admin/profiles/${userId}`);
-      window.location.href = '/users';
+      window.location.replace('/users');
     } catch {
       setError(formData?.isActive === false
         ? 'Failed to permanently delete the user.'
@@ -748,291 +716,10 @@ export default function UserDetailPage() {
             </div>
           </div>
 
-<<<<<<< HEAD
-=======
-          {(formData.userBadges ?? []).length > 0 && (
-            <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
-              <h2 className="mb-4 text-lg font-semibold text-slate-900">Awarded Badges ({formData.badgeCount ?? 0})</h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-                {formData.userBadges!.map((badge) => (
-                  <div key={badge._id} className="flex flex-col items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    {badge.iconUrl && (
-                      <Image
-                        src={badge.iconUrl}
-                        alt={badge.name || 'Badge'}
-                        width={64}
-                        height={64}
-                        className="h-16 w-16 rounded-full"
-                        unoptimized
-                      />
-                    )}
-                    <div className="text-center">
-                      <p className="font-medium text-slate-900">{badge.name || 'Unknown Badge'}</p>
-                      <p className="text-xs text-slate-600">{badge.tier}</p>
-                      {badge.description && (
-                        <p className="mt-1 text-xs text-slate-500">{badge.description}</p>
-                      )}
-                      {badge.unlockedAt && (
-                        <p className="mt-2 text-xs text-slate-500">
-                          Unlocked: {new Date(badge.unlockedAt).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-6 bg-white rounded-lg border border-slate-200 p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">XP History Manager</h2>
-                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
-                  Rank resets at level-up
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={openAddXpModal}
-                className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                Add XP
-              </button>
-            </div>
-            <p className="text-sm text-slate-600 mb-4">
-              Admins can add XP to users (capped at 500 per action). Auto-rank-up will occur when user reaches level threshold and completes all rank-up achievements.
-            </p>
-
-            {(formData.xpHistory ?? []).length === 0 ? (
-              <p className="text-sm text-slate-500">No XP history entries found.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-left text-slate-600">
-                      <th className="px-3 py-2">Awarded At</th>
-                      <th className="px-3 py-2">Event</th>
-                      <th className="px-3 py-2">Rule</th>
-                      <th className="px-3 py-2">Points</th>
-                      <th className="px-3 py-2">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...(formData.xpHistory ?? [])]
-                      .sort((a, b) => {
-                        return new Date(b.awardedAt ?? 0).getTime() - new Date(a.awardedAt ?? 0).getTime();
-                      })
-                      .slice(0, 50)
-                      .map((entry) => {
-                        const historyId = entry._id ?? '';
-                        const isEditingRow = editingHistoryId === historyId;
-
-                        return (
-                          <tr key={historyId || `${entry.contextKey ?? 'ctx'}-${entry.awardedAt ?? Date.now()}`} className="border-b border-slate-100 align-top">
-                            <td className="px-3 py-2 text-slate-700">
-                              {entry.awardedAt ? new Date(entry.awardedAt).toLocaleString() : 'N/A'}
-                            </td>
-                            <td className="px-3 py-2 text-slate-700">{entry.eventKey ?? '-'}</td>
-                            <td className="px-3 py-2 text-slate-700">{entry.ruleName ?? entry.ruleCode ?? '-'}</td>
-                            <td className="px-3 py-2 text-slate-700">
-                              {isEditingRow ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={editingHistoryPoints}
-                                  onChange={(event) => setEditingHistoryPoints(event.target.value)}
-                                  className="w-24 rounded-md border border-slate-300 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              ) : (
-                                Math.max(0, Math.floor(Number(entry.points ?? 0)))
-                              )}
-                            </td>
-                            <td className="px-3 py-2">
-                              {!historyId ? (
-                                <span className="text-xs text-slate-400">Entry ID unavailable</span>
-                              ) : isEditingRow ? (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={requestSaveXpHistoryEdit}
-                                    disabled={savingHistoryId === historyId}
-                                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-                                  >
-                                    {savingHistoryId === historyId ? 'Saving...' : 'Save'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={cancelXpHistoryEdit}
-                                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-xs text-slate-500">View only - use "Add XP" button above</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
         </div>
 
         {/* Sidebar */}
         <div>
-<<<<<<< HEAD
-=======
-          {/* Stats Card */}
-          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Account Stats</h3>
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Total XP</p>
-                <p className="text-2xl font-bold text-slate-900 mt-1">
-                  {Number(formData.totalXp ?? formData.xp ?? 0).toLocaleString()}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Current Rank XP: {Number(formData.xp ?? 0).toLocaleString()}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Level</p>
-                <p className="text-lg font-semibold text-slate-900 mt-1">{effectiveLevel}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Rank</p>
-                <p className="text-lg font-semibold text-slate-900 mt-1">
-                  {formatRankLabel(formData.experienceLevel, effectiveLevel)}
-                </p>
-                <p className="text-xs text-slate-500">{getRankTier(effectiveLevel).name}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Sub-Rank</p>
-                <p className="text-lg font-semibold text-blue-700 mt-1">
-                  {formData.subRank ?? getSubRank(effectiveLevel)}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {getSubRankBands(effectiveLevel).map((band) => `${band.name} (${band.fromLevel}-${band.toLevel})`).join(' • ')}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank Band</p>
-                <p className="text-sm font-semibold text-slate-900 mt-1">
-                  Levels {getRankTier(effectiveLevel).minLevel}-{getRankTier(effectiveLevel).maxLevel}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Current Rank Badge</p>
-                {formData.currentRankBadge?.imageUrl ? (
-                  <div className="mt-2 flex items-center gap-2">
-                    <Image
-                      src={formData.currentRankBadge.imageUrl}
-                      alt={formData.currentRankBadge.name || 'Rank badge'}
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 rounded-lg border border-slate-200"
-                      unoptimized
-                    />
-                    <div>
-                      <p className="font-medium text-slate-900">{formData.currentRankBadge.name || 'Unlocked Badge'}</p>
-                      <p className="text-xs text-slate-500">{formData.currentRankBadge.rankCode}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="mt-1 text-sm text-slate-500">No rank badge yet</p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Profile Status</p>
-                <div className="mt-1">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    formData.profileCompleted
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-yellow-50 text-yellow-700'
-                  }`}>
-                    {formData.profileCompleted ? 'Complete' : 'Incomplete'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Next Target Progress</h3>
-            {rankProgress.hasNextTarget ? (
-              <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub-Rank Progress</p>
-                    <p className="mt-1 text-sm text-slate-700">
-                      {rankProgress.currentRankXp.toLocaleString()} XP in this rank
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Rank XP is band-based and resets on rank-up; Total XP never resets.
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-slate-900">
-                      Next: {rankProgress.targetLabel}
-                    </p>
-                    <p className="text-xs text-slate-500">{rankProgress.targetSubtitle}</p>
-                    <p className="text-xs text-slate-500">
-                      {rankProgress.totalRemainingXp.toLocaleString()} XP remaining
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className="h-full rounded-full bg-linear-to-r from-emerald-500 via-cyan-500 to-blue-500 transition-all duration-500"
-                    style={{ width: `${Math.max(0, Math.min(100, rankProgress.progressPercentage))}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
-                This user is currently at the highest sub-rank.
-              </p>
-            )}
-            {rankProgress.hasNextTarget ? (
-              <div className="space-y-3 text-sm text-slate-700">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">Next Target</span>
-                  <span className="font-semibold text-slate-900">{rankProgress.targetLabel}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium uppercase tracking-wider text-slate-500">XP Remaining</span>
-                  <span className="font-semibold text-slate-900">{rankProgress.totalRemainingXp}</span>
-                </div>
-                {formData.nextRankProgress?.remainingAchievements
-                && Object.keys(formData.nextRankProgress.remainingAchievements).length > 0
-                && rankProgress.totalRemainingXp === 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Remaining Achievements</p>
-                    <div className="space-y-1">
-                      {Object.entries(formData.nextRankProgress.remainingAchievements).map(([key, value]) => (
-                        <div key={key} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2">
-                          <span className="capitalize text-slate-600">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                          <span className="font-semibold text-slate-900">{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-slate-500">Progress updates automatically for sub-rank, then rank promotion.</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">No further sub-rank progression available.</p>
-            )}
-          </div>
-
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
           {/* Info Card */}
           <div className="bg-muted/50 rounded-lg p-4">
             <p className="text-xs text-muted-foreground">

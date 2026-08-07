@@ -1,4 +1,5 @@
-import axios, { AxiosHeaders, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosHeaders } from 'axios';
+import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -73,7 +74,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         // Refresh failed, redirect to login
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          window.location.replace('/login');
         }
         return Promise.reject(refreshError);
       }
