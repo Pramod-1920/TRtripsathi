@@ -14,9 +14,6 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _firstNameController = TextEditingController();
   final _middleNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _dobController = TextEditingController();
-  final _genderController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -46,7 +43,6 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -268,23 +264,14 @@ class _SignupScreenState extends State<SignupScreen> {
       _error = null;
     });
     try {
-      final firstName =
-          _firstNameController.text.trim().required('First name is required');
-      final middleName = _middleNameController.text.trim().optional();
-      final lastName =
-          _lastNameController.text.trim().required('Last name is required');
-      final phone =
-          _phoneController.text.trim().required('Phone number is required');
-      final password =
-          _passwordController.text.trim().required('Password is required');
-      final DOB =
-          _DOBController.text.trim().required('Date of birth is required');
-      final confirmPassword = _confirmPasswordController.text
-          .trim()
-          .required('Please confirm your password');
-      final validPhone = RegExp(r'^\d{10}\$').hasMatch(phone);
+      final firstName = _firstNameController.text.trim();
+      final middleName = _middleNameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final password = _passwordController.text;
+      final confirmPassword = _confirmPasswordController.text;
+      final validPhone = RegExp(r'^\d{10}$').hasMatch(phone);
       final validPassword = RegExp(
-        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@\$!%*?&])[A-Za-z\d@\$!%*?&]{6,}\$',
+        r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$',
       ).hasMatch(password);
 
       if (firstName.isEmpty) {
@@ -317,13 +304,10 @@ class _SignupScreenState extends State<SignupScreen> {
       // After signup, go to profile setup step
       Navigator.of(context).pushReplacementNamed('/profile-setup');
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-      });
+      if (!mounted) return;
+      setState(() => _error = ApiService.readableError(e));
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -331,9 +315,6 @@ class _SignupScreenState extends State<SignupScreen> {
   void dispose() {
     _firstNameController.dispose();
     _middleNameController.dispose();
-    _lastNameController.dispose();
-    _dobController.dispose();
-    _genderController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();

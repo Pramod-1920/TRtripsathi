@@ -125,6 +125,10 @@ export class CreateCampaignDto {
   @IsNotEmpty()
   category!: string;
 
+  @IsString()
+  @IsOptional()
+  subcategory?: string;
+
   @IsIn(['solo', 'group'])
   @IsNotEmpty()
   hikeType!: 'solo' | 'group';

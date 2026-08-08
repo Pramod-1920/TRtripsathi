@@ -43,8 +43,8 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   }, [profilePhoto, setProfilePhoto]);
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border/60 bg-background/95 px-4 py-4 shadow-sm backdrop-blur-sm sm:px-6 lg:px-8">
-      <div className="flex items-center gap-3">
+    <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/60 bg-background/95 px-3 py-3 shadow-sm backdrop-blur-sm sm:px-6 sm:py-4 lg:px-8">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onMenuClick}
@@ -58,13 +58,13 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
             <FiChevronsLeft size={18} className="hidden md:block" />
           )}
         </button>
-        <div>
-          <h2 className="text-xl font-semibold text-foreground sm:text-2xl">Dashboard</h2>
-          <p className="text-sm text-muted-foreground">Welcome back, Admin</p>
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold text-foreground sm:text-2xl">Dashboard</h2>
+          <p className="hidden text-sm text-muted-foreground sm:block">Welcome back, Admin</p>
         </div>
       </div>
-      <div className="flex items-center gap-4">
-        <div className="text-right">
+      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+        <div className="hidden text-right sm:block">
           <p className="text-sm font-medium text-foreground">{user?.phoneNumber || 'Admin'}</p>
           <p className="text-xs text-muted-foreground">{user?.role || 'admin'}</p>
         </div>

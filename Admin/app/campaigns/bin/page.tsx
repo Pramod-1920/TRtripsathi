@@ -136,7 +136,7 @@ export default function CampaignBinPage() {
   }
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Campaign Bin</h1>
@@ -219,8 +219,8 @@ export default function CampaignBinPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[760px]">
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Title</th>

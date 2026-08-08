@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Report } from './schemas/report.schema';
 import { User } from '../user/schemas/user.schema';
+import { Auth } from '../auth/schemas/auth.schema';
+import { Role } from '../auth/constants/roles.enum';
 import {
   CreateReportDto,
   CreateFeedbackDto,
@@ -18,6 +20,8 @@ export class ReportService {
     private reportModel: Model<Report>,
     @InjectModel(User.name)
     private userModel: Model<User>,
+    @InjectModel(Auth.name)
+    private authModel: Model<Auth>,
   ) {}
 
   private async getReporterProfile(authId: string) {
@@ -26,6 +30,14 @@ export class ReportService {
       .select('_id firstName lastName phoneNumber');
 
     if (!profile) {
+      throw new NotFoundException('Reporter profile not found');
+    }
+
+    const isUser = await this.authModel.exists({
+      _id: profile.authId,
+      role: Role.User,
+    });
+    if (!isUser) {
       throw new NotFoundException('Reporter profile not found');
     }
 
@@ -86,8 +98,19 @@ export class ReportService {
     return Math.min(Math.max(1, Math.floor(Number(limit) || 20)), 100);
   }
 
-  private buildAdminQuery(status?: string, category?: string) {
+  private async getUserProfileIds(): Promise<Types.ObjectId[]> {
+    const userAuthIds = await this.authModel.distinct('_id', {
+      role: Role.User,
+    });
+    return this.userModel.distinct('_id', {
+      authId: { $in: userAuthIds },
+    });
+  }
+
+  private async buildAdminQuery(status?: string, category?: string) {
+    const userProfileIds = await this.getUserProfileIds();
     const query: Record<string, unknown> = {};
+    query.reporterId = { $in: userProfileIds };
 
     if (status) {
       query.status = status;
@@ -109,7 +132,7 @@ export class ReportService {
   }> {
     const safePage = this.normalizePage(page);
     const safeLimit = this.normalizeLimit(limit);
-    const query = this.buildAdminQuery('open', category);
+    const query = await this.buildAdminQuery('open', category);
     const total = await this.reportModel.countDocuments(query);
 
     const data = await this.reportModel
@@ -133,7 +156,7 @@ export class ReportService {
   ): Promise<{ data: Report[]; total: number }> {
     const safePage = this.normalizePage(page);
     const safeLimit = this.normalizeLimit(limit);
-    const query = this.buildAdminQuery(status, category);
+    const query = await this.buildAdminQuery(status, category);
 
     const total = await this.reportModel.countDocuments(query);
 
@@ -155,8 +178,10 @@ export class ReportService {
     targetId: string,
     targetType: string,
   ): Promise<Report[]> {
+    const userProfileIds = await this.getUserProfileIds();
     return this.reportModel
       .find({
+        reporterId: { $in: userProfileIds },
         targetId: new Types.ObjectId(targetId),
         targetType,
       })
@@ -172,7 +197,11 @@ export class ReportService {
     reportId: string,
     updateDto: UpdateReportStatusDto,
   ): Promise<Report> {
-    const report = await this.reportModel.findById(reportId);
+    const userProfileIds = await this.getUserProfileIds();
+    const report = await this.reportModel.findOne({
+      _id: reportId,
+      reporterId: { $in: userProfileIds },
+    });
 
     if (!report) {
       throw new NotFoundException('Report not found');
@@ -200,7 +229,11 @@ export class ReportService {
     reportId: string,
     assignDto: AssignReportDto,
   ): Promise<Report> {
-    const report = await this.reportModel.findById(reportId);
+    const userProfileIds = await this.getUserProfileIds();
+    const report = await this.reportModel.findOne({
+      _id: reportId,
+      reporterId: { $in: userProfileIds },
+    });
 
     if (!report) {
       throw new NotFoundException('Report not found');
@@ -220,13 +253,19 @@ export class ReportService {
     total: number;
   }> {
     const modIdObj = new Types.ObjectId(moderatorId);
+    const userProfileIds = await this.getUserProfileIds();
     const total = await this.reportModel.countDocuments({
+      reporterId: { $in: userProfileIds },
       assignedTo: modIdObj,
       status: 'investigating',
     });
 
     const data = await this.reportModel
-      .find({ assignedTo: modIdObj, status: 'investigating' })
+      .find({
+        reporterId: { $in: userProfileIds },
+        assignedTo: modIdObj,
+        status: 'investigating',
+      })
       .populate('reporterId', 'firstName lastName')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -239,7 +278,8 @@ export class ReportService {
    * Get report statistics
    */
   async getReportStats(category?: string): Promise<ReportStatsDto> {
-    const match = category ? { category } : {};
+    const match = await this.buildAdminQuery(undefined, category);
+    const allUserReportsMatch = await this.buildAdminQuery();
     const [statusCounts, topReasons, categoryCounts] = await Promise.all([
       this.reportModel.aggregate([
         { $match: match },
@@ -252,6 +292,7 @@ export class ReportService {
         { $limit: 5 },
       ]),
       this.reportModel.aggregate([
+        { $match: allUserReportsMatch },
         { $group: { _id: '$category', count: { $sum: 1 } } },
       ]),
     ]);

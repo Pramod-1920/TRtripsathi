@@ -15,7 +15,6 @@ import { User } from '../user/schemas/user.schema';
 import { Auth } from '../auth/schemas/auth.schema';
 import { UserService } from '../user/user.service';
 import { ExtraService } from '../extra/extra.service';
-import { ExtraCategory } from '../extra/constants/extra-category.enum';
 import { CampaignApprovalStatus } from './schemas/campaign.schema';
 import { CampaignLifecyclePhase } from './schemas/campaign.schema';
 import { NotificationService } from '../notification/notification.service';
@@ -297,32 +296,15 @@ export class CampaignService {
     return normalized as 'solo' | 'group';
   }
 
-  private async resolveCampaignCategory(value?: string | null) {
+  private async resolveCampaignActivity(
+    value?: string | null,
+    subcategory?: string | null,
+  ) {
     if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestException('category is required');
     }
 
-    const requested = value.trim();
-    const response = await this.extraService.listExtras({
-      category: ExtraCategory.Activities,
-      page: 1,
-      limit: 100,
-    });
-
-    const allowedActivities = response.items
-      .filter((item) => item.enabled !== false)
-      .map((item) => item.name.trim())
-      .filter((name) => name.length > 0);
-
-    const matched = allowedActivities.find(
-      (name) => name.toLowerCase() === requested.toLowerCase(),
-    );
-
-    if (!matched) {
-      throw new BadRequestException('Selected category is not enabled in admin extras');
-    }
-
-    return matched;
+    return this.extraService.resolveActivitySelection(value.trim(), subcategory);
   }
 
     private parseDateValue(value?: string | Date | null): Date | null {
@@ -890,7 +872,7 @@ export class CampaignService {
   async createCampaign(dto: CreateCampaignDto, hostId: string, isAdmin = false) {
     const campaignCode = await this.createUniqueCampaignCode();
     const scheduleType = dto.scheduleType ?? 'scheduled';
-    const category = await this.resolveCampaignCategory(dto.category);
+    const activity = await this.resolveCampaignActivity(dto.category, dto.subcategory);
     const hikeType = this.normalizeCampaignType(dto.hikeType);
 
     if (!hikeType) {
@@ -957,6 +939,7 @@ export class CampaignService {
       joinOpenDate: _joinOpenDate,
       scheduleType: _scheduleType,
       category: _category,
+      subcategory: _subcategory,
       hikeType: _hikeType,
       province,
       district,
@@ -1060,7 +1043,8 @@ export class CampaignService {
     const created = await this.campaignModel.create({
       campaignCode,
       ...rest,
-      category,
+      category: activity.category,
+      subcategory: activity.subcategory,
       hikeType,
       location: normalizedLocation,
       province: normalizedProvince,
@@ -1905,9 +1889,19 @@ export class CampaignService {
     }
 
     const nextScheduleType = dto.scheduleType ?? campaign.scheduleType ?? 'scheduled';
-    const nextCategory = dto.category !== undefined
-      ? await this.resolveCampaignCategory(dto.category)
-      : (campaign.category ?? null);
+    const nextActivity = dto.category !== undefined || dto.subcategory !== undefined
+      ? await this.resolveCampaignActivity(
+        dto.category ?? campaign.category,
+        dto.subcategory !== undefined
+          ? dto.subcategory
+          : dto.category !== undefined
+            ? null
+            : campaign.subcategory,
+      )
+      : {
+        category: campaign.category,
+        subcategory: campaign.subcategory ?? null,
+      };
     const nextHikeType = dto.hikeType !== undefined
       ? (() => {
         const normalizedHikeType = this.normalizeCampaignType(dto.hikeType);
@@ -1981,6 +1975,7 @@ export class CampaignService {
       joinOpenDate: _joinOpenDate,
       scheduleType: _scheduleType,
       category: _category,
+      subcategory: _subcategory,
       hikeType: _hikeType,
       province,
       district,
@@ -2015,7 +2010,8 @@ export class CampaignService {
     campaign.district = nextDistrict;
     (campaign as any).municipality = nextMunicipality;
     campaign.placeName = nextPlaceName;
-    campaign.category = nextCategory ?? campaign.category;
+    campaign.category = nextActivity.category;
+    campaign.subcategory = nextActivity.subcategory;
     campaign.hikeType = nextHikeType;
     campaign.scheduleType = nextScheduleType;
     campaign.startDate = nextStartDate;

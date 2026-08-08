@@ -182,12 +182,12 @@ export class UserController {
   @Get('admin/profiles')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: list all profiles with pagination' })
+  @ApiOperation({ summary: 'Admin: list user profiles with pagination' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiQuery({ name: 'q', required: false, example: 'kathmandu' })
   @ApiQuery({ name: 'status', required: false, enum: ['all', 'active', 'inactive', 'complete', 'incomplete'], example: 'all' })
-  @ApiOkResponse({ description: 'Admin profiles list fetched successfully' })
+  @ApiOkResponse({ description: 'User profiles list fetched successfully' })
   async getAllProfiles(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
@@ -246,9 +246,9 @@ export class UserController {
   @Get('admin/profiles/:id')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: get profile by ID' })
+  @ApiOperation({ summary: 'Admin: get user profile by ID' })
   @ApiParam({ name: 'id', description: 'Profile ID' })
-  @ApiOkResponse({ description: 'Admin profile fetched successfully' })
+  @ApiOkResponse({ description: 'User profile fetched successfully' })
   async getProfileById(@Param('id') profileId: string) {
     const profile = await this.userService.getProfileById(profileId);
     await this.audit.logEvent({ type: 'admin.view_profile', profileId });

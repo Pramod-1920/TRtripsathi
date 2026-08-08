@@ -25,6 +25,7 @@ type ExtraManagerProps = {
   valueColumnLabel?: string;
   descriptionLabel?: string;
   descriptionPlaceholder?: string;
+  enableSubcategories?: boolean;
 };
 
 type ExtraFormState = {
@@ -33,6 +34,7 @@ type ExtraFormState = {
   value: string;
   enabled: boolean;
   adminApprovalRequired: boolean;
+  parentId: string;
 };
 
 const defaultFormState: ExtraFormState = {
@@ -41,7 +43,25 @@ const defaultFormState: ExtraFormState = {
   value: '',
   enabled: true,
   adminApprovalRequired: false,
+  parentId: '',
 };
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  const responseMessage = (
+    error as { response?: { data?: { message?: unknown } } }
+  )?.response?.data?.message;
+
+  if (Array.isArray(responseMessage)) {
+    return responseMessage.map(String).join(' ');
+  }
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if ((error as { code?: string })?.code === 'ERR_NETWORK') {
+    return 'Cannot reach the backend. Start or restart the API server and try again.';
+  }
+  return fallback;
+}
 
 export function ExtraManager({
   category,
@@ -56,6 +76,7 @@ export function ExtraManager({
   valueColumnLabel = 'Value',
   descriptionLabel = 'Description',
   descriptionPlaceholder = 'Optional description',
+  enableSubcategories = false,
 }: ExtraManagerProps) {
   const [items, setItems] = useState<ExtraItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +86,7 @@ export function ExtraManager({
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(enableSubcategories ? 100 : 10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [editId, setEditId] = useState<string | null>(null);
@@ -83,8 +104,8 @@ export function ExtraManager({
       setPage(response.pagination.page);
       setTotalPages(response.pagination.totalPages);
       setTotalItems(response.pagination.total);
-    } catch {
-      setError(`Failed to load ${title.toLowerCase()} from backend.`);
+    } catch (loadError) {
+      setError(getApiErrorMessage(loadError, `Failed to load ${title.toLowerCase()} from backend.`));
     } finally {
       setLoading(false);
     }
@@ -98,18 +119,50 @@ export function ExtraManager({
     const query = search.trim().toLowerCase();
 
     if (!query) {
-      return items;
+      return enableSubcategories ? orderHierarchy(items) : items;
     }
 
-    return items.filter((item) => {
+    const matches = items.filter((item) => {
+      const parentName = item.parentId
+        ? items.find((candidate) => candidate._id === item.parentId)?.name ?? ''
+        : '';
       return (
         item.name.toLowerCase().includes(query)
+        || parentName.toLowerCase().includes(query)
         || (item.extraCode ?? '').toLowerCase().includes(query)
         || (showValueField && (item.value ?? '').toLowerCase().includes(query))
         || (showDescriptionField && (item.description ?? '').toLowerCase().includes(query))
       );
     });
-  }, [items, search, showDescriptionField, showValueField]);
+    return enableSubcategories ? orderHierarchy(matches) : matches;
+  }, [enableSubcategories, items, search, showDescriptionField, showValueField]);
+
+  const rootActivities = useMemo(
+    () => items.filter((item) => !item.parentId && item._id !== editId),
+    [editId, items],
+  );
+
+  function orderHierarchy(source: ExtraItem[]) {
+    const byParent = new Map<string, ExtraItem[]>();
+    const roots: ExtraItem[] = [];
+
+    source.forEach((item) => {
+      if (!item.parentId) {
+        roots.push(item);
+        return;
+      }
+      const children = byParent.get(item.parentId) ?? [];
+      children.push(item);
+      byParent.set(item.parentId, children);
+    });
+
+    const byName = (left: ExtraItem, right: ExtraItem) => left.name.localeCompare(right.name);
+    roots.sort(byName);
+    const ordered = roots.flatMap((root) => [root, ...(byParent.get(root._id) ?? []).sort(byName)]);
+    const includedIds = new Set(ordered.map((item) => item._id));
+    const unmatched = source.filter((item) => !includedIds.has(item._id)).sort(byName);
+    return [...ordered, ...unmatched];
+  }
 
   function resetForm() {
     setForm(defaultFormState);
@@ -124,7 +177,14 @@ export function ExtraManager({
       value: item.value ?? '',
       enabled: item.enabled ?? true,
       adminApprovalRequired: item.adminApprovalRequired ?? false,
+      parentId: item.parentId ?? '',
     });
+  }
+
+  function startSubcategory(parent: ExtraItem) {
+    setEditId(null);
+    setForm({ ...defaultFormState, parentId: parent._id });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function openDeleteModal(item: ExtraItem) {
@@ -164,6 +224,11 @@ export function ExtraManager({
           ? (form.value.trim() ? { value: form.value.trim() } : {})
           : (editId ? { value: '' } : {})),
         ...(showApprovalField ? { adminApprovalRequired: form.adminApprovalRequired } : {}),
+        ...(enableSubcategories && form.parentId
+          ? { parentId: form.parentId }
+          : enableSubcategories && editId
+            ? { parentId: null }
+            : {}),
         enabled: form.enabled,
       };
 
@@ -177,8 +242,8 @@ export function ExtraManager({
 
       resetForm();
       await loadItems(page);
-    } catch {
-      setError(`Unable to save ${title.toLowerCase()}.`);
+    } catch (saveError) {
+      setError(getApiErrorMessage(saveError, `Unable to save ${title.toLowerCase()}.`));
     } finally {
       setSaving(false);
     }
@@ -199,8 +264,8 @@ export function ExtraManager({
       const nextPage = items.length === 1 && page > 1 ? page - 1 : page;
       await loadItems(nextPage);
       setSuccess(`${title} deleted successfully.`);
-    } catch {
-      setError(`Unable to delete ${title.toLowerCase()}.`);
+    } catch (deleteError) {
+      setError(getApiErrorMessage(deleteError, `Unable to delete ${title.toLowerCase()}.`));
     } finally {
       setDeleting(false);
     }
@@ -275,6 +340,23 @@ export function ExtraManager({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder={descriptionPlaceholder}
               />
+            </div>
+          )}
+
+          {enableSubcategories && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Parent category</label>
+              <select
+                value={form.parentId}
+                onChange={(event) => setForm((current) => ({ ...current, parentId: event.target.value }))}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">None — create a top-level category</option>
+                {rootActivities.map((item) => (
+                  <option key={item._id} value={item._id}>{item.name}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">Choose a category only when creating a subcategory.</p>
             </div>
           )}
 
@@ -356,17 +438,21 @@ export function ExtraManager({
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
+              {enableSubcategories && <option value={100}>100</option>}
             </select>
           </div>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
+        <table className={`w-full ${enableSubcategories ? 'min-w-[980px]' : 'min-w-[760px]'}`}>
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Code</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
+              {enableSubcategories && (
+                <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Parent</th>
+              )}
               {showValueField && (
                 <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">{valueColumnLabel}</th>
               )}
@@ -381,7 +467,7 @@ export function ExtraManager({
           <tbody className="divide-y divide-slate-200">
             {loading && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showApprovalField ? (showValueField ? 7 : 6) : (showValueField ? 6 : 5)}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={5 + Number(showValueField) + Number(showApprovalField) + Number(enableSubcategories)}>
                   Loading {title.toLowerCase()}...
                 </td>
               </tr>
@@ -389,7 +475,7 @@ export function ExtraManager({
 
             {!loading && filteredItems.length === 0 && (
               <tr>
-                <td className="px-6 py-8 text-sm text-slate-500" colSpan={showApprovalField ? (showValueField ? 7 : 6) : (showValueField ? 6 : 5)}>
+                <td className="px-6 py-8 text-sm text-slate-500" colSpan={5 + Number(showValueField) + Number(showApprovalField) + Number(enableSubcategories)}>
                   No {title.toLowerCase()} found.
                 </td>
               </tr>
@@ -417,12 +503,21 @@ export function ExtraManager({
                 </td>
                 <td className="px-6 py-4">
                   <div>
-                    <p className="font-medium text-slate-900">{item.name}</p>
+                    <p className={`font-medium text-slate-900 ${item.parentId ? 'pl-4' : ''}`}>
+                      {item.parentId ? `↳ ${item.name}` : item.name}
+                    </p>
                     {showDescriptionField && (
                       <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.description || 'No description'}</p>
                     )}
                   </div>
                 </td>
+                {enableSubcategories && (
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    {item.parentId
+                      ? items.find((candidate) => candidate._id === item.parentId)?.name ?? 'Unknown category'
+                      : 'Top-level category'}
+                  </td>
+                )}
                 {showValueField && (
                   <td className="px-6 py-4 text-sm text-slate-700">{item.value || 'N/A'}</td>
                 )}
@@ -443,6 +538,17 @@ export function ExtraManager({
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center justify-end gap-2">
+                    {enableSubcategories && !item.parentId && (
+                      <button
+                        type="button"
+                        onClick={() => startSubcategory(item)}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-2 text-blue-600 hover:bg-blue-50"
+                        title="Add subcategory"
+                      >
+                        <FiPlus size={15} />
+                        Subcategory
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => startEdit(item)}
