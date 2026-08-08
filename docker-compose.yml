@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: tripsathi-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    expose:
+      - "3000"
+
+  admin:
+    build:
+      context: ./Admin
+    container_name: tripsathi-admin
+    restart: unless-stopped
+    expose:
+      - "3000"
