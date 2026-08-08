@@ -6,13 +6,15 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    expose:
-      - "3000"
+    ports:
+      - "8080:8080"
 
   admin:
     build:
       context: ./Admin
     container_name: tripsathi-admin
     restart: unless-stopped
-    expose:
-      - "3000"
+    env_file:
+      - ./Admin/.env
+    ports:
+      - "3000:3000"
