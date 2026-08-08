@@ -3,8 +3,8 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/auth_provider.dart';
-<<<<<<< HEAD
 import 'providers/trips_provider.dart';
 import 'providers/reviews_provider.dart';
 import 'providers/campaigns_provider.dart';
@@ -16,21 +16,12 @@ import 'screens/auth/login.dart';
 import 'screens/profile/profile.dart';
 import 'screens/dashboard/dashboard.dart';
 import 'screens/auth/signup.dart';
-=======
-import 'screens/login.dart';
-import 'screens/onboarding.dart';
-import 'screens/profile.dart';
-import 'screens/signup.dart';
-import 'screens/splash.dart';
-import 'screens/welcome_onboarding.dart';
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
 import 'services/api.dart';
 import 'ui/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-<<<<<<< HEAD
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
       color: Colors.white,
@@ -52,9 +43,6 @@ Future<void> main() async {
       ),
     );
   };
-=======
-  ApiService.configure();
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
@@ -76,18 +64,14 @@ Future<void> main() async {
 
   // Prefer BACKEND_URL passed via `--dart-define` (works reliably on real phones),
   // then fall back to `.env`, then emulator default.
-  final dartEnvUrl = const String.fromEnvironment('BACKEND_URL', defaultValue: '').trim();
-  var envUrl = dartEnvUrl.isNotEmpty ? dartEnvUrl : (dotenv.env['BACKEND_URL']?.trim() ?? '');
-
-  if (envUrl.isNotEmpty) {
-    if (!envUrl.startsWith('http')) envUrl = 'http://$envUrl';
-    // If no explicit port provided, assume 3000 (common backend dev port)
-    if (!RegExp(r':\d+$').hasMatch(envUrl)) envUrl = '$envUrl:3000';
-    ApiService.baseUrl = envUrl;
-  } else {
-    // Android emulator special-case: host machine is reachable via 10.0.2.2.
-    ApiService.baseUrl = 'http://10.0.2.2:3000';
-  }
+  final dartEnvUrl = const String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue: '',
+  ).trim();
+  final envUrl = dartEnvUrl.isNotEmpty
+      ? dartEnvUrl
+      : (dotenv.env['BACKEND_URL']?.trim() ?? '');
+  ApiService.configure(overrideUrl: envUrl);
 
   // Help debugging on-device: print chosen backend
   // ignore: avoid_print
@@ -99,20 +83,14 @@ Future<void> main() async {
   runApp(MyApp(authProvider: authProvider));
 }
 
-<<<<<<< HEAD
 class MyApp extends StatefulWidget {
   final AuthProvider authProvider;
   const MyApp({super.key, required this.authProvider});
-=======
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
 
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
   @override
-<<<<<<< HEAD
   State<MyApp> createState() => _MyAppState();
 }
 
@@ -214,7 +192,8 @@ class _MyAppState extends State<MyApp> {
 
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider<AuthProvider>(create: (_) => widget.authProvider),
+        ChangeNotifierProvider<AuthProvider>(
+            create: (_) => widget.authProvider),
         ChangeNotifierProvider(create: (_) => TripsProvider()),
         ChangeNotifierProvider(create: (_) => ReviewsProvider()),
         ChangeNotifierProvider(create: (_) => CampaignsProvider()),
@@ -244,62 +223,6 @@ class _MyAppState extends State<MyApp> {
               '/dashboard': (_) => const DashboardScreen(),
             },
           );
-=======
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        navigatorKey: MyApp.navigatorKey,
-        title: 'TripSathi',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF0D9488),
-            primary: const Color(0xFF0D9488),
-            secondary: const Color(0xFFF59E0B),
-            surface: const Color(0xFFF7FAF9),
-          ),
-          scaffoldBackgroundColor: const Color(0xFFF7FAF9),
-          fontFamily: 'sans-serif',
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Color(0xFFE1EAE7))),
-            focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide:
-                    const BorderSide(color: Color(0xFF0D9488), width: 1.6)),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size.fromHeight(56),
-              backgroundColor: const Color(0xFF0D9488),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18)),
-              textStyle:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ),
-        initialRoute: '/splash',
-        routes: {
-          '/splash': (_) => const SplashScreen(),
-          '/welcome': (_) => const WelcomeOnboardingScreen(),
-          '/login': (_) => const LoginScreen(),
-          '/signup': (_) => const SignupScreen(),
-          '/profile-setup': (_) => const OnboardingScreen(),
-          '/profile': (_) => const ProfileScreen(),
->>>>>>> e09d3789ef38baf838053502fd4c44d5b127d5a4
         },
       ),
     );

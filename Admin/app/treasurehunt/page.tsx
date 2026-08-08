@@ -25,7 +25,7 @@ export default function TreasureHuntPage() {
         </h2>
         
         <p className="text-slate-600 dark:text-slate-400 max-w-md mx-auto mb-6">
-          We're crafting an amazing treasure hunt experience for you. 
+          We&apos;re crafting an amazing treasure hunt experience for you.
           Stay tuned for interactive clues, rewards, and adventures!
         </p>
         

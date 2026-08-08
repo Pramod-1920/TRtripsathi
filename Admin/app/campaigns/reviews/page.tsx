@@ -46,7 +46,7 @@ export default function ReviewsPage() {
   }, [page, limit, sort, tripId, reviewerId, revieweeId]);
 
   return (
-    <div className="p-6 text-foreground">
+    <div className="p-4 text-foreground sm:p-6 lg:p-8">
       <h2 className="text-2xl font-semibold mb-4">Trip Reviews</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -82,8 +82,8 @@ export default function ReviewsPage() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-card shadow-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead className="bg-muted/40">
             <tr>
               <th className="p-3 text-left">Rating</th>

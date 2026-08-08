@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ExtraCategory } from './constants/extra-category.enum';
 import { CreateExtraDto } from './dto/create-extra.dto';
 import { UpdateExtraDto } from './dto/update-extra.dto';
@@ -84,13 +84,48 @@ export class ExtraService {
     throw new ConflictException('Unable to generate a unique extra code');
   }
 
+  private async resolveActivityParent(
+    category: ExtraCategory,
+    parentId?: string | null,
+    itemId?: string,
+  ) {
+    if (!parentId) {
+      return null;
+    }
+
+    if (category !== ExtraCategory.Activities) {
+      throw new BadRequestException('Only activities can have subcategories');
+    }
+
+    if (itemId && parentId === itemId) {
+      throw new BadRequestException('An activity cannot be its own parent');
+    }
+
+    const parent = await this.extraModel.findOne({
+      _id: new Types.ObjectId(parentId),
+      category: ExtraCategory.Activities,
+    });
+
+    if (!parent) {
+      throw new BadRequestException('Parent activity category was not found');
+    }
+
+    if (parent.parentId) {
+      throw new BadRequestException('Activity subcategories can only be one level deep');
+    }
+
+    return parent._id as Types.ObjectId;
+  }
+
   async createExtra(dto: CreateExtraDto) {
     this.assertXpEventIsSupported(dto.category, dto.value);
+    const parentId = await this.resolveActivityParent(dto.category, dto.parentId);
 
     const extra = await this.extraModel.create({
       extraCode: await this.createUniqueExtraCode(),
       category: dto.category,
       name: dto.name.trim(),
+      parentId,
       description: normalizeText(dto.description),
       value: normalizeText(dto.value),
       enabled: dto.enabled ?? true,
@@ -131,6 +166,47 @@ export class ExtraService {
     };
   }
 
+  async resolveActivitySelection(categoryName: string, subcategoryName?: string | null) {
+    const requestedCategory = categoryName.trim();
+    const requestedSubcategory = subcategoryName?.trim() || null;
+    const roots = await this.extraModel.find({
+      category: ExtraCategory.Activities,
+      enabled: { $ne: false },
+      parentId: null,
+    });
+    const category = roots.find(
+      (item) => item.name.trim().toLowerCase() === requestedCategory.toLowerCase(),
+    );
+
+    if (!category) {
+      throw new BadRequestException('Selected activity category is not enabled');
+    }
+
+    if (!requestedSubcategory) {
+      return { category: category.name.trim(), subcategory: null };
+    }
+
+    const children = await this.extraModel.find({
+      category: ExtraCategory.Activities,
+      enabled: { $ne: false },
+      parentId: category._id,
+    });
+    const subcategory = children.find(
+      (item) => item.name.trim().toLowerCase() === requestedSubcategory.toLowerCase(),
+    );
+
+    if (!subcategory) {
+      throw new BadRequestException(
+        'Selected activity subcategory does not belong to this category or is disabled',
+      );
+    }
+
+    return {
+      category: category.name.trim(),
+      subcategory: subcategory.name.trim(),
+    };
+  }
+
   async getExtraById(id: string) {
     const extra = await this.extraModel.findById(id);
     if (!extra) {
@@ -151,12 +227,39 @@ export class ExtraService {
       dto.value !== undefined ? dto.value : extra.value,
     );
 
+    const nextCategory = dto.category ?? extra.category;
+    const nextParentId = dto.parentId !== undefined
+      ? await this.resolveActivityParent(nextCategory, dto.parentId, id)
+      : extra.parentId;
+
+    if (dto.category !== undefined && dto.category !== extra.category) {
+      const hasChildren = await this.extraModel.exists({ parentId: extra._id });
+      if (hasChildren) {
+        throw new ConflictException('Move or delete this category’s subcategories first');
+      }
+    }
+
+    if (nextCategory !== ExtraCategory.Activities && nextParentId) {
+      throw new BadRequestException('Only activities can have subcategories');
+    }
+
+    if (extra.parentId == null && nextParentId) {
+      const hasChildren = await this.extraModel.exists({ parentId: extra._id });
+      if (hasChildren) {
+        throw new ConflictException('Move or delete this category’s subcategories first');
+      }
+    }
+
     if (dto.category) {
       extra.category = dto.category;
     }
 
     if (dto.name !== undefined) {
       extra.name = dto.name.trim();
+    }
+
+    if (dto.parentId !== undefined) {
+      extra.parentId = nextParentId;
     }
 
     if (dto.description !== undefined) {
@@ -183,6 +286,11 @@ export class ExtraService {
   }
 
   async deleteExtra(id: string) {
+    const hasChildren = await this.extraModel.exists({ parentId: id });
+    if (hasChildren) {
+      throw new ConflictException('Delete this category’s subcategories first');
+    }
+
     const extra = await this.extraModel.findByIdAndDelete(id);
     if (!extra) {
       throw new NotFoundException('Extra item not found');

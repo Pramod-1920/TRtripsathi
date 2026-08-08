@@ -56,7 +56,7 @@ export default function ChatManager() {
       const data = response.data;
       setConversations(data.data || []);
       setTotalConversations(data.total || 0);
-    } catch (err) {
+    } catch {
       setError('Failed to load conversations');
     } finally {
       setLoading(false);
@@ -87,7 +87,7 @@ export default function ChatManager() {
       const response = await apiClient.get(`/chat/messages/${selectedConversation._id}/search`, { params: { query: messageSearch } });
       const data = response.data;
       setMessages(data.data || []);
-    } catch (err) {
+    } catch {
       setError('Search failed');
     }
   };

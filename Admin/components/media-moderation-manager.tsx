@@ -28,7 +28,7 @@ export default function MediaModerationManager() {
   const [stats, setStats] = useState<ModerationStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('pending');
+  const [filterStatus] = useState<string>('pending');
   const [page, setPage] = useState(1);
   const [totalMedia, setTotalMedia] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<MediaUpload | null>(null);
@@ -47,7 +47,7 @@ export default function MediaModerationManager() {
       const data = response.data;
       setMedia(data.data || []);
       setTotalMedia(data.total || 0);
-    } catch (err) {
+    } catch {
       setError('Failed to load media');
     } finally {
       setLoading(false);
@@ -87,7 +87,7 @@ export default function MediaModerationManager() {
       setSelectedMedia(null);
       fetchMedia();
       fetchStats();
-    } catch (err) {
+    } catch {
       setError('Failed to approve media');
     }
   };
@@ -99,7 +99,7 @@ export default function MediaModerationManager() {
       setRejectionReason('');
       fetchMedia();
       fetchStats();
-    } catch (err) {
+    } catch {
       setError('Failed to reject media');
     }
   };

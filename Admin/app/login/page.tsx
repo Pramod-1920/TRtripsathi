@@ -8,7 +8,6 @@ import { useAuthStore } from '@/lib/auth-store';
 
 export default function LoginPage() {
   const router = useRouter();
-  const mode: 'signin' = 'signin';
   const [formData, setFormData] = useState({
     phoneNumber: '',
     password: '',

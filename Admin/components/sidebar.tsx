@@ -57,7 +57,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/campaigns/add', label: 'Add Campaign' },
     { href: '/campaigns/details', label: 'Campaign Details' },
     { href: '/campaigns/approval', label: 'Campaign Approval' },
-  { href: '/campaigns/bin', label: 'Campaign User' },
+    { href: '/campaigns/bin', label: 'Campaign Bin' },
     { href: '/campaigns/reviews', label: 'Reviews' },
   ];
 
@@ -88,7 +88,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
+          'fixed inset-y-0 left-0 z-50 flex h-screen w-[min(16rem,calc(100vw-2rem))] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
           sidebarWidthClass,
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
@@ -118,6 +118,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               <Link
                 key={href}
                 href={href}
+                onClick={onCloseMobile}
                 title={collapsed ? label : undefined}
                 className={clsx(
                   'mx-2 flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
@@ -165,6 +166,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onCloseMobile}
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
@@ -208,6 +210,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onCloseMobile}
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
@@ -251,6 +254,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onCloseMobile}
                     className={clsx(
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active

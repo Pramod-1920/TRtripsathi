@@ -14,6 +14,7 @@ export type ExtraItem = {
   extraCode?: string;
   category: ExtraCategory;
   name: string;
+  parentId?: string | null;
   description?: string | null;
   value?: string | null;
   enabled?: boolean;
@@ -25,6 +26,7 @@ export type ExtraItem = {
 export type ExtraPayload = {
   category: ExtraCategory;
   name: string;
+  parentId?: string | null;
   description?: string;
   value?: string;
   enabled?: boolean;

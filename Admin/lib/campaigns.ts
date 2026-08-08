@@ -17,6 +17,7 @@ export type CampaignPayload = {
   title: string;
   description?: string;
   category: string;
+  subcategory?: string;
   hikeType: 'solo' | 'group';
   location?: string;
   province?: string;
@@ -44,7 +45,7 @@ export type CampaignParticipant = {
   confirmedAt?: string | null;
   verified?: boolean;
   completionDays?: number | null;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type CampaignTask = {
@@ -61,6 +62,7 @@ export type Campaign = {
   title: string;
   description?: string | null;
   category?: string;
+  subcategory?: string | null;
   hikeType: 'solo' | 'group';
   location?: string | null;
   province?: string | null;
@@ -89,6 +91,9 @@ export type Campaign = {
   rejectedAt?: string | null;
   approvedBy?: string | null;
   rejectedBy?: string | null;
+  hostVerified?: boolean;
+  verifiedAt?: string | null;
+  verificationDeadline?: string | null;
   approvalNote?: string | null;
   participants?: CampaignParticipant[];
   planning?: {
@@ -125,7 +130,7 @@ export type Campaign = {
   };
   createdAt?: string;
   updatedAt?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 type CampaignListResponse = {
@@ -145,10 +150,14 @@ type FetchCampaignsParams = {
   approvalStatus?: CampaignApprovalStatus;
 };
 
-function normalizeCampaign(item: any): Campaign {
+function normalizeCampaign(item: unknown): Campaign {
+  const record = item && typeof item === 'object'
+    ? item as Record<string, unknown>
+    : {};
+
   return {
-    ...item,
-    _id: String(item?._id ?? ''),
+    ...record,
+    _id: String(record._id ?? ''),
   } as Campaign;
 }
 

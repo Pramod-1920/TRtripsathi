@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiClient } from '@/lib/api';
 
 interface Review {
@@ -47,7 +47,7 @@ export default function ReviewManager() {
       const data = response.data;
       setReviews(data.data || []);
       setTotalReviews(data.total || 0);
-    } catch (err) {
+    } catch {
       setError('Failed to load reviews');
     } finally {
       setLoading(false);

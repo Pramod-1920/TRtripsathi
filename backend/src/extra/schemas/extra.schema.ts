@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { ExtraCategory } from '../constants/extra-category.enum';
 
 export type ExtraDocument = ExtraItem & Document;
@@ -14,6 +14,9 @@ export class ExtraItem {
 
   @Prop({ type: String, required: true })
   name!: string;
+
+  @Prop({ type: Types.ObjectId, ref: ExtraItem.name, default: null, index: true })
+  parentId?: Types.ObjectId | null;
 
   @Prop({ type: String, default: null })
   description?: string | null;

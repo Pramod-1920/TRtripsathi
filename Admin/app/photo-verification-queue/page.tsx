@@ -168,7 +168,7 @@ export default function PhotoVerificationQueuePage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Admin Queue</p>
@@ -246,8 +246,8 @@ export default function PhotoVerificationQueuePage() {
           <p className="text-slate-500">No photo verification requests match the selected filter.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full">
+        <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-200 bg-slate-50">
               <tr>
                 <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">User</th>
@@ -264,7 +264,6 @@ export default function PhotoVerificationQueuePage() {
                     <div className="flex items-start gap-3">
                       <div className="h-12 w-12 overflow-hidden rounded-full bg-slate-100">
                         {item.profilePhoto ? (
-                          // eslint-disable-next-line @next/next/no-img-element
                           <img src={item.profilePhoto} alt="Profile" className="h-full w-full object-cover" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-500">

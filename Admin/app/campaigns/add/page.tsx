@@ -28,6 +28,7 @@ type CampaignFormState = {
   title: string;
   description: string;
   category: string;
+  subcategory: string;
   hikeType: 'solo' | 'group';
   province: string;
   district: string;
@@ -49,6 +50,7 @@ const defaultFormState: CampaignFormState = {
   title: '',
   description: '',
   category: '',
+  subcategory: '',
   hikeType: 'group',
   province: '',
   district: '',
@@ -120,6 +122,21 @@ export default function AddCampaignPage() {
   const [weatherSummary, setWeatherSummary] = useState<null | { geocoded: { lat: string; lon: string; display_name?: string }; forecast: { daily?: MeteoDaily } }>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const rootCategories = useMemo(
+    () => categories.filter((item) => !item.parentId),
+    [categories],
+  );
+  const selectedCategory = useMemo(
+    () => rootCategories.find((item) => item.name === form.category),
+    [form.category, rootCategories],
+  );
+  const subcategoryOptions = useMemo(
+    () => selectedCategory
+      ? categories.filter((item) => item.parentId === selectedCategory._id)
+      : [],
+    [categories, selectedCategory],
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -165,7 +182,12 @@ export default function AddCampaignPage() {
       const raw = params?.get('selectedPlace');
       if (!raw) return;
 
-      const parsed = JSON.parse(decodeURIComponent(raw)) as { place?: { id?: string; name?: string; provinceId?: string; districtId?: string }; weather?: unknown };
+      const parsed = JSON.parse(decodeURIComponent(raw)) as {
+        place?: { id?: string; name?: string; provinceId?: string; districtId?: string };
+        weather?: unknown;
+        lat?: string | number;
+        lon?: string | number;
+      };
       if (!parsed?.place) return;
 
       const place = parsed.place;
@@ -184,7 +206,7 @@ export default function AddCampaignPage() {
 
       // Attach weather if present (try to set as forecast summary)
       if (parsed.weather && typeof parsed.weather === 'object') {
-        setWeatherSummary({ geocoded: { lat: String((parsed as any).lat ?? ''), lon: String((parsed as any).lon ?? ''), display_name: place.name ?? '' }, forecast: parsed.weather as unknown as { daily?: MeteoDaily } });
+        setWeatherSummary({ geocoded: { lat: String(parsed.lat ?? ''), lon: String(parsed.lon ?? ''), display_name: place.name ?? '' }, forecast: parsed.weather as { daily?: MeteoDaily } });
       }
 
       // Remove the query param so it won't reapply on refresh
@@ -480,6 +502,7 @@ export default function AddCampaignPage() {
       title: form.title.trim(),
       description: form.description.trim() || undefined,
       category: form.category.trim(),
+      subcategory: form.subcategory.trim() || undefined,
       hikeType: form.hikeType,
       province: form.province.trim() || undefined,
       district: form.district.trim() || undefined,
@@ -583,14 +606,31 @@ export default function AddCampaignPage() {
                 <p className="text-sm text-slate-600">Choose what users will do and where it will happen.</p>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className={`grid grid-cols-1 gap-3 ${subcategoryOptions.length > 0 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
                 <FieldBox title="Activity Category" description="This controls how the campaign is categorized and filtered.">
-                  <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.category} onChange={(event) => updateField('category', event.target.value)} disabled={loadingOptions} onBlur={() => validateField('category')}>
+                  <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.category} onChange={(event) => {
+                    setForm((current) => ({ ...current, category: event.target.value, subcategory: '' }));
+                  }} disabled={loadingOptions} onBlur={() => validateField('category')}>
                     <option value="">Select activity</option>
-                    {categories.map((item) => <option key={item._id} value={item.name}>{item.name}</option>)}
+                    {rootCategories.map((item) => <option key={item._id} value={item.name}>{item.name}</option>)}
                   </select>
                   {fieldErrors.category && <p className="mt-1 text-xs text-red-600">{fieldErrors.category}</p>}
                 </FieldBox>
+
+                {subcategoryOptions.length > 0 && (
+                  <FieldBox title="Activity Subcategory" description="Optional: choose a more specific activity.">
+                    <select
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      value={form.subcategory}
+                      onChange={(event) => updateField('subcategory', event.target.value)}
+                    >
+                      <option value="">General {form.category}</option>
+                      {subcategoryOptions.map((item) => (
+                        <option key={item._id} value={item.name}>{item.name}</option>
+                      ))}
+                    </select>
+                  </FieldBox>
+                )}
 
                 <FieldBox title="Difficulty" description="Difficulty affects admin approval and user expectations.">
                   <select className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={form.difficulty} onChange={(event) => updateField('difficulty', event.target.value)} disabled={loadingOptions}>
@@ -791,6 +831,7 @@ export default function AddCampaignPage() {
 
                 <div className="flex flex-wrap gap-2 text-xs">
                   <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{form.category || 'Activity'}</span>
+                  {form.subcategory && <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">{form.subcategory}</span>}
                   <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{form.difficulty || 'Difficulty'}</span>
                   <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{form.hikeType === 'group' ? 'Scheduled' : form.scheduleType}</span>
                 </div>
