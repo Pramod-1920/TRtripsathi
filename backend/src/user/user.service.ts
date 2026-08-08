@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, Types } from 'mongoose';
+import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
 import { ExperienceLevel } from '../auth/constants/experience-level.enum';
 import { Role } from '../auth/constants/roles.enum';
@@ -82,7 +82,9 @@ type XpRuleDefinition = {
   locationKey?: string;
   overrideEnabled?: boolean;
   repeatPenaltyEnabled?: boolean;
-  difficultyMultipliers?: Partial<Record<'easy' | 'moderate' | 'hard' | 'extreme', number>>;
+  difficultyMultipliers?: Partial<
+    Record<'easy' | 'moderate' | 'hard' | 'extreme', number>
+  >;
   explorationBonuses?: {
     firstVisit?: number;
     newDistrict?: number;
@@ -117,7 +119,9 @@ type ParsedXpRule = {
   locationKey?: string;
   overrideEnabled: boolean;
   repeatPenaltyEnabled: boolean;
-  difficultyMultipliers: Partial<Record<'easy' | 'moderate' | 'hard' | 'extreme', number>>;
+  difficultyMultipliers: Partial<
+    Record<'easy' | 'moderate' | 'hard' | 'extreme', number>
+  >;
   explorationBonuses: {
     firstVisit: number;
     newDistrict: number;
@@ -162,7 +166,12 @@ type XpBreakdown = {
 
 type RankProgressProfile = Pick<
   User,
-  'experienceLevel' | 'level' | 'xp' | 'totalXp' | 'achievementStats' | 'achievementProgress'
+  | 'experienceLevel'
+  | 'level'
+  | 'xp'
+  | 'totalXp'
+  | 'achievementStats'
+  | 'achievementProgress'
 >;
 
 type RankBadgeRuleValue = {
@@ -187,7 +196,19 @@ type VisibleRankBadge = RankBadgeDefinition & {
 @Injectable()
 export class UserService {
   private logger = new Logger(UserService.name);
-  private readonly rankOrder = ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'Mythic', 'Heroic'] as const;
+  private readonly rankOrder = [
+    'F',
+    'E',
+    'D',
+    'C',
+    'B',
+    'A',
+    'S',
+    'SS',
+    'SSS',
+    'Mythic',
+    'Heroic',
+  ] as const;
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
@@ -227,8 +248,12 @@ export class UserService {
     totalXp: number,
     rankCode?: string,
   ) {
-    const sortedRules = [...rules].sort((first, second) => first.requiredXp - second.requiredXp);
-    const normalizedRankCode = this.normalizeRankCode(String(rankCode ?? profile.experienceLevel ?? ''));
+    const sortedRules = [...rules].sort(
+      (first, second) => first.requiredXp - second.requiredXp,
+    );
+    const normalizedRankCode = this.normalizeRankCode(
+      String(rankCode ?? profile.experienceLevel ?? ''),
+    );
 
     const exactRule = sortedRules.find(
       (rule) => this.normalizeRankCode(rule.rankCode) === normalizedRankCode,
@@ -238,10 +263,11 @@ export class UserService {
       return exactRule;
     }
 
-    return [...sortedRules]
-      .filter((rule) => Math.max(0, Math.floor(rule.requiredXp)) <= totalXp)
-      .pop()
-      ?? sortedRules[0];
+    return (
+      [...sortedRules]
+        .filter((rule) => Math.max(0, Math.floor(rule.requiredXp)) <= totalXp)
+        .pop() ?? sortedRules[0]
+    );
   }
 
   private sanitizeProfileUpdates(updates: Record<string, unknown>) {
@@ -261,6 +287,9 @@ export class UserService {
       'level',
       'gender',
       'languagesKnown',
+      'travelerExperience',
+      'travelStyle',
+      'travelInterests',
       'isProfilePublic',
       'dateOfBirth',
     ];
@@ -314,11 +343,27 @@ export class UserService {
         .filter((language) => language.length > 0);
     }
 
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'travelInterests')) {
+      if (!Array.isArray(sanitized.travelInterests)) {
+        throw new BadRequestException('Travel interests must be an array');
+      }
+
+      sanitized.travelInterests = [
+        ...new Set(
+          sanitized.travelInterests
+            .map((interest) => String(interest).trim().toLowerCase())
+            .filter((interest) => interest.length > 0),
+        ),
+      ];
+    }
+
     if (Object.prototype.hasOwnProperty.call(sanitized, 'level')) {
       const rawLevel = Number(sanitized.level);
 
       if (!Number.isFinite(rawLevel) || rawLevel < 1) {
-        throw new BadRequestException('Level must be a number greater than or equal to 1');
+        throw new BadRequestException(
+          'Level must be a number greater than or equal to 1',
+        );
       }
 
       sanitized.level = Math.floor(rawLevel);
@@ -349,27 +394,43 @@ export class UserService {
                 this.normalizeAchievementSubcategory(key),
                 Number(rawValue),
               ])
-              .filter(([key, value]) => key.length > 0 && Number.isFinite(value) && value > 0)
-              .map(([key, value]): [string, number] => [key, Math.floor(value)]),
+              .filter(
+                ([key, value]) =>
+                  key.length > 0 && Number.isFinite(value) && value > 0,
+              )
+              .map(([key, value]): [string, number] => [
+                key,
+                Math.floor(value),
+              ]),
           )
         : undefined;
 
       const subRanks = Array.isArray(parsed.subRanks)
-        ? parsed.subRanks.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
+        ? parsed.subRanks
+            .map((entry) => String(entry).trim())
+            .filter((entry) => entry.length > 0)
         : typeof parsed.subRanks === 'string'
           ? String(parsed.subRanks)
-            .split(',')
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0)
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0)
           : undefined;
 
       return {
-        ...(parsed.rankCode ? { rankCode: String(parsed.rankCode).trim() } : {}),
+        ...(parsed.rankCode
+          ? { rankCode: String(parsed.rankCode).trim() }
+          : {}),
         requiredXp: Math.floor(requiredXp),
-        ...(parsed.minLevel !== undefined ? { minLevel: Math.max(1, Math.floor(Number(parsed.minLevel))) } : {}),
-        ...(parsed.maxLevel !== undefined ? { maxLevel: Math.max(1, Math.floor(Number(parsed.maxLevel))) } : {}),
+        ...(parsed.minLevel !== undefined
+          ? { minLevel: Math.max(1, Math.floor(Number(parsed.minLevel))) }
+          : {}),
+        ...(parsed.maxLevel !== undefined
+          ? { maxLevel: Math.max(1, Math.floor(Number(parsed.maxLevel))) }
+          : {}),
         ...(subRanks ? { subRanks } : {}),
-        ...(parsed.displayName ? { displayName: String(parsed.displayName).trim() } : {}),
+        ...(parsed.displayName
+          ? { displayName: String(parsed.displayName).trim() }
+          : {}),
         ...(parsed.title ? { title: String(parsed.title).trim() } : {}),
         ...(parsed.feeling ? { feeling: String(parsed.feeling).trim() } : {}),
         ...(parsed.requireRank
@@ -427,35 +488,59 @@ export class UserService {
       return exactMap[normalized];
     }
 
-    if (/\(\s*sss\s*\)/i.test(normalized) || normalized.includes('nepal hike god')) {
+    if (
+      /\(\s*sss\s*\)/i.test(normalized) ||
+      normalized.includes('nepal hike god')
+    ) {
       return 'SSS';
     }
 
-    if (/\(\s*ss\s*\)/i.test(normalized) || normalized.includes('everest legend')) {
+    if (
+      /\(\s*ss\s*\)/i.test(normalized) ||
+      normalized.includes('everest legend')
+    ) {
       return 'SS';
     }
 
-    if (/\(\s*s\s*\)/i.test(normalized) || normalized.includes('peak sovereign')) {
+    if (
+      /\(\s*s\s*\)/i.test(normalized) ||
+      normalized.includes('peak sovereign')
+    ) {
       return 'S';
     }
 
-    if (/\(\s*a\s*\)/i.test(normalized) || normalized.includes('himalayan elite')) {
+    if (
+      /\(\s*a\s*\)/i.test(normalized) ||
+      normalized.includes('himalayan elite')
+    ) {
       return 'A';
     }
 
-    if (/\(\s*b\s*\)/i.test(normalized) || normalized.includes('summit conqueror')) {
+    if (
+      /\(\s*b\s*\)/i.test(normalized) ||
+      normalized.includes('summit conqueror')
+    ) {
       return 'B';
     }
 
-    if (/\(\s*c\s*\)/i.test(normalized) || normalized.includes('ridge slayer')) {
+    if (
+      /\(\s*c\s*\)/i.test(normalized) ||
+      normalized.includes('ridge slayer')
+    ) {
       return 'C';
     }
 
-    if (/\(\s*d\s*\)/i.test(normalized) || normalized.includes('trail hunter')) {
+    if (
+      /\(\s*d\s*\)/i.test(normalized) ||
+      normalized.includes('trail hunter')
+    ) {
       return 'D';
     }
 
-    if (/\(\s*e\s*\)/i.test(normalized) || normalized.includes('novice wanderer')) {
+    if (
+      /\(\s*e\s*\)/i.test(normalized) ||
+      normalized.includes('novice wanderer')
+    ) {
       return 'E';
     }
 
@@ -463,18 +548,26 @@ export class UserService {
       return 'F';
     }
 
-    if (normalized.includes('heroic') || normalized.includes('himalayan hero')) {
+    if (
+      normalized.includes('heroic') ||
+      normalized.includes('himalayan hero')
+    ) {
       return 'Heroic';
     }
 
-    if (normalized.includes('himalayan deity') || normalized.includes('nepal conqueror')) {
+    if (
+      normalized.includes('himalayan deity') ||
+      normalized.includes('nepal conqueror')
+    ) {
       return 'Mythic';
     }
 
     return '';
   }
 
-  private parseRankBadgeValue(value?: string | null): RankBadgeRuleValue | null {
+  private parseRankBadgeValue(
+    value?: string | null,
+  ): RankBadgeRuleValue | null {
     if (!value?.trim()) {
       return null;
     }
@@ -484,10 +577,14 @@ export class UserService {
     try {
       const parsed = JSON.parse(trimmed) as Partial<RankBadgeRuleValue>;
       return {
-        ...(parsed.imageUrl?.trim() ? { imageUrl: parsed.imageUrl.trim() } : {}),
+        ...(parsed.imageUrl?.trim()
+          ? { imageUrl: parsed.imageUrl.trim() }
+          : {}),
         ...(parsed.iconUrl?.trim() ? { iconUrl: parsed.iconUrl.trim() } : {}),
         ...(parsed.url?.trim() ? { url: parsed.url.trim() } : {}),
-        ...(parsed.publicId?.trim() ? { publicId: parsed.publicId.trim() } : {}),
+        ...(parsed.publicId?.trim()
+          ? { publicId: parsed.publicId.trim() }
+          : {}),
       };
     } catch {
       if (/^https?:\/\//i.test(trimmed)) {
@@ -521,7 +618,8 @@ export class UserService {
     for (const item of items) {
       const rankCode = this.normalizeRankCode(item.name?.trim());
       const parsedValue = this.parseRankBadgeValue(item.value);
-      const imageUrl = parsedValue?.imageUrl ?? parsedValue?.iconUrl ?? parsedValue?.url;
+      const imageUrl =
+        parsedValue?.imageUrl ?? parsedValue?.iconUrl ?? parsedValue?.url;
 
       if (!rankCode || !imageUrl) {
         continue;
@@ -536,7 +634,9 @@ export class UserService {
     }
 
     return Array.from(byRank.values()).sort(
-      (first, second) => this.getRankOrderIndex(first.rankCode) - this.getRankOrderIndex(second.rankCode),
+      (first, second) =>
+        this.getRankOrderIndex(first.rankCode) -
+        this.getRankOrderIndex(second.rankCode),
     );
   }
 
@@ -555,11 +655,17 @@ export class UserService {
         const definitionIndex = this.getRankOrderIndex(definition.rankCode);
         return definitionIndex >= 0 && definitionIndex <= currentRankIndex;
       })
-      .sort((first, second) => this.getRankOrderIndex(second.rankCode) - this.getRankOrderIndex(first.rankCode))
+      .sort(
+        (first, second) =>
+          this.getRankOrderIndex(second.rankCode) -
+          this.getRankOrderIndex(first.rankCode),
+      )
       .map((definition) => ({
         ...definition,
         unlocked: true as const,
-        isCurrentRank: this.normalizeRankCode(definition.rankCode) === this.normalizeRankCode(currentRankCode),
+        isCurrentRank:
+          this.normalizeRankCode(definition.rankCode) ===
+          this.normalizeRankCode(currentRankCode),
       }));
   }
 
@@ -614,7 +720,9 @@ export class UserService {
   }
 
   private resolveLocationKey(context: XpEventContext) {
-    const explicit = this.normalizeKey(String(context.locationKey ?? context.placeName ?? ''));
+    const explicit = this.normalizeKey(
+      String(context.locationKey ?? context.placeName ?? ''),
+    );
 
     if (explicit) {
       return explicit;
@@ -647,23 +755,15 @@ export class UserService {
         return null;
       }
 
-      const baseXp = Number(
-        parsed.baseXp
-        ?? parsed.points
-        ?? 0,
-      );
+      const baseXp = Number(parsed.baseXp ?? parsed.points ?? 0);
 
-      const overrideXp = parsed.overrideXp !== undefined
-        ? Number(parsed.overrideXp)
-        : undefined;
+      const overrideXp =
+        parsed.overrideXp !== undefined ? Number(parsed.overrideXp) : undefined;
 
-      const bonusXp = parsed.bonusXp !== undefined
-        ? Number(parsed.bonusXp)
-        : 0;
+      const bonusXp = parsed.bonusXp !== undefined ? Number(parsed.bonusXp) : 0;
 
-      const socialBonusXp = parsed.socialBonusXp !== undefined
-        ? Number(parsed.socialBonusXp)
-        : 0;
+      const socialBonusXp =
+        parsed.socialBonusXp !== undefined ? Number(parsed.socialBonusXp) : 0;
 
       if (!eventKey || !Number.isFinite(baseXp) || baseXp < 0) {
         return null;
@@ -699,7 +799,11 @@ export class UserService {
           }
         : {};
 
-      if (Object.values(difficultyMultipliers).some((value) => !Number.isFinite(value))) {
+      if (
+        Object.values(difficultyMultipliers).some(
+          (value) => !Number.isFinite(value),
+        )
+      ) {
         return null;
       }
 
@@ -710,23 +814,43 @@ export class UserService {
         rareRoute: Number(parsed.explorationBonuses?.rareRoute ?? 400),
       };
 
-      if (Object.values(explorationBonuses).some((bonus) => !Number.isFinite(bonus))) {
+      if (
+        Object.values(explorationBonuses).some(
+          (bonus) => !Number.isFinite(bonus),
+        )
+      ) {
         return null;
       }
 
       const conditions = parsed.conditions
         ? {
             ...(parsed.conditions.difficulty
-              ? { difficulty: this.normalizeDifficulty(String(parsed.conditions.difficulty)) }
+              ? {
+                  difficulty: this.normalizeDifficulty(
+                    String(parsed.conditions.difficulty),
+                  ),
+                }
               : {}),
             ...(parsed.conditions.district
-              ? { district: this.normalizeKey(String(parsed.conditions.district)) }
+              ? {
+                  district: this.normalizeKey(
+                    String(parsed.conditions.district),
+                  ),
+                }
               : {}),
             ...(parsed.conditions.locationKey
-              ? { locationKey: this.normalizeKey(String(parsed.conditions.locationKey)) }
+              ? {
+                  locationKey: this.normalizeKey(
+                    String(parsed.conditions.locationKey),
+                  ),
+                }
               : {}),
             ...(parsed.conditions.activityType
-              ? { activityType: this.normalizeKey(String(parsed.conditions.activityType)) }
+              ? {
+                  activityType: this.normalizeKey(
+                    String(parsed.conditions.activityType),
+                  ),
+                }
               : {}),
             ...(parsed.conditions.ratingGte !== undefined
               ? { ratingGte: Number(parsed.conditions.ratingGte) }
@@ -746,7 +870,10 @@ export class UserService {
           }
         : undefined;
 
-      if (conditions?.ratingGte !== undefined && !Number.isFinite(conditions.ratingGte)) {
+      if (
+        conditions?.ratingGte !== undefined &&
+        !Number.isFinite(conditions.ratingGte)
+      ) {
         return null;
       }
 
@@ -754,16 +881,24 @@ export class UserService {
         eventKey,
         points: Math.floor(baseXp),
         baseXp: Math.floor(baseXp),
-        ...(overrideXp !== undefined && Number.isFinite(overrideXp) && overrideXp >= 0
+        ...(overrideXp !== undefined &&
+        Number.isFinite(overrideXp) &&
+        overrideXp >= 0
           ? { overrideXp: Math.floor(overrideXp) }
           : {}),
-        ...(Number.isFinite(bonusXp) ? { bonusXp: Math.floor(Math.max(0, bonusXp)) } : {}),
+        ...(Number.isFinite(bonusXp)
+          ? { bonusXp: Math.floor(Math.max(0, bonusXp)) }
+          : {}),
         ...(Number.isFinite(socialBonusXp)
           ? { socialBonusXp: Math.floor(Math.max(0, socialBonusXp)) }
           : {}),
         ...(parsed.ruleType ? { ruleType: parsed.ruleType } : {}),
-        ...(parsed.activityType ? { activityType: this.normalizeKey(parsed.activityType) } : {}),
-        ...(parsed.locationKey ? { locationKey: this.normalizeKey(parsed.locationKey) } : {}),
+        ...(parsed.activityType
+          ? { activityType: this.normalizeKey(parsed.activityType) }
+          : {}),
+        ...(parsed.locationKey
+          ? { locationKey: this.normalizeKey(parsed.locationKey) }
+          : {}),
         ...(parsed.overrideEnabled !== undefined
           ? { overrideEnabled: Boolean(parsed.overrideEnabled) }
           : {}),
@@ -825,7 +960,9 @@ export class UserService {
           eventKey: parsed.eventKey,
           points: parsed.points,
           baseXp: Math.floor(parsed.baseXp ?? parsed.points ?? 0),
-          ...(parsed.overrideXp !== undefined ? { overrideXp: parsed.overrideXp } : {}),
+          ...(parsed.overrideXp !== undefined
+            ? { overrideXp: parsed.overrideXp }
+            : {}),
           bonusXp: Math.floor(parsed.bonusXp ?? 0),
           socialBonusXp: Math.floor(parsed.socialBonusXp ?? 0),
           ruleType: parsed.ruleType ?? 'global',
@@ -835,8 +972,12 @@ export class UserService {
           repeatPenaltyEnabled: parsed.repeatPenaltyEnabled ?? true,
           difficultyMultipliers: parsed.difficultyMultipliers ?? {},
           explorationBonuses: {
-            firstVisit: Math.floor(parsed.explorationBonuses?.firstVisit ?? 150),
-            newDistrict: Math.floor(parsed.explorationBonuses?.newDistrict ?? 250),
+            firstVisit: Math.floor(
+              parsed.explorationBonuses?.firstVisit ?? 150,
+            ),
+            newDistrict: Math.floor(
+              parsed.explorationBonuses?.newDistrict ?? 250,
+            ),
             hiddenGem: Math.floor(parsed.explorationBonuses?.hiddenGem ?? 300),
             rareRoute: Math.floor(parsed.explorationBonuses?.rareRoute ?? 400),
           },
@@ -862,10 +1003,10 @@ export class UserService {
       }>;
 
       if (
-        !parsed.key
-        || !parsed.subcategory
-        || parsed.targetCount === undefined
-        || parsed.rewardXp === undefined
+        !parsed.key ||
+        !parsed.subcategory ||
+        parsed.targetCount === undefined ||
+        parsed.rewardXp === undefined
       ) {
         return null;
       }
@@ -874,10 +1015,10 @@ export class UserService {
       const rewardXp = Number(parsed.rewardXp);
 
       if (
-        !Number.isFinite(targetCount)
-        || targetCount < 1
-        || !Number.isFinite(rewardXp)
-        || rewardXp < 1
+        !Number.isFinite(targetCount) ||
+        targetCount < 1 ||
+        !Number.isFinite(rewardXp) ||
+        rewardXp < 1
       ) {
         return null;
       }
@@ -1078,21 +1219,29 @@ export class UserService {
     }
 
     const increment = Math.max(1, Math.floor(Number(payload.count ?? 1)));
-    const subcategory = this.normalizeAchievementSubcategory(payload.subcategory);
+    const subcategory = this.normalizeAchievementSubcategory(
+      payload.subcategory,
+    );
     const definitions = await this.getAchievementDefinitions();
     const filtered = definitions.filter((definition) => {
       if (payload.key?.trim()) {
         return (
-          definition.key.toLowerCase() === payload.key.trim().toLowerCase()
-          && this.normalizeAchievementSubcategory(definition.subcategory) === subcategory
+          definition.key.toLowerCase() === payload.key.trim().toLowerCase() &&
+          this.normalizeAchievementSubcategory(definition.subcategory) ===
+            subcategory
         );
       }
 
-      return this.normalizeAchievementSubcategory(definition.subcategory) === subcategory;
+      return (
+        this.normalizeAchievementSubcategory(definition.subcategory) ===
+        subcategory
+      );
     });
 
     const stats = Object.fromEntries(
-      Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
+      Object.entries(
+        (profile.achievementStats ?? {}) as Record<string, unknown>,
+      )
         .map(([key, value]): [string, number] => [key, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value >= 0)
         .map(([key, value]): [string, number] => [key, Math.floor(value)]),
@@ -1115,24 +1264,29 @@ export class UserService {
     }
 
     const progress = [...(profile.achievementProgress ?? [])];
-    const unlocked: Array<{ key: string; title: string; rewardXp: number }> = [];
+    const unlocked: Array<{ key: string; title: string; rewardXp: number }> =
+      [];
 
     for (const definition of filtered) {
       const index = progress.findIndex(
         (entry) => entry.key.toLowerCase() === definition.key.toLowerCase(),
       );
 
-      const existing = index >= 0
-        ? progress[index]
-        : {
-            key: definition.key,
-            title: definition.title,
-            subcategory: definition.subcategory,
-            count: 0,
-            target: definition.targetCount,
-            rewardXp: Math.max(0, Math.floor(Number(definition.rewardXp ?? 0))),
-            hidden: definition.hidden ?? false,
-          };
+      const existing =
+        index >= 0
+          ? progress[index]
+          : {
+              key: definition.key,
+              title: definition.title,
+              subcategory: definition.subcategory,
+              count: 0,
+              target: definition.targetCount,
+              rewardXp: Math.max(
+                0,
+                Math.floor(Number(definition.rewardXp ?? 0)),
+              ),
+              hidden: definition.hidden ?? false,
+            };
 
       if (existing.completedAt) {
         // One-time objective: once completed, keep it completed and skip re-activation logic.
@@ -1185,7 +1339,10 @@ export class UserService {
       }
     }
 
-    const bonusXp = unlocked.reduce((total, entry) => total + entry.rewardXp, 0);
+    const bonusXp = unlocked.reduce(
+      (total, entry) => total + entry.rewardXp,
+      0,
+    );
 
     const updates: Record<string, unknown> = {
       $set: {
@@ -1231,38 +1388,47 @@ export class UserService {
     }
 
     if (
-      rule.conditions.difficulty
-      && this.normalizeDifficulty(String(context.difficulty ?? '')) !== rule.conditions.difficulty
+      rule.conditions.difficulty &&
+      this.normalizeDifficulty(String(context.difficulty ?? '')) !==
+        rule.conditions.difficulty
     ) {
       return false;
     }
 
     if (
-      rule.conditions.district
-      && this.normalizeKey(String(context.district ?? '')) !== rule.conditions.district
+      rule.conditions.district &&
+      this.normalizeKey(String(context.district ?? '')) !==
+        rule.conditions.district
     ) {
       return false;
     }
 
     if (
-      rule.conditions.locationKey
-      && this.resolveLocationKey(context) !== rule.conditions.locationKey
+      rule.conditions.locationKey &&
+      this.resolveLocationKey(context) !== rule.conditions.locationKey
     ) {
       return false;
     }
 
     if (
-      rule.conditions.activityType
-      && this.normalizeKey(String(context.activityType ?? '')) !== rule.conditions.activityType
+      rule.conditions.activityType &&
+      this.normalizeKey(String(context.activityType ?? '')) !==
+        rule.conditions.activityType
     ) {
       return false;
     }
 
-    if (rule.conditions.solo !== undefined && Boolean(context.solo) !== rule.conditions.solo) {
+    if (
+      rule.conditions.solo !== undefined &&
+      Boolean(context.solo) !== rule.conditions.solo
+    ) {
       return false;
     }
 
-    if (rule.conditions.hostOnly !== undefined && Boolean(context.hostOnly) !== rule.conditions.hostOnly) {
+    if (
+      rule.conditions.hostOnly !== undefined &&
+      Boolean(context.hostOnly) !== rule.conditions.hostOnly
+    ) {
       return false;
     }
 
@@ -1274,11 +1440,17 @@ export class UserService {
       }
     }
 
-    if (rule.conditions.hiddenGem !== undefined && Boolean(context.hiddenGem) !== rule.conditions.hiddenGem) {
+    if (
+      rule.conditions.hiddenGem !== undefined &&
+      Boolean(context.hiddenGem) !== rule.conditions.hiddenGem
+    ) {
       return false;
     }
 
-    if (rule.conditions.rareRoute !== undefined && Boolean(context.rareRoute) !== rule.conditions.rareRoute) {
+    if (
+      rule.conditions.rareRoute !== undefined &&
+      Boolean(context.rareRoute) !== rule.conditions.rareRoute
+    ) {
       return false;
     }
 
@@ -1290,20 +1462,27 @@ export class UserService {
       case 'once_per_user':
         return `${rule.code}:once_per_user`;
       case 'once_per_campaign':
-        return `${rule.code}:campaign:${String(context.campaignId ?? '').trim().toLowerCase()}`;
+        return `${rule.code}:campaign:${String(context.campaignId ?? '')
+          .trim()
+          .toLowerCase()}`;
       case 'once_per_district':
         return `${rule.code}:district:${this.normalizeKey(String(context.district ?? ''))}`;
       case 'once_per_difficulty':
         return `${rule.code}:difficulty:${this.normalizeDifficulty(String(context.difficulty ?? ''))}`;
       case 'once_per_referred_user':
-        return `${rule.code}:ref:${String(context.referredUserId ?? '').trim().toLowerCase()}`;
+        return `${rule.code}:ref:${String(context.referredUserId ?? '')
+          .trim()
+          .toLowerCase()}`;
       case 'always':
       default:
         return `${rule.code}:always:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
     }
   }
 
-  private hasSufficientRepeatContext(rule: ParsedXpRule, context: XpEventContext) {
+  private hasSufficientRepeatContext(
+    rule: ParsedXpRule,
+    context: XpEventContext,
+  ) {
     if (rule.repeat === 'once_per_campaign') {
       return Boolean(String(context.campaignId ?? '').trim());
     }
@@ -1313,7 +1492,9 @@ export class UserService {
     }
 
     if (rule.repeat === 'once_per_difficulty') {
-      return Boolean(this.normalizeDifficulty(String(context.difficulty ?? '')));
+      return Boolean(
+        this.normalizeDifficulty(String(context.difficulty ?? '')),
+      );
     }
 
     if (rule.repeat === 'once_per_referred_user') {
@@ -1341,7 +1522,9 @@ export class UserService {
         return false;
       }
 
-      const entryLocation = this.resolveLocationKey((entry.context ?? {}) as XpEventContext);
+      const entryLocation = this.resolveLocationKey(
+        (entry.context ?? {}) as XpEventContext,
+      );
       return entryLocation === locationKey;
     }).length;
   }
@@ -1355,7 +1538,9 @@ export class UserService {
     }
 
     return history.some((entry) => {
-      const entryDistrict = this.resolveDistrictKey((entry.context ?? {}) as XpEventContext);
+      const entryDistrict = this.resolveDistrictKey(
+        (entry.context ?? {}) as XpEventContext,
+      );
       return entryDistrict === districtKey;
     });
   }
@@ -1369,7 +1554,9 @@ export class UserService {
     }
 
     return history.some((entry) => {
-      const entryLocation = this.resolveLocationKey((entry.context ?? {}) as XpEventContext);
+      const entryLocation = this.resolveLocationKey(
+        (entry.context ?? {}) as XpEventContext,
+      );
       return entryLocation === locationKey;
     });
   }
@@ -1380,7 +1567,9 @@ export class UserService {
     context: XpEventContext,
     history: NonNullable<User['xpHistory']>,
   ): XpBreakdown {
-    const normalizedDifficulty = this.normalizeDifficulty(String(context.difficulty ?? ''));
+    const normalizedDifficulty = this.normalizeDifficulty(
+      String(context.difficulty ?? ''),
+    );
     const fallbackBase = this.getSystemDifficultyBaseXp(normalizedDifficulty);
     const baseXp = rule
       ? rule.overrideEnabled && rule.overrideXp !== undefined
@@ -1397,8 +1586,9 @@ export class UserService {
     const difficultyMultiplier = Math.max(
       0,
       Number(
-        rule?.difficultyMultipliers?.[normalizedDifficulty as 'easy' | 'moderate' | 'hard' | 'extreme']
-        ?? 1,
+        rule?.difficultyMultipliers?.[
+          normalizedDifficulty as 'easy' | 'moderate' | 'hard' | 'extreme'
+        ] ?? 1,
       ),
     );
 
@@ -1406,45 +1596,56 @@ export class UserService {
 
     const locationKey = this.resolveLocationKey(context);
     const districtKey = this.resolveDistrictKey(context);
-    const firstVisit = context.firstVisit !== undefined
-      ? Boolean(context.firstVisit)
-      : !this.hasVisitedLocation(history, locationKey);
-    const newDistrict = context.newDistrict !== undefined
-      ? Boolean(context.newDistrict)
-      : !this.hasVisitedDistrict(history, districtKey);
+    const firstVisit =
+      context.firstVisit !== undefined
+        ? Boolean(context.firstVisit)
+        : !this.hasVisitedLocation(history, locationKey);
+    const newDistrict =
+      context.newDistrict !== undefined
+        ? Boolean(context.newDistrict)
+        : !this.hasVisitedDistrict(history, districtKey);
 
     const explorationBonus =
-      (firstVisit ? Math.max(0, Math.floor(rule?.explorationBonuses.firstVisit ?? 150)) : 0)
-      + (newDistrict ? Math.max(0, Math.floor(rule?.explorationBonuses.newDistrict ?? 250)) : 0)
-      + (Boolean(context.hiddenGem)
+      (firstVisit
+        ? Math.max(0, Math.floor(rule?.explorationBonuses.firstVisit ?? 150))
+        : 0) +
+      (newDistrict
+        ? Math.max(0, Math.floor(rule?.explorationBonuses.newDistrict ?? 250))
+        : 0) +
+      (Boolean(context.hiddenGem)
         ? Math.max(0, Math.floor(rule?.explorationBonuses.hiddenGem ?? 300))
-        : 0)
-      + (Boolean(context.rareRoute)
+        : 0) +
+      (Boolean(context.rareRoute)
         ? Math.max(0, Math.floor(rule?.explorationBonuses.rareRoute ?? 400))
         : 0);
 
     const normalizedEventKey = this.normalizeKey(eventKey);
-    const fallbackSocialBonus = normalizedEventKey === 'referral_completed_trek'
-      ? 250
-      : normalizedEventKey === 'host_campaign_completed'
-        ? 180
-        : normalizedEventKey === 'campaign_created'
-          ? 120
-          : 0;
+    const fallbackSocialBonus =
+      normalizedEventKey === 'referral_completed_trek'
+        ? 250
+        : normalizedEventKey === 'host_campaign_completed'
+          ? 180
+          : normalizedEventKey === 'campaign_created'
+            ? 120
+            : 0;
 
-    const socialBonus = Math.max(
+    const socialBonus =
+      Math.max(0, Math.floor(rule?.socialBonusXp ?? fallbackSocialBonus)) +
+      Math.max(0, Math.floor(rule?.bonusXp ?? 0));
+
+    const beforePenalty = Math.max(
       0,
-      Math.floor(
-        rule?.socialBonusXp
-        ?? fallbackSocialBonus,
-      ),
-    ) + Math.max(0, Math.floor(rule?.bonusXp ?? 0));
-
-    const beforePenalty = Math.max(0, difficultyComponent + explorationBonus + socialBonus);
-    const repeatCountForLocation = this.getRepeatCountForLocation(history, eventKey, context);
-    const repeatMultiplier = rule?.repeatPenaltyEnabled === false
-      ? 1
-      : this.getDefaultRepeatMultiplier(repeatCountForLocation);
+      difficultyComponent + explorationBonus + socialBonus,
+    );
+    const repeatCountForLocation = this.getRepeatCountForLocation(
+      history,
+      eventKey,
+      context,
+    );
+    const repeatMultiplier =
+      rule?.repeatPenaltyEnabled === false
+        ? 1
+        : this.getDefaultRepeatMultiplier(repeatCountForLocation);
     const finalXp = Math.max(0, Math.floor(beforePenalty * repeatMultiplier));
     const repeatPenalty = Math.max(0, beforePenalty - finalXp);
 
@@ -1502,7 +1703,9 @@ export class UserService {
     ).length;
 
     const dynamicStats = Object.fromEntries(
-      Object.entries((profile.achievementStats ?? {}) as Record<string, unknown>)
+      Object.entries(
+        (profile.achievementStats ?? {}) as Record<string, unknown>,
+      )
         .map(([key, value]): [string, number] => [key, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value >= 0)
         .map(([key, value]): [string, number] => [key, Math.floor(value)]),
@@ -1517,34 +1720,43 @@ export class UserService {
   private isLevelWithinRule(rule: LevelUpRule, level: number) {
     const safeLevel = Math.max(1, Math.floor(level));
 
-    if (rule.minLevel !== undefined && safeLevel < Math.max(1, Math.floor(rule.minLevel))) {
+    if (
+      rule.minLevel !== undefined &&
+      safeLevel < Math.max(1, Math.floor(rule.minLevel))
+    ) {
       return false;
     }
 
-    if (rule.maxLevel !== undefined && safeLevel > Math.max(1, Math.floor(rule.maxLevel))) {
+    if (
+      rule.maxLevel !== undefined &&
+      safeLevel > Math.max(1, Math.floor(rule.maxLevel))
+    ) {
       return false;
     }
 
     return true;
   }
 
-  private meetsLevelUpRequirements(rule: LevelUpRule, profile: RankProgressProfile) {
+  private meetsLevelUpRequirements(
+    rule: LevelUpRule,
+    profile: RankProgressProfile,
+  ) {
     if (!rule.requirements) {
       return true;
     }
 
     const stats = this.getAchievementStats(profile);
 
-    return Object.entries(rule.requirements).every(([rawKey, requiredValue]) => {
-      const requirementKey = this.normalizeAchievementSubcategory(rawKey);
-      const currentValue = Number(
-        stats[requirementKey]
-        ?? stats[rawKey]
-        ?? 0,
-      );
+    return Object.entries(rule.requirements).every(
+      ([rawKey, requiredValue]) => {
+        const requirementKey = this.normalizeAchievementSubcategory(rawKey);
+        const currentValue = Number(
+          stats[requirementKey] ?? stats[rawKey] ?? 0,
+        );
 
-      return currentValue >= Math.max(0, Math.floor(requiredValue));
-    });
+        return currentValue >= Math.max(0, Math.floor(requiredValue));
+      },
+    );
   }
 
   private meetsRankGate(rule: LevelUpRule, currentRank: string) {
@@ -1552,44 +1764,82 @@ export class UserService {
       return true;
     }
 
-    return this.normalizeRankCode(rule.requireRank) === this.normalizeRankCode(currentRank);
+    return (
+      this.normalizeRankCode(rule.requireRank) ===
+      this.normalizeRankCode(currentRank)
+    );
   }
 
-  private async buildNextRankProgress(profile: RankProgressProfile, rules?: LevelUpRule[]) {
-    const rulesList = rules ?? await this.getLevelUpRules();
+  private async buildNextRankProgress(
+    profile: RankProgressProfile,
+    rules?: LevelUpRule[],
+  ) {
+    const rulesList = rules ?? (await this.getLevelUpRules());
     const totalXp = this.getTotalXp(profile);
     const level = this.getLevelFromXp(totalXp);
-    const effectiveCurrentRank = this.resolveRankByRulesOrFallback(profile, rulesList, level);
+    const effectiveCurrentRank = this.resolveRankByRulesOrFallback(
+      profile,
+      rulesList,
+      level,
+    );
     const normalizedCurrentRank = this.normalizeRankCode(effectiveCurrentRank);
-    const sortedRules = [...rulesList].sort((first, second) => first.requiredXp - second.requiredXp);
+    const sortedRules = [...rulesList].sort(
+      (first, second) => first.requiredXp - second.requiredXp,
+    );
     const currentIndex = sortedRules.findIndex(
       (rule) => this.normalizeRankCode(rule.rankCode) === normalizedCurrentRank,
     );
-    const currentRankRule = currentIndex >= 0
-      ? sortedRules[currentIndex]
-      : this.getCurrentRankRule(profile, sortedRules, totalXp, effectiveCurrentRank);
-    const nextRule = currentIndex >= 0
-      ? sortedRules[currentIndex + 1]
-      : sortedRules.find((rule) => rule.requiredXp > totalXp);
+    const currentRankRule =
+      currentIndex >= 0
+        ? sortedRules[currentIndex]
+        : this.getCurrentRankRule(
+            profile,
+            sortedRules,
+            totalXp,
+            effectiveCurrentRank,
+          );
+    const nextRule =
+      currentIndex >= 0
+        ? sortedRules[currentIndex + 1]
+        : sortedRules.find((rule) => rule.requiredXp > totalXp);
 
     if (!nextRule) {
       return null;
     }
 
-    const currentRankCode = this.normalizeRankCode(effectiveCurrentRank)
-      || this.normalizeRankCode(String(currentRankRule?.rankCode ?? sortedRules[0]?.rankCode ?? ExperienceLevel.F))
-      || ExperienceLevel.F;
-    const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
+    const currentRankCode =
+      this.normalizeRankCode(effectiveCurrentRank) ||
+      this.normalizeRankCode(
+        String(
+          currentRankRule?.rankCode ??
+            sortedRules[0]?.rankCode ??
+            ExperienceLevel.F,
+        ),
+      ) ||
+      ExperienceLevel.F;
+    const currentRankRequiredXp = Math.max(
+      0,
+      Math.floor(currentRankRule?.requiredXp ?? 0),
+    );
     const currentRankXp = Math.max(0, totalXp - currentRankRequiredXp);
-    const rankBandSize = Math.max(1, nextRule.requiredXp - currentRankRequiredXp);
-    const progressPercentage = Math.max(0, Math.min(100, Math.round((currentRankXp / rankBandSize) * 100)));
+    const rankBandSize = Math.max(
+      1,
+      nextRule.requiredXp - currentRankRequiredXp,
+    );
+    const progressPercentage = Math.max(
+      0,
+      Math.min(100, Math.round((currentRankXp / rankBandSize) * 100)),
+    );
     const remainingXp = Math.max(0, nextRule.requiredXp - totalXp);
     const stats = this.getAchievementStats(profile);
     const requirements = nextRule.requirements ?? {};
     const remainingRequirements = Object.fromEntries(
       Object.entries(requirements).map(([rawKey, rawRequiredValue]) => {
         const requirementKey = this.normalizeAchievementSubcategory(rawKey);
-        const requiredValue = Math.max(0, Math.floor(Number(rawRequiredValue) || 0));
+        const requiredValue = Math.max(
+          0,
+          Math.floor(Number(rawRequiredValue) || 0),
+        );
         const currentValue = Math.max(
           0,
           Math.floor(Number(stats[requirementKey] ?? stats[rawKey] ?? 0)),
@@ -1600,10 +1850,10 @@ export class UserService {
     ) as Record<string, number>;
 
     const eligible =
-      remainingXp === 0
-      && Object.values(remainingRequirements).every((value) => value === 0)
-      && this.meetsRankGate(nextRule, currentRankCode)
-      && this.meetsLevelUpRequirements(nextRule, profile);
+      remainingXp === 0 &&
+      Object.values(remainingRequirements).every((value) => value === 0) &&
+      this.meetsRankGate(nextRule, currentRankCode) &&
+      this.meetsLevelUpRequirements(nextRule, profile);
 
     if (nextRule.hidden && !eligible) {
       return {
@@ -1626,7 +1876,10 @@ export class UserService {
     };
   }
 
-  private async buildRankProgress(profile: RankProgressProfile, rules?: LevelUpRule[]) {
+  private async buildRankProgress(
+    profile: RankProgressProfile,
+    rules?: LevelUpRule[],
+  ) {
     return this.buildNextRankProgress(profile, rules);
   }
 
@@ -1723,9 +1976,21 @@ export class UserService {
   ) {
     const totalXp = this.getTotalXp(profile);
     const level = this.getLevelFromXp(totalXp);
-    const experienceLevel = this.resolveRankByRulesOrFallback(profile, rules, level);
-    const currentRankRule = this.getCurrentRankRule(profile, rules, totalXp, experienceLevel);
-    const currentRankRequiredXp = Math.max(0, Math.floor(currentRankRule?.requiredXp ?? 0));
+    const experienceLevel = this.resolveRankByRulesOrFallback(
+      profile,
+      rules,
+      level,
+    );
+    const currentRankRule = this.getCurrentRankRule(
+      profile,
+      rules,
+      totalXp,
+      experienceLevel,
+    );
+    const currentRankRequiredXp = Math.max(
+      0,
+      Math.floor(currentRankRule?.requiredXp ?? 0),
+    );
     const xp = Math.max(0, totalXp - currentRankRequiredXp);
 
     return {
@@ -1737,25 +2002,32 @@ export class UserService {
   }
 
   private async applyLevelProgression(profile: User, rules?: LevelUpRule[]) {
-    const levelUpRules = rules ?? await this.getLevelUpRules();
+    const levelUpRules = rules ?? (await this.getLevelUpRules());
     const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
 
     const currentLevel = profile.level ?? 1;
-    const currentRank = this.normalizeRankCode(String(profile.experienceLevel ?? ''));
+    const currentRank = this.normalizeRankCode(
+      String(profile.experienceLevel ?? ''),
+    );
     const normalizedCurrentRank = this.normalizeRankCode(currentRank);
     const normalizedNextRank = this.normalizeRankCode(snapshot.experienceLevel);
     const levelDiffers = currentLevel !== snapshot.level;
     const rankDiffers = normalizedCurrentRank !== normalizedNextRank;
-    const xpDiffers = Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== snapshot.xp;
+    const xpDiffers =
+      Math.max(0, Math.floor(Number(profile.xp ?? 0))) !== snapshot.xp;
 
     const shouldUpdate = levelDiffers || rankDiffers || xpDiffers;
 
     if (!shouldUpdate) {
-      this.logger.debug(`No update needed for profile ${profile._id}: level=${currentLevel}, rank=${currentRank}, xp=${profile.xp}`);
+      this.logger.debug(
+        `No update needed for profile ${profile._id}: level=${currentLevel}, rank=${currentRank}, xp=${profile.xp}`,
+      );
       return profile;
     }
 
-    this.logger.log(`⚡ Updating profile ${profile._id}: level ${currentLevel}→${snapshot.level}, rank ${currentRank}→${snapshot.experienceLevel}, xp ${profile.xp}→${snapshot.xp}`);
+    this.logger.log(
+      `⚡ Updating profile ${profile._id}: level ${currentLevel}→${snapshot.level}, rank ${currentRank}→${snapshot.experienceLevel}, xp ${profile.xp}→${snapshot.xp}`,
+    );
 
     const updateData = {
       totalXp: snapshot.totalXp,
@@ -1776,11 +2048,15 @@ export class UserService {
     );
 
     if (!updated) {
-      this.logger.error(`❌ Profile update FAILED (null returned) for ${profile._id}`);
+      this.logger.error(
+        `❌ Profile update FAILED (null returned) for ${profile._id}`,
+      );
       return profile;
     }
 
-    this.logger.log(`✅ Profile updated: level=${updated.level}, rank=${updated.experienceLevel}, xp=${updated.xp}`);
+    this.logger.log(
+      `✅ Profile updated: level=${updated.level}, rank=${updated.experienceLevel}, xp=${updated.xp}`,
+    );
     return updated;
   }
 
@@ -1799,11 +2075,15 @@ export class UserService {
     }
 
     if (REMOVED_XP_EVENT_KEYS.has(normalizedEventKey)) {
-      throw new BadRequestException('The daily streak XP event has been removed');
+      throw new BadRequestException(
+        'The daily streak XP event has been removed',
+      );
     }
 
     const rules = await this.getEnabledXpRules();
-    const matchingRules = rules.filter((rule) => rule.eventKey === normalizedEventKey);
+    const matchingRules = rules.filter(
+      (rule) => rule.eventKey === normalizedEventKey,
+    );
     const existingHistory = profile.xpHistory ?? [];
     const updates: NonNullable<User['xpHistory']> = [];
 
@@ -1828,7 +2108,8 @@ export class UserService {
         awardedAt: new Date(),
       };
 
-      const shouldLog = options?.simulateOnly !== true || fallbackBreakdown.finalXp > 0;
+      const shouldLog =
+        options?.simulateOnly !== true || fallbackBreakdown.finalXp > 0;
       const totalAwarded = fallbackBreakdown.finalXp;
       const previousRank = profile.experienceLevel ?? 'F';
       let syncedProfile = profile;
@@ -1847,13 +2128,23 @@ export class UserService {
           },
         );
 
-        syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+        syncedProfile = await this.applyLevelProgression(
+          updatedProfile ?? profile,
+        );
       }
 
       const levelUpRules = await this.getLevelUpRules();
-      const newRank = (options?.simulateOnly ? previousRank : syncedProfile.experienceLevel) ?? previousRank;
-      const rankProgressTarget = options?.simulateOnly ? profile : syncedProfile;
-      const nextRankProgress = await this.buildRankProgress(rankProgressTarget, levelUpRules);
+      const newRank =
+        (options?.simulateOnly
+          ? previousRank
+          : syncedProfile.experienceLevel) ?? previousRank;
+      const rankProgressTarget = options?.simulateOnly
+        ? profile
+        : syncedProfile;
+      const nextRankProgress = await this.buildRankProgress(
+        rankProgressTarget,
+        levelUpRules,
+      );
 
       return {
         eventKey: normalizedEventKey,
@@ -1888,8 +2179,8 @@ export class UserService {
 
       const contextKey = this.buildXpContextKey(rule, context);
       const alreadyAwarded =
-        rule.repeat !== 'always'
-        && existingHistory.some((entry) => entry.contextKey === contextKey);
+        rule.repeat !== 'always' &&
+        existingHistory.some((entry) => entry.contextKey === contextKey);
 
       if (alreadyAwarded) {
         continue;
@@ -1925,7 +2216,10 @@ export class UserService {
       };
     }
 
-    const totalAwarded = updates.reduce((total, entry) => total + Math.max(0, entry.points), 0);
+    const totalAwarded = updates.reduce(
+      (total, entry) => total + Math.max(0, entry.points),
+      0,
+    );
     const previousRank = profile.experienceLevel ?? 'F';
 
     if (options?.simulateOnly) {
@@ -1959,7 +2253,9 @@ export class UserService {
       },
     );
 
-    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+    const syncedProfile = await this.applyLevelProgression(
+      updatedProfile ?? profile,
+    );
     const levelUpRules = await this.getLevelUpRules();
     const newRank = syncedProfile?.experienceLevel ?? previousRank;
     const nextRankProgress = await this.buildRankProgress(
@@ -1997,7 +2293,11 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
-    const xpResult = await this.evaluateXpForProfile(profile, eventKey, context);
+    const xpResult = await this.evaluateXpForProfile(
+      profile,
+      eventKey,
+      context,
+    );
     const rankUnlocked =
       'rankUnlocked' in xpResult && xpResult.rankUnlocked === true;
     const newRank =
@@ -2042,7 +2342,11 @@ export class UserService {
     profileId?: string,
   ) {
     if (profileId?.trim()) {
-      return this.simulateXpForProfileEvent(profileId.trim(), eventKey, context);
+      return this.simulateXpForProfileEvent(
+        profileId.trim(),
+        eventKey,
+        context,
+      );
     }
 
     const simulatedProfile = {
@@ -2082,14 +2386,18 @@ export class UserService {
   }
 
   async getOwnXpHistory(authId: string, page = 1, limit = 20) {
-    const profile = await this.userModel.findOne({ authId: this.toObjectId(authId) });
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
 
     const history = [...(profile.xpHistory ?? [])].sort(
-      (first, second) => new Date(second.awardedAt).getTime() - new Date(first.awardedAt).getTime(),
+      (first, second) =>
+        new Date(second.awardedAt).getTime() -
+        new Date(first.awardedAt).getTime(),
     );
 
     const safePage = Math.max(1, Number(page) || 1);
@@ -2127,16 +2435,22 @@ export class UserService {
     const newPoints = Math.max(0, Math.floor(Number(payload.points)));
 
     if (!Number.isFinite(newPoints)) {
-      throw new BadRequestException('points must be a valid non-negative number');
+      throw new BadRequestException(
+        'points must be a valid non-negative number',
+      );
     }
 
     if (!String(payload.reason ?? '').trim()) {
-      throw new BadRequestException('reason is required for XP history updates');
+      throw new BadRequestException(
+        'reason is required for XP history updates',
+      );
     }
 
     const history = [...(profile.xpHistory ?? [])];
     const index = history.findIndex((entry) => {
-      const entryId = String((entry as unknown as { _id?: unknown })._id ?? '').trim();
+      const entryId = String(
+        (entry as unknown as { _id?: unknown })._id ?? '',
+      ).trim();
       return entryId === historyId;
     });
 
@@ -2163,7 +2477,10 @@ export class UserService {
       },
     };
 
-    const nextTotalXp = Math.max(0, Math.floor(Number(this.getTotalXp(profile)) + delta));
+    const nextTotalXp = Math.max(
+      0,
+      Math.floor(Number(this.getTotalXp(profile)) + delta),
+    );
 
     const updatedProfile = await this.userModel.findByIdAndUpdate(
       profile._id,
@@ -2177,7 +2494,9 @@ export class UserService {
       },
     );
 
-    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+    const syncedProfile = await this.applyLevelProgression(
+      updatedProfile ?? profile,
+    );
     const levelUpRules = await this.getLevelUpRules();
 
     return {
@@ -2190,7 +2509,10 @@ export class UserService {
       currentXp: this.getTotalXp(syncedProfile ?? updatedProfile ?? profile),
       level: syncedProfile.level,
       rank: syncedProfile.experienceLevel,
-      nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
+      nextRankProgress: await this.buildRankProgress(
+        syncedProfile,
+        levelUpRules,
+      ),
     };
   }
 
@@ -2208,7 +2530,9 @@ export class UserService {
 
     const history = [...(profile.xpHistory ?? [])];
     const index = history.findIndex((entry) => {
-      const entryId = String((entry as unknown as { _id?: unknown })._id ?? '').trim();
+      const entryId = String(
+        (entry as unknown as { _id?: unknown })._id ?? '',
+      ).trim();
       return entryId === historyId;
     });
 
@@ -2217,14 +2541,19 @@ export class UserService {
     }
 
     if (!String(reason ?? '').trim()) {
-      throw new BadRequestException('reason is required for XP history deletion');
+      throw new BadRequestException(
+        'reason is required for XP history deletion',
+      );
     }
 
     const existing = history[index];
     const deletedPoints = Math.max(0, Math.floor(Number(existing.points ?? 0)));
     history.splice(index, 1);
 
-    const nextTotalXp = Math.max(0, Math.floor(Number(this.getTotalXp(profile)) - deletedPoints));
+    const nextTotalXp = Math.max(
+      0,
+      Math.floor(Number(this.getTotalXp(profile)) - deletedPoints),
+    );
 
     const updatedProfile = await this.userModel.findByIdAndUpdate(
       profile._id,
@@ -2238,7 +2567,9 @@ export class UserService {
       },
     );
 
-    const syncedProfile = await this.applyLevelProgression(updatedProfile ?? profile);
+    const syncedProfile = await this.applyLevelProgression(
+      updatedProfile ?? profile,
+    );
     const levelUpRules = await this.getLevelUpRules();
 
     return {
@@ -2250,7 +2581,10 @@ export class UserService {
       currentXp: this.getTotalXp(syncedProfile ?? updatedProfile ?? profile),
       level: syncedProfile.level,
       rank: syncedProfile.experienceLevel,
-      nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
+      nextRankProgress: await this.buildRankProgress(
+        syncedProfile,
+        levelUpRules,
+      ),
     };
   }
 
@@ -2278,7 +2612,9 @@ export class UserService {
     }
 
     try {
-      this.logger.log(`🎯 Adding ${safeXp} XP to user ${profileId} (current totalXp: ${profile.totalXp})`);
+      this.logger.log(
+        `🎯 Adding ${safeXp} XP to user ${profileId} (current totalXp: ${profile.totalXp})`,
+      );
 
       // Store previous state
       const previousXp = Math.max(0, Math.floor(Number(profile.xp ?? 0)));
@@ -2286,7 +2622,9 @@ export class UserService {
       const previousLevel = profile.level ?? 1;
       const previousRank = profile.experienceLevel ?? 'F';
 
-      this.logger.log(`  Before: level=${previousLevel}, rank=${previousRank}, totalXp=${previousTotalXp}, currentXp=${previousXp}`);
+      this.logger.log(
+        `  Before: level=${previousLevel}, rank=${previousRank}, totalXp=${previousTotalXp}, currentXp=${previousXp}`,
+      );
 
       // Create XP history entry
       const newHistoryEntry = {
@@ -2307,7 +2645,9 @@ export class UserService {
       const nextTotalXp = previousTotalXp + safeXp;
       const history = [...(profile.xpHistory ?? []), newHistoryEntry];
 
-      this.logger.log(`  Updating totalXp: ${previousTotalXp} → ${nextTotalXp}`);
+      this.logger.log(
+        `  Updating totalXp: ${previousTotalXp} → ${nextTotalXp}`,
+      );
 
       let updatedProfile = await this.userModel.findByIdAndUpdate(
         profile._id,
@@ -2325,7 +2665,9 @@ export class UserService {
         throw new NotFoundException('Failed to update profile');
       }
 
-      this.logger.log(`  ✅ XP updated in DB: totalXp now = ${updatedProfile.totalXp}`);
+      this.logger.log(
+        `  ✅ XP updated in DB: totalXp now = ${updatedProfile.totalXp}`,
+      );
       this.logger.log(`  Now applying level progression...`);
 
       // Apply level progression (this automatically updates level and rank based on new totalXp)
@@ -2337,20 +2679,27 @@ export class UserService {
         throw new NotFoundException('Profile lost after update');
       }
 
-      this.logger.log(`  🔄 Refreshed from DB: level=${syncedProfile.level}, rank=${syncedProfile.experienceLevel}`);
+      this.logger.log(
+        `  🔄 Refreshed from DB: level=${syncedProfile.level}, rank=${syncedProfile.experienceLevel}`,
+      );
 
       const levelUpRules = await this.getLevelUpRules();
       const newLevel = syncedProfile.level ?? previousLevel;
       const newRank = syncedProfile.experienceLevel ?? previousRank;
       const newXp = Math.max(0, Math.floor(Number(syncedProfile.xp ?? 0)));
 
-      this.logger.log(`  After: level=${newLevel}, rank=${newRank}, totalXp=${syncedProfile.totalXp}, currentXp=${newXp}`);
+      this.logger.log(
+        `  After: level=${newLevel}, rank=${newRank}, totalXp=${syncedProfile.totalXp}, currentXp=${newXp}`,
+      );
 
       // Determine if rank actually changed
-      const rankChanged = this.normalizeKey(previousRank) !== this.normalizeKey(newRank);
+      const rankChanged =
+        this.normalizeKey(previousRank) !== this.normalizeKey(newRank);
       const levelChanged = previousLevel !== newLevel;
 
-      this.logger.log(`  Comparison: rankChanged=${rankChanged} (${previousRank}→${newRank}), levelChanged=${levelChanged} (${previousLevel}→${newLevel})`);
+      this.logger.log(
+        `  Comparison: rankChanged=${rankChanged} (${previousRank}→${newRank}), levelChanged=${levelChanged} (${previousLevel}→${newLevel})`,
+      );
 
       const response = {
         message: `Added ${safeXp} XP to user`,
@@ -2362,8 +2711,13 @@ export class UserService {
         newRank,
         xpAdded: safeXp,
         autoRankedUp: rankChanged && levelChanged,
-        autoRankUpReason: rankChanged ? `Rank automatically updated from ${previousRank} to ${newRank} due to level progression` : undefined,
-        nextRankProgress: await this.buildRankProgress(syncedProfile, levelUpRules),
+        autoRankUpReason: rankChanged
+          ? `Rank automatically updated from ${previousRank} to ${newRank} due to level progression`
+          : undefined,
+        nextRankProgress: await this.buildRankProgress(
+          syncedProfile,
+          levelUpRules,
+        ),
       };
 
       this.logger.log(`✅ XP addition complete`);
@@ -2422,7 +2776,8 @@ export class UserService {
           autoRankedUp: false,
           newRank: previousRank,
           newLevel: currentLevel,
-          message: 'Rank-up achievements not completed. User remains at previous rank.',
+          message:
+            'Rank-up achievements not completed. User remains at previous rank.',
         };
       }
 
@@ -2445,7 +2800,9 @@ export class UserService {
   }
 
   async setReferrerForOwnProfile(authId: string, referrerProfileId: string) {
-    const profile = await this.userModel.findOne({ authId: this.toObjectId(authId) });
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -2455,7 +2812,9 @@ export class UserService {
       throw new BadRequestException('Referrer is already set for this profile');
     }
 
-    const referrer = await this.userModel.findById(this.toObjectId(referrerProfileId)).select('authId');
+    const referrer = await this.userModel
+      .findById(this.toObjectId(referrerProfileId))
+      .select('authId');
 
     if (!referrer) {
       throw new NotFoundException('Referrer profile not found');
@@ -2498,7 +2857,9 @@ export class UserService {
     },
   ) {
     const raterAuthObjectId = this.toObjectId(authId);
-    const recipient = await this.userModel.findById(this.toObjectId(payload.toProfileId));
+    const recipient = await this.userModel.findById(
+      this.toObjectId(payload.toProfileId),
+    );
 
     if (!recipient) {
       throw new NotFoundException('Recipient profile not found');
@@ -2523,12 +2884,15 @@ export class UserService {
     };
 
     const alreadyRated = (recipient.receivedRatings ?? []).some(
-      (entry) => entry.campaignId === normalizedCampaignId
-        && entry.raterAuthId.toString() === raterAuthObjectId.toString(),
+      (entry) =>
+        entry.campaignId === normalizedCampaignId &&
+        entry.raterAuthId.toString() === raterAuthObjectId.toString(),
     );
 
     if (alreadyRated) {
-      throw new BadRequestException('You already submitted a rating for this campaign and profile');
+      throw new BadRequestException(
+        'You already submitted a rating for this campaign and profile',
+      );
     }
 
     await this.userModel.findByIdAndUpdate(
@@ -2564,7 +2928,9 @@ export class UserService {
       kind: 'group' | 'solo';
     },
   ) {
-    const profile = await this.userModel.findOne({ authId: this.toObjectId(authId) });
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -2624,7 +2990,9 @@ export class UserService {
     }
 
     if (requests[index].status !== 'pending') {
-      throw new BadRequestException('Photo verification request already reviewed');
+      throw new BadRequestException(
+        'Photo verification request already reviewed',
+      );
     }
 
     requests[index] = {
@@ -2632,7 +3000,9 @@ export class UserService {
       status: review.status,
       reviewedAt: new Date(),
       reviewedByAuthId: this.toObjectId(adminAuthId),
-      ...(review.reviewNote?.trim() ? { reviewNote: review.reviewNote.trim() } : {}),
+      ...(review.reviewNote?.trim()
+        ? { reviewNote: review.reviewNote.trim() }
+        : {}),
     };
 
     await this.userModel.findByIdAndUpdate(
@@ -2648,18 +3018,15 @@ export class UserService {
     let xp: Awaited<ReturnType<UserService['awardXpForEvent']>> | null = null;
 
     if (review.status === 'approved') {
-      const eventKey = requests[index].kind === 'solo'
-        ? 'solo_photo_uploaded'
-        : 'group_photo_uploaded';
+      const eventKey =
+        requests[index].kind === 'solo'
+          ? 'solo_photo_uploaded'
+          : 'group_photo_uploaded';
 
-      xp = await this.awardXpForEvent(
-        profile.authId.toString(),
-        eventKey,
-        {
-          campaignId: requests[index].campaignId,
-          solo: requests[index].kind === 'solo',
-        },
-      );
+      xp = await this.awardXpForEvent(profile.authId.toString(), eventKey, {
+        campaignId: requests[index].campaignId,
+        solo: requests[index].kind === 'solo',
+      });
     }
 
     return {
@@ -2811,22 +3178,59 @@ export class UserService {
     initial?: {
       firstName?: string | null;
       middleName?: string | null;
+      lastName?: string | null;
+      location?: string | null;
+      gender?: Gender | null;
+      dateOfBirth?: string | null;
     },
+    session?: ClientSession,
   ) {
-    const created = await this.userModel.create({
+    const hasCompleteIdentity = Boolean(
+      initial?.firstName?.trim() &&
+      initial?.lastName?.trim() &&
+      initial?.location?.trim() &&
+      initial?.gender &&
+      initial?.dateOfBirth,
+    );
+    const parsedDateOfBirth = initial?.dateOfBirth
+      ? new Date(initial.dateOfBirth)
+      : null;
+    const profileData = {
       authId: this.toObjectId(authId),
-      profileCompleted: false,
+      profileCompleted: hasCompleteIdentity,
       xp: 0,
       totalXp: 0,
       level: 1,
       experienceLevel: ExperienceLevel.F,
       badge: '',
       isProfilePublic: true,
-      ...(initial?.firstName?.trim() ? { firstName: initial.firstName.trim() } : {}),
-      ...(initial?.middleName?.trim() ? { middleName: initial.middleName.trim() } : {}),
-    });
+      ...(initial?.firstName?.trim()
+        ? { firstName: initial.firstName.trim() }
+        : {}),
+      ...(initial?.middleName?.trim()
+        ? { middleName: initial.middleName.trim() }
+        : {}),
+      ...(initial?.lastName?.trim()
+        ? { lastName: initial.lastName.trim() }
+        : {}),
+      ...(initial?.location?.trim()
+        ? { location: initial.location.trim() }
+        : {}),
+      ...(initial?.gender ? { gender: initial.gender } : {}),
+      ...(parsedDateOfBirth
+        ? {
+            dateOfBirth: parsedDateOfBirth,
+            age: this.calculateAge(parsedDateOfBirth),
+          }
+        : {}),
+    };
+    const created = session
+      ? (await this.userModel.create([profileData], { session }))[0]
+      : await this.userModel.create(profileData);
 
-    return this.applyLevelProgression(created);
+    // New profiles already use the initial progression defaults. Avoid issuing
+    // a second, non-session update while account creation is still uncommitted.
+    return session ? created : this.applyLevelProgression(created);
   }
 
   async getProfileByAuthId(authId: string) {
@@ -2839,7 +3243,10 @@ export class UserService {
     }
 
     const levelUpRules = await this.getLevelUpRules();
-    const syncedProfile = await this.applyLevelProgression(profile, levelUpRules);
+    const syncedProfile = await this.applyLevelProgression(
+      profile,
+      levelUpRules,
+    );
     return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
@@ -2850,7 +3257,9 @@ export class UserService {
         isProfilePublic: true,
         profileCompleted: true,
       })
-      .select('-authId -xp -totalXp -badge -updatedAt -__v -profilePhotoPublicId');
+      .select(
+        '-authId -xp -totalXp -badge -updatedAt -__v -profilePhotoPublicId',
+      );
 
     if (!profile) {
       throw new NotFoundException('Public profile not found');
@@ -2859,7 +3268,7 @@ export class UserService {
     return {
       ...profile.toObject(),
       level: profile.level ?? 1,
-  experienceLevel: profile.experienceLevel ?? ExperienceLevel.F,
+      experienceLevel: profile.experienceLevel ?? ExperienceLevel.F,
     };
   }
 
@@ -2903,7 +3312,10 @@ export class UserService {
     }
 
     const levelUpRules = await this.getLevelUpRules();
-    const syncedProfile = await this.applyLevelProgression(updatedProfile, levelUpRules);
+    const syncedProfile = await this.applyLevelProgression(
+      updatedProfile,
+      levelUpRules,
+    );
     return this.attachAuthContactInfo(syncedProfile, levelUpRules);
   }
 
@@ -2961,7 +3373,9 @@ export class UserService {
     const [items, total] = await Promise.all([
       this.userModel
         .find(filter)
-        .select('-authId -xp -totalXp -badge -updatedAt -__v -profilePhotoPublicId')
+        .select(
+          '-authId -xp -totalXp -badge -updatedAt -__v -profilePhotoPublicId',
+        )
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 }),
@@ -2975,7 +3389,10 @@ export class UserService {
 
         return {
           ...syncedItem.toObject(),
-          nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
+          nextRankProgress: await this.buildRankProgress(
+            syncedItem,
+            levelUpRules,
+          ),
         };
       }),
     );
@@ -3033,7 +3450,9 @@ export class UserService {
     const [items, total] = await Promise.all([
       this.userModel
         .find(filter)
-        .select('-xpHistory -receivedRatings -photoVerificationRequests -adminFlags -profilePhotoPublicId -__v')
+        .select(
+          '-xpHistory -receivedRatings -photoVerificationRequests -adminFlags -profilePhotoPublicId -__v',
+        )
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 }),
@@ -3055,7 +3474,10 @@ export class UserService {
         return {
           ...syncedItem,
           role: Role.User,
-          nextRankProgress: await this.buildRankProgress(syncedItem, levelUpRules),
+          nextRankProgress: await this.buildRankProgress(
+            syncedItem,
+            levelUpRules,
+          ),
         };
       }),
     );
@@ -3068,14 +3490,19 @@ export class UserService {
           syncedItems.map(async (it: any) => {
             const profileId = String(it._id ?? '');
             if (!profileId) return it;
-            const userBadges = await this.badgeService?.getUserBadges(profileId);
-            const badgeCount = await this.badgeService?.getBadgeCount(profileId);
+            const userBadges =
+              await this.badgeService?.getUserBadges(profileId);
+            const badgeCount =
+              await this.badgeService?.getBadgeCount(profileId);
             return { ...it, userBadges, badgeCount };
           }),
         );
       }
     } catch (err) {
-      this.logger.debug('Failed to enrich admin profiles with badges', err as Error);
+      this.logger.debug(
+        'Failed to enrich admin profiles with badges',
+        err as Error,
+      );
     }
 
     return {
@@ -3158,7 +3585,9 @@ export class UserService {
     let items = (result?.items ?? []).map((item: Record<string, unknown>) => ({
       ...item,
       profileId: String(item.profileId),
-      reviewedByAuthId: item.reviewedByAuthId ? String(item.reviewedByAuthId) : undefined,
+      reviewedByAuthId: item.reviewedByAuthId
+        ? String(item.reviewedByAuthId)
+        : undefined,
     }));
 
     // Enrich items with persisted badges when possible
@@ -3168,14 +3597,19 @@ export class UserService {
           items.map(async (it: any) => {
             const profileId = String(it.profileId ?? '');
             if (!profileId) return it;
-            const userBadges = await this.badgeService?.getUserBadges(profileId);
-            const badgeCount = await this.badgeService?.getBadgeCount(profileId);
+            const userBadges =
+              await this.badgeService?.getUserBadges(profileId);
+            const badgeCount =
+              await this.badgeService?.getBadgeCount(profileId);
             return { ...it, userBadges, badgeCount };
           }),
         );
       }
     } catch (err) {
-      this.logger.debug('Failed to enrich photo verification queue items with badges', err as Error);
+      this.logger.debug(
+        'Failed to enrich photo verification queue items with badges',
+        err as Error,
+      );
     }
 
     const total = Number(result?.total?.[0]?.value ?? 0);
@@ -3218,8 +3652,13 @@ export class UserService {
     await this.assertManagedUser(profile);
 
     // Safety: disallow changing auth role or admin flags via profile update endpoint.
-    if ((updates as any)?.role !== undefined || Object.prototype.hasOwnProperty.call(updates, 'adminFlags')) {
-      throw new BadRequestException('Cannot modify role or adminFlags via profile endpoint');
+    if (
+      (updates as any)?.role !== undefined ||
+      Object.prototype.hasOwnProperty.call(updates, 'adminFlags')
+    ) {
+      throw new BadRequestException(
+        'Cannot modify role or adminFlags via profile endpoint',
+      );
     }
 
     await this.applyAuthContactUpdates(profile.authId.toString(), updates);
@@ -3290,7 +3729,10 @@ export class UserService {
     };
   }
 
-  async adminUpdateCampaignQuota(profileId: string, body: { campaignQuota: number; resetToJanFirst?: boolean }) {
+  async adminUpdateCampaignQuota(
+    profileId: string,
+    body: { campaignQuota: number; resetToJanFirst?: boolean },
+  ) {
     const profile = await this.userModel.findById(this.toObjectId(profileId));
 
     if (!profile) {
@@ -3299,7 +3741,10 @@ export class UserService {
 
     await this.assertManagedUser(profile);
 
-    profile.campaignQuota = Math.max(0, Math.floor(Number(body.campaignQuota ?? 0)));
+    profile.campaignQuota = Math.max(
+      0,
+      Math.floor(Number(body.campaignQuota ?? 0)),
+    );
 
     if (body.resetToJanFirst) {
       const nowYear = new Date().getUTCFullYear();
@@ -3325,7 +3770,7 @@ export class UserService {
   }
 
   private async attachAuthContactInfo(profile: User, rules?: LevelUpRule[]) {
-    const levelUpRules = rules ?? await this.getLevelUpRules();
+    const levelUpRules = rules ?? (await this.getLevelUpRules());
     const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
     const auth = await this.authModel
       .findById(profile.authId)
@@ -3335,7 +3780,8 @@ export class UserService {
       snapshot.experienceLevel ?? ExperienceLevel.F,
       rankBadgeDefinitions,
     );
-    const currentRankBadge = unlockedRankBadges.find((badge) => badge.isCurrentRank) ?? null;
+    const currentRankBadge =
+      unlockedRankBadges.find((badge) => badge.isCurrentRank) ?? null;
     const nextRankProgress = await this.buildRankProgress(
       {
         experienceLevel: snapshot.experienceLevel,

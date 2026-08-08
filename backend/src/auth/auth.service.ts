@@ -7,9 +7,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcrypt';
-import { Model } from 'mongoose';
+import { createHmac } from 'node:crypto';
+import { ClientSession, Connection, Model } from 'mongoose';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { Role } from './constants/roles.enum';
@@ -20,6 +21,7 @@ import { UserService } from '../user/user.service';
 export type SafeUser = {
   id: string;
   phoneNumber: string;
+  email?: string | null;
   role: Role;
   profileCompleted: boolean;
   firstName?: string | null;
@@ -39,6 +41,7 @@ export type SafeUser = {
 export class AuthService {
   constructor(
     @InjectModel(Auth.name) private readonly authModel: Model<Auth>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly userService: UserService,
@@ -46,44 +49,107 @@ export class AuthService {
 
   async signup(signupData: SignupDto) {
     const phoneNumber = signupData.phoneNumber.trim();
+    const email = signupData.email?.trim().toLowerCase() || null;
+    const session = await this.connection.startSession();
+    let result:
+      | { user: SafeUser; accessToken: string; refreshToken: string }
+      | undefined;
 
-    const userInUse = await this.authModel.findOne({ phoneNumber });
-    if (userInUse) {
-      throw new BadRequestException('Phone number is already in use');
+    try {
+      await session.withTransaction(async () => {
+        const userInUse = await this.authModel
+          .findOne({
+            $or: [{ phoneNumber }, ...(email ? [{ email }] : [])],
+          })
+          .session(session);
+        if (userInUse) {
+          throw new BadRequestException(
+            userInUse.phoneNumber === phoneNumber
+              ? 'Phone number is already in use'
+              : 'Email address is already in use',
+          );
+        }
+
+        const hashedPassword = await this.hashPassword(signupData.password);
+        const [createdUser] = await this.authModel.create(
+          [
+            {
+              phoneNumber,
+              email,
+              password: hashedPassword,
+              role: Role.User,
+            },
+          ],
+          { session },
+        );
+
+        const profile = await this.userService.createProfile(
+          createdUser._id.toString(),
+          {
+            firstName: signupData.firstName ?? null,
+            middleName: signupData.middleName ?? null,
+            lastName: signupData.lastName ?? null,
+            location: signupData.address ?? null,
+            gender: signupData.gender ?? null,
+            dateOfBirth: signupData.dateOfBirth ?? null,
+          },
+          session,
+        );
+
+        const tokens = await this.issueTokens(
+          createdUser._id.toString(),
+          createdUser.phoneNumber,
+          createdUser.role,
+        );
+        await this.storeRefreshToken(
+          createdUser._id.toString(),
+          tokens.refreshToken,
+          session,
+        );
+
+        result = {
+          user: this.toSafeUser(createdUser, profile),
+          ...tokens,
+        };
+      });
+    } catch (error) {
+      const databaseError = error as {
+        code?: number;
+        keyPattern?: Record<string, unknown>;
+      };
+      if (databaseError?.code === 11000) {
+        const duplicateEmail = Boolean(databaseError.keyPattern?.email);
+        throw new BadRequestException(
+          duplicateEmail
+            ? 'Email address is already in use'
+            : 'Phone number is already in use',
+        );
+      }
+      throw error;
+    } finally {
+      await session.endSession();
     }
 
-    const hashedPassword = await bcrypt.hash(signupData.password, 10);
-    const createdUser = await this.authModel.create({
-      phoneNumber,
-      password: hashedPassword,
-      role: Role.User,
-    });
-
-    await this.userService.createProfile(createdUser._id.toString(), {
-      firstName: signupData.firstName ?? null,
-      middleName: signupData.middleName ?? null,
-    });
-
-    const tokens = await this.issueTokens(
-      createdUser._id.toString(),
-      createdUser.phoneNumber,
-      createdUser.role,
-    );
-
-    await this.storeRefreshToken(createdUser._id.toString(), tokens.refreshToken);
-
-    return {
-      user: this.toSafeUser(createdUser),
-      ...tokens,
-    };
+    if (!result) {
+      throw new Error('Account creation transaction did not complete');
+    }
+    return result;
   }
 
   async login(loginDto: LoginDto) {
-    const phoneNumber = loginDto.phoneNumber.trim();
-    const user = await this.authModel.findOne({ phoneNumber });
+    const identifier = (loginDto.email ?? loginDto.phoneNumber ?? '')
+      .trim()
+      .toLowerCase();
+    const user = await this.authModel.findOne(
+      identifier.includes('@')
+        ? { email: identifier }
+        : { phoneNumber: identifier },
+    );
 
     if (!user) {
-      throw new UnauthorizedException('Invalid phone number or password');
+      throw new UnauthorizedException(
+        'Invalid email, phone number, or password',
+      );
     }
 
     if (user.isActive === false) {
@@ -91,13 +157,17 @@ export class AuthService {
     }
 
     if (user.lockUntil && user.lockUntil > new Date()) {
-      throw new ForbiddenException('Account temporarily locked. Try again later.');
+      throw new ForbiddenException(
+        'Account temporarily locked. Try again later.',
+      );
     }
 
-    const passwordMatches = await bcrypt.compare(loginDto.password, user.password);
+    const passwordMatches = await this.verifyPassword(loginDto.password, user);
     if (!passwordMatches) {
       await this.handleFailedLogin(user);
-      throw new UnauthorizedException('Invalid phone number or password');
+      throw new UnauthorizedException(
+        'Invalid email, phone number, or password',
+      );
     }
 
     await this.resetLoginFailures(user._id.toString());
@@ -125,7 +195,10 @@ export class AuthService {
       throw new UnauthorizedException('Access denied');
     }
 
-    const refreshMatches = await bcrypt.compare(refreshToken, user.refreshTokenHash);
+    const refreshMatches = await bcrypt.compare(
+      refreshToken,
+      user.refreshTokenHash,
+    );
     if (!refreshMatches) {
       await this.revokeSessions(userId);
       throw new UnauthorizedException('Access denied');
@@ -156,8 +229,12 @@ export class AuthService {
   }
 
   private async issueTokens(userId: string, phoneNumber: string, role: Role) {
-    const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
+    const accessSecret = this.configService
+      .get<string>('JWT_ACCESS_SECRET')
+      ?.trim();
+    const refreshSecret = this.configService
+      .get<string>('JWT_REFRESH_SECRET')
+      ?.trim();
 
     if (!accessSecret) {
       throw new Error('JWT_ACCESS_SECRET is required in .env file');
@@ -185,7 +262,8 @@ export class AuthService {
     providedSecret?: string,
   ) {
     const accessSecret =
-      providedSecret ?? this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
+      providedSecret ??
+      this.configService.get<string>('JWT_ACCESS_SECRET')?.trim();
 
     if (!accessSecret) {
       throw new Error('JWT_ACCESS_SECRET is required in .env file');
@@ -214,7 +292,8 @@ export class AuthService {
     providedSecret?: string,
   ) {
     const refreshSecret =
-      providedSecret ?? this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
+      providedSecret ??
+      this.configService.get<string>('JWT_REFRESH_SECRET')?.trim();
 
     if (!refreshSecret) {
       throw new Error('JWT_REFRESH_SECRET is required in .env file');
@@ -236,12 +315,74 @@ export class AuthService {
     );
   }
 
-  private async storeRefreshToken(userId: string, refreshToken: string) {
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+  private async storeRefreshToken(
+    userId: string,
+    refreshToken: string,
+    session?: ClientSession,
+  ) {
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 12);
 
-    await this.authModel.findByIdAndUpdate(userId, {
-      refreshTokenHash,
-    });
+    await this.authModel.findByIdAndUpdate(
+      userId,
+      { refreshTokenHash },
+      session ? { session } : undefined,
+    );
+  }
+
+  private getPasswordRounds() {
+    const configured = Number(
+      this.configService.get<string>('PASSWORD_BCRYPT_ROUNDS') ?? 12,
+    );
+    return Number.isInteger(configured) && configured >= 10 && configured <= 15
+      ? configured
+      : 12;
+  }
+
+  private getPasswordPepper() {
+    const pepper = this.configService.get<string>('PASSWORD_PEPPER')?.trim();
+    if (!pepper && process.env.NODE_ENV === 'production') {
+      throw new Error('PASSWORD_PEPPER is required in production');
+    }
+    if (pepper && pepper.length < 32) {
+      throw new Error('PASSWORD_PEPPER must be at least 32 characters');
+    }
+    return pepper ?? '';
+  }
+
+  private passwordMaterial(password: string) {
+    const pepper = this.getPasswordPepper();
+    return pepper
+      ? createHmac('sha384', pepper).update(password, 'utf8').digest('base64')
+      : password;
+  }
+
+  private hashPassword(password: string) {
+    return bcrypt.hash(
+      this.passwordMaterial(password),
+      this.getPasswordRounds(),
+    );
+  }
+
+  private async verifyPassword(password: string, user: Auth) {
+    const material = this.passwordMaterial(password);
+    let matches = await bcrypt.compare(material, user.password);
+    let usedLegacyHash = false;
+
+    // Existing accounts were created without a pepper. Re-hash them after the
+    // first successful login so the migration does not lock users out.
+    if (!matches && material !== password) {
+      matches = await bcrypt.compare(password, user.password);
+      usedLegacyHash = matches;
+    }
+    if (!matches) return false;
+
+    const storedRounds = bcrypt.getRounds(user.password);
+    if (usedLegacyHash || storedRounds < this.getPasswordRounds()) {
+      await this.authModel.findByIdAndUpdate(user._id, {
+        password: await this.hashPassword(password),
+      });
+    }
+    return true;
   }
 
   private async revokeSessions(userId: string) {
@@ -290,6 +431,7 @@ export class AuthService {
     return {
       id: user._id.toString(),
       phoneNumber: user.phoneNumber,
+      email: user.email ?? null,
       role: user.role,
       profileCompleted: profile?.profileCompleted ?? false,
       firstName: profile?.firstName ?? null,

@@ -22,7 +22,6 @@ import {
   ApiTags,
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { Role } from './constants/roles.enum';
 import { generateCsrfToken } from '../security/csrf.middleware';
@@ -95,8 +94,6 @@ export class AuthController {
   }
 
   @Post('signup')
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Create account with phone number and password' })
   @ApiBody({ type: SignupDto })
   @ApiCreatedResponse({
@@ -130,16 +127,14 @@ export class AuthController {
   }
 
   @Post('login')
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Signin with phone number and password' })
+  @ApiOperation({ summary: 'Sign in with email or phone number and password' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 401,
-    description: 'Invalid phone number or password',
+    description: 'Invalid email, phone number, or password',
     example: {
       statusCode: 401,
-      message: 'Invalid phone number or password',
+      message: 'Invalid email, phone number, or password',
       error: 'Unauthorized',
     },
   })

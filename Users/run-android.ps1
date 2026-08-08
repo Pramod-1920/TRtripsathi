@@ -21,16 +21,28 @@ function Resolve-DeviceId {
 
 Set-Location $PSScriptRoot
 
+if (-not $BackendUrl -or $BackendUrl.Trim().Length -eq 0) {
+  $envFile = Join-Path $PSScriptRoot ".env"
+  if (Test-Path $envFile) {
+    $entry = Get-Content -LiteralPath $envFile |
+      Where-Object { $_ -match '^\s*BACKEND_URL\s*=' } |
+      Select-Object -First 1
+    if ($entry) {
+      $BackendUrl = ($entry -split '=', 2)[1].Trim().Trim('"').Trim("'")
+    }
+  }
+}
+
+if (-not $BackendUrl -or $BackendUrl.Trim().Length -eq 0) {
+  throw "BACKEND_URL is required. Pass -BackendUrl or set it in the local .env file."
+}
+
 $resolvedDevice = Resolve-DeviceId
 Write-Host "Using device: $resolvedDevice" -ForegroundColor Cyan
 
 if (-not $SkipBuild) {
   Write-Host "Building debug APK..." -ForegroundColor Yellow
-  if ($BackendUrl -and $BackendUrl.Trim().Length -gt 0) {
-    flutter build apk --debug --dart-define="BACKEND_URL=$($BackendUrl.Trim())"
-  } else {
-    flutter build apk --debug
-  }
+  flutter build apk --debug --dart-define="BACKEND_URL=$($BackendUrl.Trim())"
 }
 
 $apkPath = Join-Path $PSScriptRoot "build\app\outputs\flutter-apk\app-debug.apk"

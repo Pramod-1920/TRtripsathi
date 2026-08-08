@@ -204,6 +204,23 @@ export class User extends Document {
   @Prop({ type: [String], default: [] })
   languagesKnown?: string[];
 
+  @Prop({
+    type: String,
+    enum: ['new_explorer', 'trail_regular', 'expedition_ready'],
+    default: null,
+  })
+  travelerExperience?: string | null;
+
+  @Prop({
+    type: String,
+    enum: ['solo', 'small_group', 'open_to_all'],
+    default: null,
+  })
+  travelStyle?: string | null;
+
+  @Prop({ type: [String], default: [] })
+  travelInterests?: string[];
+
   // Campaign creation quota per year (admin-adjustable)
   @Prop({ type: Number, default: 5 })
   campaignQuota?: number;

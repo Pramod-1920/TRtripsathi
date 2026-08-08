@@ -56,7 +56,10 @@ function logMongoConnectionStatus(app: INestApplication): void {
   );
 }
 
-async function waitForMongoConnection(app: INestApplication, timeoutMs = 30000): Promise<void> {
+async function waitForMongoConnection(
+  app: INestApplication,
+  timeoutMs = 30000,
+): Promise<void> {
   const mongooseConnection = app.get<Connection>(getConnectionToken());
 
   if (mongooseConnection.readyState === 1) {
@@ -67,7 +70,11 @@ async function waitForMongoConnection(app: INestApplication, timeoutMs = 30000):
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
-      reject(new Error(`Timed out waiting for MongoDB connection after ${timeoutMs}ms`));
+      reject(
+        new Error(
+          `Timed out waiting for MongoDB connection after ${timeoutMs}ms`,
+        ),
+      );
     }, timeoutMs);
   });
 
@@ -105,14 +112,13 @@ async function bootstrap() {
   // apply both limiters in sequence to auth endpoints
   app.use('/auth/login', minuteLimiter, hourLimiter);
   app.use('/auth/signup', minuteLimiter, hourLimiter);
-  app.use('/auth/refresh', minuteLimiter, hourLimiter);
-  app.use('/auth/logout', minuteLimiter, hourLimiter);
 
   // CSRF middleware for state-changing endpoints (double-submit cookie)
   app.use(csrfMiddleware);
 
   app.useGlobalPipes(
     new ValidationPipe({
+      transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
     }),

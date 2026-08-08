@@ -1,15 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
   IsDateString,
   IsEmail,
   IsEnum,
   IsInt,
+  IsIn,
   Max,
   Min,
   IsOptional,
   IsString,
+  MaxLength,
   Matches,
 } from 'class-validator';
 import { ExperienceLevel } from '../../auth/constants/experience-level.enum';
@@ -143,6 +147,36 @@ export class UpdateProfileDto {
   @IsArray()
   @IsString({ each: true })
   languagesKnown?: string[];
+
+  @ApiPropertyOptional({
+    enum: ['new_explorer', 'trail_regular', 'expedition_ready'],
+    example: 'trail_regular',
+    description: 'Self-described travel experience, separate from earned rank',
+  })
+  @IsOptional()
+  @IsIn(['new_explorer', 'trail_regular', 'expedition_ready'])
+  travelerExperience?: string;
+
+  @ApiPropertyOptional({
+    enum: ['solo', 'small_group', 'open_to_all'],
+    example: 'small_group',
+  })
+  @IsOptional()
+  @IsIn(['solo', 'small_group', 'open_to_all'])
+  travelStyle?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['trekking', 'culture', 'photography'],
+    description: 'Two to eight activities used for travel matching',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(8)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  travelInterests?: string[];
 
   @ApiPropertyOptional({
     example: true,

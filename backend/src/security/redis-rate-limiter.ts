@@ -11,23 +11,29 @@ export async function createAuthLimiters(): Promise<{
 }> {
   const perMinuteOptions = {
     windowMs: 60 * 1000,
-    max: 5,
+    max: 10,
+    skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req: any, res: any) => {
       res.setHeader('Retry-After', String(60));
-      res.status(429).json({ message: 'Too many requests (per-minute). Try again later.' });
+      res
+        .status(429)
+        .json({ message: 'Too many requests (per-minute). Try again later.' });
     },
   };
 
   const perHourOptions = {
     windowMs: 60 * 60 * 1000,
-    max: 20,
+    max: 100,
+    skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
     handler: (req: any, res: any) => {
       res.setHeader('Retry-After', String(60 * 60));
-      res.status(429).json({ message: 'Too many requests (per-hour). Try again later.' });
+      res
+        .status(429)
+        .json({ message: 'Too many requests (per-hour). Try again later.' });
     },
   };
 
@@ -58,7 +64,10 @@ export async function createAuthLimiters(): Promise<{
       console.log('Using Redis-backed rate limiter');
       return { minuteLimiter, hourLimiter };
     } catch (err) {
-      console.warn('Redis rate limiter requested but optional packages not available:', err?.message || err);
+      console.warn(
+        'Redis rate limiter requested but optional packages not available:',
+        err?.message || err,
+      );
       // fall through to in-memory fallback
     }
   }
