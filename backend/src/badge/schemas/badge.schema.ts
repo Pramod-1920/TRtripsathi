@@ -12,7 +12,7 @@ export class UserBadge extends Document {
   @Prop({
     type: String,
     required: true,
-    enum: ['bronze', 'silver', 'gold', 'platinum'],
+    enum: ['bronze', 'silver', 'gold', 'platinum', 'rank'],
   })
   tier: string;
 

@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { FiArrowLeft, FiCheck, FiSave, FiTrash2, FiX } from 'react-icons/fi';
 import { apiClient } from '@/lib/api';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
+import { UserProgressManager } from '@/components/user-progress-manager';
 
 type Gender = 'male' | 'female' | 'non_binary' | 'other' | 'prefer_not_to_say';
 
@@ -51,6 +52,18 @@ type Profile = {
   district?: string | null;
   landmark?: string | null;
   experienceLevel?: string | null;
+  level?: number;
+  xp?: number;
+  totalXp?: number;
+  badgeCount?: number;
+  userBadges?: Array<{
+    _id?: string;
+    badgeCode: string;
+    name?: string;
+    tier?: string;
+    iconUrl?: string;
+    unlockedAt?: string;
+  }>;
   gender?: Gender | null;
   languagesKnown?: string[] | null;
   isProfilePublic?: boolean;
@@ -419,6 +432,14 @@ export default function UserDetailPage() {
           )}
         </div>
       </div>
+
+      <UserProgressManager
+        profileId={userId ?? formData._id}
+        initialTotalXp={formData.totalXp}
+        initialLevel={formData.level}
+        initialRank={formData.experienceLevel}
+        initialBadges={formData.userBadges}
+      />
 
       {/* Form */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

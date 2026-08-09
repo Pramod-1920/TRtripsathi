@@ -11,6 +11,7 @@ import { User, UserSchema } from '../user/schemas/user.schema';
 import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
 import { ExtraModule } from '../extra/extra.module';
 import { NotificationModule } from '../notification/notification.module';
+import { VisitedPlaceModule } from '../visited-place/visited-place.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { NotificationModule } from '../notification/notification.module';
     UserModule,
     ExtraModule,
     NotificationModule,
+    VisitedPlaceModule,
   ],
   controllers: [CampaignController],
   providers: [CampaignService, AuditService, CampaignScheduler],

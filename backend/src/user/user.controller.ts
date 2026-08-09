@@ -3,6 +3,7 @@ import {
   Controller,
   DefaultValuePipe,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   ParseIntPipe,
@@ -72,16 +73,22 @@ export class UserController {
   }
 
   @Post('xp/events')
-  @ApiOperation({ summary: 'Apply XP rules for own profile using an event key' })
+  @ApiOperation({
+    summary: 'Apply XP rules for own profile using an event key',
+  })
   @ApiBody({ type: TriggerXpEventDto })
   @ApiOkResponse({ description: 'XP event evaluated successfully' })
   async triggerOwnXpEvent(
     @GetCurrentUser('userId') authId: string,
     @Body() body: TriggerXpEventDto,
   ) {
-    return this.userService.awardXpForEvent(authId, body.eventKey, body.context ?? {});
+    void authId;
+    void body;
+    throw new ForbiddenException(
+      'XP rewards are awarded only by verified server workflows',
+    );
   }
-  
+
   @Post('achievements/events')
   @ApiOperation({ summary: 'Record an achievement event for own profile' })
   @ApiBody({ type: TriggerAchievementEventDto })
@@ -114,11 +121,16 @@ export class UserController {
     @GetCurrentUser('userId') authId: string,
     @Body() body: SetReferrerDto,
   ) {
-    return this.userService.setReferrerForOwnProfile(authId, body.referrerProfileId);
+    return this.userService.setReferrerForOwnProfile(
+      authId,
+      body.referrerProfileId,
+    );
   }
 
   @Post('ratings')
-  @ApiOperation({ summary: 'Submit rating for another profile and auto-trigger rating XP' })
+  @ApiOperation({
+    summary: 'Submit rating for another profile and auto-trigger rating XP',
+  })
   @ApiBody({ type: SubmitRatingDto })
   @ApiOkResponse({ description: 'Rating submitted successfully' })
   async submitRating(
@@ -129,7 +141,9 @@ export class UserController {
   }
 
   @Post('photos/verification-requests')
-  @ApiOperation({ summary: 'Submit campaign photo for manual verification before XP award' })
+  @ApiOperation({
+    summary: 'Submit campaign photo for manual verification before XP award',
+  })
   @ApiBody({ type: CreatePhotoVerificationRequestDto })
   @ApiOkResponse({ description: 'Photo verification request submitted' })
   async createPhotoVerificationRequest(
@@ -186,13 +200,19 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiQuery({ name: 'q', required: false, example: 'kathmandu' })
-  @ApiQuery({ name: 'status', required: false, enum: ['all', 'active', 'inactive', 'complete', 'incomplete'], example: 'all' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['all', 'active', 'inactive', 'complete', 'incomplete'],
+    example: 'all',
+  })
   @ApiOkResponse({ description: 'User profiles list fetched successfully' })
   async getAllProfiles(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('q') q?: string,
-    @Query('status') status?: 'all' | 'active' | 'inactive' | 'complete' | 'incomplete',
+    @Query('status')
+    status?: 'all' | 'active' | 'inactive' | 'complete' | 'incomplete',
   ) {
     // Enforce maximum limit for safety (prevents accidental data dumps)
     const MAX_LIMIT = 100;
@@ -205,20 +225,34 @@ export class UserController {
       q,
       status,
     });
-    await this.audit.logEvent({ type: 'admin.list_profiles', page: safePage, limit: safeLimit });
+    await this.audit.logEvent({
+      type: 'admin.list_profiles',
+      page: safePage,
+      limit: safeLimit,
+    });
     return result;
   }
 
   @Get('admin/photo-verification-requests')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: list photo verification requests across all profiles' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected', 'all'], example: 'pending' })
+  @ApiOperation({
+    summary: 'Admin: list photo verification requests across all profiles',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['pending', 'approved', 'rejected', 'all'],
+    example: 'pending',
+  })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
-  @ApiOkResponse({ description: 'Photo verification queue fetched successfully' })
+  @ApiOkResponse({
+    description: 'Photo verification queue fetched successfully',
+  })
   async getPhotoVerificationQueue(
-    @Query('status') status: 'pending' | 'approved' | 'rejected' | 'all' | undefined,
+    @Query('status')
+    status: 'pending' | 'approved' | 'rejected' | 'all' | undefined,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
@@ -253,6 +287,96 @@ export class UserController {
     const profile = await this.userService.getProfileById(profileId);
     await this.audit.logEvent({ type: 'admin.view_profile', profileId });
     return profile;
+  }
+
+  @Get('admin/profiles/:id/xp/history')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: get XP history for a user profile' })
+  async adminGetXpHistory(
+    @Param('id') profileId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.userService.adminGetXpHistory(profileId, page, limit);
+  }
+
+  @Post('admin/profiles/:id/xp')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: manually add XP to a user profile' })
+  async adminAddXp(
+    @Param('id') profileId: string,
+    @Body() body: { points: number; reason: string },
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    const result = await this.userService.adminAddXpToUser(
+      profileId,
+      body.points,
+      adminId,
+      body.reason,
+    );
+    await this.audit.logEvent({
+      type: 'admin.add_xp',
+      profileId,
+      adminId,
+      points: body.points,
+      reason: body.reason,
+    });
+    return result;
+  }
+
+  @Post('admin/profiles/:id/xp/simulate')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({
+    summary: 'Admin: preview enabled XP rules without awarding XP',
+  })
+  async adminSimulateXp(
+    @Param('id') profileId: string,
+    @Body() body: TriggerXpEventDto,
+  ) {
+    return this.userService.simulateXpForProfileEvent(
+      profileId,
+      body.eventKey,
+      body.context ?? {},
+    );
+  }
+
+  @Patch('admin/profiles/:id/xp/history/:historyId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: correct an XP history entry' })
+  async adminUpdateXpHistory(
+    @Param('id') profileId: string,
+    @Param('historyId') historyId: string,
+    @Body() body: { points: number; reason: string },
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    return this.userService.adminUpdateXpHistoryEntry(
+      profileId,
+      historyId,
+      body,
+      adminId,
+    );
+  }
+
+  @Delete('admin/profiles/:id/xp/history/:historyId')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: delete an XP history entry' })
+  async adminDeleteXpHistory(
+    @Param('id') profileId: string,
+    @Param('historyId') historyId: string,
+    @Body() body: { reason: string },
+    @GetCurrentUser('userId') adminId: string,
+  ) {
+    return this.userService.adminDeleteXpHistoryEntry(
+      profileId,
+      historyId,
+      adminId,
+      body.reason,
+    );
   }
 
   @Patch('admin/:id/campaign-quota')
@@ -296,17 +420,21 @@ export class UserController {
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
   @ApiOperation({
-    summary: 'Admin: deactivate an active user or permanently delete an inactive user',
+    summary:
+      'Admin: deactivate an active user or permanently delete an inactive user',
   })
   @ApiParam({ name: 'id', description: 'Profile ID' })
-  @ApiOkResponse({ description: 'Admin deactivated or permanently deleted the user' })
+  @ApiOkResponse({
+    description: 'Admin deactivated or permanently deleted the user',
+  })
   async adminDeleteProfile(@Param('id') profileId: string) {
     const before = await this.userService.getProfileById(profileId);
     const result = await this.userService.adminDeleteProfile(profileId);
     await this.audit.logEvent({
-      type: result.action === 'deactivated'
-        ? 'admin.deactivate_profile'
-        : 'admin.delete_profile',
+      type:
+        result.action === 'deactivated'
+          ? 'admin.deactivate_profile'
+          : 'admin.delete_profile',
       profileId,
       before,
       action: result.action,
@@ -317,11 +445,18 @@ export class UserController {
   @Patch('admin/profiles/:id/photos/verification-requests/:requestCode')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: approve or reject a user photo verification request' })
+  @ApiOperation({
+    summary: 'Admin: approve or reject a user photo verification request',
+  })
   @ApiParam({ name: 'id', description: 'Profile ID' })
-  @ApiParam({ name: 'requestCode', description: 'Photo verification request code' })
+  @ApiParam({
+    name: 'requestCode',
+    description: 'Photo verification request code',
+  })
   @ApiBody({ type: ReviewPhotoVerificationRequestDto })
-  @ApiOkResponse({ description: 'Photo verification request reviewed successfully' })
+  @ApiOkResponse({
+    description: 'Photo verification request reviewed successfully',
+  })
   async reviewPhotoVerificationRequest(
     @Param('id') profileId: string,
     @Param('requestCode') requestCode: string,

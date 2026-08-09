@@ -18,7 +18,12 @@ import { ExtraService } from '../extra/extra.service';
 import { CampaignApprovalStatus } from './schemas/campaign.schema';
 import { CampaignLifecyclePhase } from './schemas/campaign.schema';
 import { NotificationService } from '../notification/notification.service';
-import { AddTaskDto, UpdatePlanningDto, UpdateTaskDto } from './dto/lifecycle.dto';
+import { VisitedPlaceService } from '../visited-place/visited-place.service';
+import {
+  AddTaskDto,
+  UpdatePlanningDto,
+  UpdateTaskDto,
+} from './dto/lifecycle.dto';
 
 @Injectable()
 export class CampaignService {
@@ -51,7 +56,50 @@ export class CampaignService {
     private readonly userService: UserService,
     private readonly extraService: ExtraService,
     private readonly notificationService: NotificationService,
+    private readonly visitedPlaceService: VisitedPlaceService,
   ) {}
+
+  private async recordVerifiedCampaignVisits(
+    authIds: string[],
+    campaign: CampaignDocument,
+  ) {
+    const validAuthIds = Array.from(new Set(authIds))
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (validAuthIds.length === 0) return;
+
+    const profiles = await this.userModel
+      .find({ authId: { $in: validAuthIds } })
+      .select('_id');
+    const district = String(campaign.district ?? '').trim();
+    const province = String(campaign.province ?? '').trim();
+    const visitedAt = campaign.verifiedAt ?? new Date();
+
+    await Promise.all(
+      profiles.flatMap((profile) => [
+        ...(district
+          ? [
+              this.visitedPlaceService.recordVisit(
+                String(profile._id),
+                district,
+                'district',
+                visitedAt,
+              ),
+            ]
+          : []),
+        ...(province
+          ? [
+              this.visitedPlaceService.recordVisit(
+                String(profile._id),
+                province,
+                'province',
+                visitedAt,
+              ),
+            ]
+          : []),
+      ]),
+    );
+  }
 
   private getMinimumUserStartDate(hikeType: 'solo' | 'group' = 'solo') {
     const leadDays = hikeType === 'group' ? 7 : 2;
@@ -88,37 +136,55 @@ export class CampaignService {
 
   private countConfirmedParticipants(campaign: any) {
     return (campaign.participants ?? []).filter(
-      (participant: any) => participant.status === 'accepted' && participant.confirmed === true,
+      (participant: any) =>
+        participant.status === 'accepted' && participant.confirmed === true,
     ).length;
   }
 
-  private ensureValidPhaseTransition(from: CampaignLifecyclePhase, to: CampaignLifecyclePhase) {
+  private ensureValidPhaseTransition(
+    from: CampaignLifecyclePhase,
+    to: CampaignLifecyclePhase,
+  ) {
     const allowed = CampaignService.VALID_PHASE_TRANSITIONS[from] ?? [];
     if (!allowed.includes(to)) {
-      throw new BadRequestException(`Invalid phase transition: ${from} -> ${to}`);
+      throw new BadRequestException(
+        `Invalid phase transition: ${from} -> ${to}`,
+      );
     }
   }
 
   private calculateGroupTimeline(startDate: Date, createdAt = new Date()) {
-    const totalAvailableDays = Math.floor(
-      (startDate.getTime() - createdAt.getTime()) / CampaignService.DAY_MS,
-    ) - 1;
+    const totalAvailableDays =
+      Math.floor(
+        (startDate.getTime() - createdAt.getTime()) / CampaignService.DAY_MS,
+      ) - 1;
 
     if (totalAvailableDays < 3) {
-      throw new BadRequestException('Group campaign requires at least 3 lifecycle days before the rest day');
+      throw new BadRequestException(
+        'Group campaign requires at least 3 lifecycle days before the rest day',
+      );
     }
 
     const openDays = Math.max(1, Math.floor(totalAvailableDays * 0.33));
     const planningDays = Math.max(1, Math.floor(totalAvailableDays * 0.33));
-    const verificationDays = Math.max(1, totalAvailableDays - openDays - planningDays);
+    const verificationDays = Math.max(
+      1,
+      totalAvailableDays - openDays - planningDays,
+    );
 
     const openAt = new Date(createdAt);
-    const planningAt = new Date(openAt.getTime() + openDays * CampaignService.DAY_MS);
-    const verificationAt = new Date(planningAt.getTime() + planningDays * CampaignService.DAY_MS);
+    const planningAt = new Date(
+      openAt.getTime() + openDays * CampaignService.DAY_MS,
+    );
+    const verificationAt = new Date(
+      planningAt.getTime() + planningDays * CampaignService.DAY_MS,
+    );
     const readyAt = new Date(startDate.getTime() - CampaignService.DAY_MS);
 
     if (verificationAt.getTime() > readyAt.getTime()) {
-      throw new BadRequestException('Group campaign timeline is too short for open/planning/verification phases');
+      throw new BadRequestException(
+        'Group campaign timeline is too short for open/planning/verification phases',
+      );
     }
 
     return {
@@ -168,30 +234,47 @@ export class CampaignService {
       costPerPerson: 0,
     };
 
-    const transport = Math.max(0, Number(campaign.planning.costBreakdown.transport ?? 0));
+    const transport = Math.max(
+      0,
+      Number(campaign.planning.costBreakdown.transport ?? 0),
+    );
     const food = Math.max(0, Number(campaign.planning.costBreakdown.food ?? 0));
-    const guide = Math.max(0, Number(campaign.planning.costBreakdown.guide ?? 0));
+    const guide = Math.max(
+      0,
+      Number(campaign.planning.costBreakdown.guide ?? 0),
+    );
     const misc = Math.max(0, Number(campaign.planning.costBreakdown.misc ?? 0));
     const totalCost = transport + food + guide + misc;
-    const activeParticipants = Math.max(1, this.countAcceptedParticipants(campaign));
+    const activeParticipants = Math.max(
+      1,
+      this.countAcceptedParticipants(campaign),
+    );
 
     campaign.planning.costBreakdown.transport = transport;
     campaign.planning.costBreakdown.food = food;
     campaign.planning.costBreakdown.guide = guide;
     campaign.planning.costBreakdown.misc = misc;
     campaign.planning.costBreakdown.totalCost = totalCost;
-    campaign.planning.costBreakdown.costPerPerson = Number((totalCost / activeParticipants).toFixed(2));
+    campaign.planning.costBreakdown.costPerPerson = Number(
+      (totalCost / activeParticipants).toFixed(2),
+    );
   }
 
   private evaluatePlanningCompleteness(campaign: any) {
     campaign.planning = campaign.planning ?? this.getDefaultPlanningState();
     const missing: string[] = [];
 
-    if (!campaign.planning.transportDecision || !String(campaign.planning.transportDecision).trim()) {
+    if (
+      !campaign.planning.transportDecision ||
+      !String(campaign.planning.transportDecision).trim()
+    ) {
       missing.push('transportDecision');
     }
 
-    if (!campaign.planning.meetingPoint || !String(campaign.planning.meetingPoint).trim()) {
+    if (
+      !campaign.planning.meetingPoint ||
+      !String(campaign.planning.meetingPoint).trim()
+    ) {
       missing.push('meetingPoint');
     }
 
@@ -200,7 +283,12 @@ export class CampaignService {
     }
 
     const costBreakdown = campaign.planning.costBreakdown ?? {};
-    const costFields: Array<'transport' | 'food' | 'guide' | 'misc'> = ['transport', 'food', 'guide', 'misc'];
+    const costFields: Array<'transport' | 'food' | 'guide' | 'misc'> = [
+      'transport',
+      'food',
+      'guide',
+      'misc',
+    ];
     for (const field of costFields) {
       const value = Number((costBreakdown as any)[field]);
       if (!Number.isFinite(value) || value < 0) {
@@ -223,7 +311,12 @@ export class CampaignService {
     campaign.planning.lastUpdatedAt = new Date();
   }
 
-  private async notifyParticipants(campaign: any, title: string, body: string, data?: Record<string, any>) {
+  private async notifyParticipants(
+    campaign: any,
+    title: string,
+    body: string,
+    data?: Record<string, any>,
+  ) {
     const recipientIds = new Set<string>();
     recipientIds.add(campaign.hostId.toString());
     for (const participant of campaign.participants ?? []) {
@@ -249,7 +342,9 @@ export class CampaignService {
   }
 
   private getInstantCampaignEndDate(startDate: Date) {
-    return new Date(startDate.getTime() + CampaignService.INSTANT_CAMPAIGN_DURATION_MS);
+    return new Date(
+      startDate.getTime() + CampaignService.INSTANT_CAMPAIGN_DURATION_MS,
+    );
   }
 
   private normalizeLocationPart(value?: string | null) {
@@ -304,40 +399,51 @@ export class CampaignService {
       throw new BadRequestException('category is required');
     }
 
-    return this.extraService.resolveActivitySelection(value.trim(), subcategory);
+    return this.extraService.resolveActivitySelection(
+      value.trim(),
+      subcategory,
+    );
   }
 
-    private parseDateValue(value?: string | Date | null): Date | null {
-      if (value === undefined || value === null || value === '') {
-        return null;
-      }
-
-      const parsed = value instanceof Date ? value : new Date(value);
-
-      if (Number.isNaN(parsed.getTime())) {
-        throw new BadRequestException('Invalid date/time value in campaign payload');
-      }
-
-      return parsed;
+  private parseDateValue(value?: string | Date | null): Date | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
     }
 
-    private validateTiming(
-      startDate: Date | null,
-      endDate: Date | null,
-      joinOpenDate: Date | null,
+    const parsed = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(
+        'Invalid date/time value in campaign payload',
+      );
+    }
+
+    return parsed;
+  }
+
+  private validateTiming(
+    startDate: Date | null,
+    endDate: Date | null,
+    joinOpenDate: Date | null,
+  ) {
+    if (startDate && endDate && endDate.getTime() <= startDate.getTime()) {
+      throw new BadRequestException('endDate must be later than startDate');
+    }
+
+    if (
+      joinOpenDate &&
+      startDate &&
+      joinOpenDate.getTime() > startDate.getTime()
     ) {
-      if (startDate && endDate && endDate.getTime() <= startDate.getTime()) {
-        throw new BadRequestException('endDate must be later than startDate');
-      }
-
-      if (joinOpenDate && startDate && joinOpenDate.getTime() > startDate.getTime()) {
-        throw new BadRequestException('joinOpenDate must be before or equal to startDate');
-      }
-
-      if (joinOpenDate && endDate && joinOpenDate.getTime() > endDate.getTime()) {
-        throw new BadRequestException('joinOpenDate must be before endDate');
-      }
+      throw new BadRequestException(
+        'joinOpenDate must be before or equal to startDate',
+      );
     }
+
+    if (joinOpenDate && endDate && joinOpenDate.getTime() > endDate.getTime()) {
+      throw new BadRequestException('joinOpenDate must be before endDate');
+    }
+  }
 
   private getCampaignCompletionSubcategory(difficulty?: string | null) {
     const normalizedDifficulty = difficulty?.trim().toLowerCase();
@@ -363,7 +469,9 @@ export class CampaignService {
     placeName?: string | null;
   }) {
     const searchable = [payload.title, payload.description, payload.placeName]
-      .map((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''))
+      .map((value) =>
+        typeof value === 'string' ? value.trim().toLowerCase() : '',
+      )
       .filter(Boolean)
       .join(' ');
 
@@ -389,7 +497,9 @@ export class CampaignService {
   private async createUniqueCampaignCode() {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = this.generateCampaignCode();
-      const existing = await this.campaignModel.findOne({ campaignCode: code }).lean();
+      const existing = await this.campaignModel
+        .findOne({ campaignCode: code })
+        .lean();
 
       if (!existing) {
         return code;
@@ -408,7 +518,9 @@ export class CampaignService {
         approvalStatus: 'approved',
         startDate: { $ne: null },
       })
-      .select('_id title description placeName startDate endDate durationDays difficulty location district hostId participants')
+      .select(
+        '_id title description placeName startDate endDate durationDays difficulty location district hostId participants',
+      )
       .lean();
 
     const toClose: Array<{
@@ -443,7 +555,8 @@ export class CampaignService {
           _id: campaign._id as Types.ObjectId,
           endDate: (campaign.endDate as Date | null | undefined) ?? null,
           title: (campaign.title as string | null | undefined) ?? null,
-          description: (campaign.description as string | null | undefined) ?? null,
+          description:
+            (campaign.description as string | null | undefined) ?? null,
           placeName: (campaign.placeName as string | null | undefined) ?? null,
           difficulty: campaign.difficulty,
           location: campaign.location,
@@ -471,7 +584,8 @@ export class CampaignService {
               'timeline.nextTransitionAt': null,
               verificationDeadline: new Date(
                 // set deadline to campaign end time + 24 hours
-                (item.endDate ? new Date(item.endDate).getTime() : Date.now()) + 24 * 60 * 60 * 1000,
+                (item.endDate ? new Date(item.endDate).getTime() : Date.now()) +
+                  24 * 60 * 60 * 1000,
               ),
             },
           },
@@ -527,7 +641,9 @@ export class CampaignService {
         deletedByAdmin: false,
         approvalStatus: { $in: ['submitted', 'draft'] },
       })
-      .select('_id title hostId startDate endDate durationDays completed failed')
+      .select(
+        '_id title hostId startDate endDate durationDays completed failed',
+      )
       .lean();
 
     if (pendingApprovalCampaigns.length === 0) {
@@ -535,7 +651,9 @@ export class CampaignService {
     }
 
     const now = new Date();
-    const toReject = pendingApprovalCampaigns.filter((campaign) => this.isCampaignClosedForApproval(campaign));
+    const toReject = pendingApprovalCampaigns.filter((campaign) =>
+      this.isCampaignClosedForApproval(campaign),
+    );
 
     if (toReject.length === 0) {
       return;
@@ -551,7 +669,8 @@ export class CampaignService {
           rejectedBy: null,
           approvedAt: null,
           approvedBy: null,
-          approvalNote: 'Auto-rejected because the campaign was already closed before approval.',
+          approvalNote:
+            'Auto-rejected because the campaign was already closed before approval.',
           awaitingVerification: false,
           verificationDeadline: null,
         },
@@ -588,7 +707,9 @@ export class CampaignService {
         continue;
       }
 
-      const requiresApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+      const requiresApproval = await this.getDifficultyApprovalRequirement(
+        campaign.difficulty,
+      );
       if (requiresApproval) {
         toSubmitted.push(campaign._id as Types.ObjectId);
       } else {
@@ -633,11 +754,13 @@ export class CampaignService {
 
   private async processVerificationDeadlines() {
     const now = new Date();
-    const expired = await this.campaignModel.find({
-      awaitingVerification: true,
-      verificationDeadline: { $ne: null, $lte: now },
-      deletedByAdmin: false,
-    }).lean();
+    const expired = await this.campaignModel
+      .find({
+        awaitingVerification: true,
+        verificationDeadline: { $ne: null, $lte: now },
+        deletedByAdmin: false,
+      })
+      .lean();
 
     if (expired.length === 0) return;
 
@@ -676,12 +799,19 @@ export class CampaignService {
     await this.processHostInactivity();
   }
 
-  async verifyCampaignCompletion(id: string, requesterId: string, photo?: { url: string; publicId?: string | null; caption?: string | null }) {
+  async verifyCampaignCompletion(
+    id: string,
+    requesterId: string,
+    photo?: { url: string; publicId?: string | null; caption?: string | null },
+  ) {
     const campaign = await this.campaignModel.findById(id);
-    if (!campaign || campaign.deletedByAdmin) throw new NotFoundException('Campaign not found');
+    if (!campaign || campaign.deletedByAdmin)
+      throw new NotFoundException('Campaign not found');
 
     if (campaign.hostId.toString() !== requesterId) {
-      throw new ForbiddenException('Only the host can verify campaign completion');
+      throw new ForbiddenException(
+        'Only the host can verify campaign completion',
+      );
     }
 
     if (!campaign.completed || !campaign.awaitingVerification) {
@@ -689,7 +819,10 @@ export class CampaignService {
     }
 
     const now = new Date();
-    if (!campaign.verificationDeadline || now.getTime() > new Date(campaign.verificationDeadline).getTime()) {
+    if (
+      !campaign.verificationDeadline ||
+      now.getTime() > new Date(campaign.verificationDeadline).getTime()
+    ) {
       throw new BadRequestException('Verification window has expired');
     }
 
@@ -710,10 +843,18 @@ export class CampaignService {
 
     // award xp now (host + participants)
     const campaignId = campaign._id.toString();
-    const normalizedDifficulty = (campaign.difficulty as string | undefined)?.trim().toLowerCase();
-    const normalizedDistrict = (campaign.district as string | undefined)?.trim().toLowerCase()
-      ?? (campaign.location as string | undefined)?.trim().toLowerCase();
-    const locationKey = ((campaign.placeName as string | undefined) ?? (campaign.location as string | undefined) ?? (campaign.district as string | undefined) ?? '')
+    const normalizedDifficulty = (campaign.difficulty as string | undefined)
+      ?.trim()
+      .toLowerCase();
+    const normalizedDistrict =
+      (campaign.district as string | undefined)?.trim().toLowerCase() ??
+      (campaign.location as string | undefined)?.trim().toLowerCase();
+    const locationKey = (
+      (campaign.placeName as string | undefined) ??
+      (campaign.location as string | undefined) ??
+      (campaign.district as string | undefined) ??
+      ''
+    )
       .trim()
       .toLowerCase();
     const activityType = this.inferActivityTypeFromCampaign(campaign as any);
@@ -753,7 +894,9 @@ export class CampaignService {
       await this.userService.recordAchievementEvent(
         (participant as any).userId.toString(),
         {
-          subcategory: this.getCampaignCompletionSubcategory(campaign.difficulty),
+          subcategory: this.getCampaignCompletionSubcategory(
+            campaign.difficulty,
+          ),
           count: 1,
         },
       );
@@ -776,7 +919,21 @@ export class CampaignService {
       );
     }
 
-    await this.audit.logEvent({ type: 'campaign.verified_completion', campaignId, hostId: requesterId });
+    await this.recordVerifiedCampaignVisits(
+      [
+        campaign.hostId.toString(),
+        ...acceptedParticipants.map((participant) =>
+          (participant as any).userId.toString(),
+        ),
+      ],
+      campaign,
+    );
+
+    await this.audit.logEvent({
+      type: 'campaign.verified_completion',
+      campaignId,
+      hostId: requesterId,
+    });
 
     return this.getCampaignById(id);
   }
@@ -838,7 +995,10 @@ export class CampaignService {
       return {
         ...item,
         creator: {
-          name: this.buildCreatorName(profile as Partial<User>, phoneNumber ?? 'Unknown'),
+          name: this.buildCreatorName(
+            profile as Partial<User>,
+            phoneNumber ?? 'Unknown',
+          ),
           role: host?.role ?? 'user',
           phoneNumber,
         },
@@ -850,7 +1010,9 @@ export class CampaignService {
     return status === 'draft' || status === 'rejected';
   }
 
-  private async getDifficultyApprovalRequirement(difficulty?: string | null): Promise<boolean> {
+  private async getDifficultyApprovalRequirement(
+    difficulty?: string | null,
+  ): Promise<boolean> {
     if (!difficulty || !difficulty.trim()) {
       return false;
     }
@@ -859,20 +1021,25 @@ export class CampaignService {
 
     const matched = difficultyItems.find(
       (item) =>
-        item.enabled !== false
-        && (
-          item.id.toLowerCase() === difficulty.trim().toLowerCase()
-          || item.label.toLowerCase() === difficulty.trim().toLowerCase()
-        ),
+        item.enabled !== false &&
+        (item.id.toLowerCase() === difficulty.trim().toLowerCase() ||
+          item.label.toLowerCase() === difficulty.trim().toLowerCase()),
     );
 
     return matched?.adminApprovalRequired ?? false;
   }
 
-  async createCampaign(dto: CreateCampaignDto, hostId: string, isAdmin = false) {
+  async createCampaign(
+    dto: CreateCampaignDto,
+    hostId: string,
+    isAdmin = false,
+  ) {
     const campaignCode = await this.createUniqueCampaignCode();
     const scheduleType = dto.scheduleType ?? 'scheduled';
-    const activity = await this.resolveCampaignActivity(dto.category, dto.subcategory);
+    const activity = await this.resolveCampaignActivity(
+      dto.category,
+      dto.subcategory,
+    );
     const hikeType = this.normalizeCampaignType(dto.hikeType);
 
     if (!hikeType) {
@@ -884,13 +1051,16 @@ export class CampaignService {
     }
 
     if (!isAdmin && scheduleType === 'instant') {
-      throw new BadRequestException('User campaigns must be scheduled at least 2 days in advance');
+      throw new BadRequestException(
+        'User campaigns must be scheduled at least 2 days in advance',
+      );
     }
 
     let startDate = this.parseDateValue(dto.startDate);
-    let joinOpenDate = dto.joinOpenDate !== undefined
-      ? this.parseDateValue(dto.joinOpenDate)
-      : null;
+    let joinOpenDate =
+      dto.joinOpenDate !== undefined
+        ? this.parseDateValue(dto.joinOpenDate)
+        : null;
     const endDate = this.parseDateValue(dto.endDate);
 
     if (scheduleType === 'instant') {
@@ -899,7 +1069,9 @@ export class CampaignService {
       joinOpenDate ??= startDate;
     } else {
       if (!startDate) {
-        throw new BadRequestException('startDate is required for scheduled campaigns');
+        throw new BadRequestException(
+          'startDate is required for scheduled campaigns',
+        );
       }
 
       joinOpenDate ??= hikeType === 'group' ? new Date() : startDate;
@@ -909,15 +1081,27 @@ export class CampaignService {
       joinOpenDate = new Date();
     }
 
-    const resolvedEndDate = scheduleType === 'instant'
-      ? this.getInstantCampaignEndDate(startDate)
-      : endDate;
+    const resolvedEndDate =
+      scheduleType === 'instant'
+        ? this.getInstantCampaignEndDate(startDate)
+        : endDate;
 
-    if (hikeType === 'group' && startDate && startDate.getTime() < this.getMinimumUserStartDate('group').getTime()) {
-      throw new BadRequestException('Group campaigns must be scheduled at least 7 days in advance');
+    if (
+      hikeType === 'group' &&
+      startDate &&
+      startDate.getTime() < this.getMinimumUserStartDate('group').getTime()
+    ) {
+      throw new BadRequestException(
+        'Group campaigns must be scheduled at least 7 days in advance',
+      );
     }
 
-    if (!isAdmin && hikeType !== 'group' && startDate && startDate.getTime() < this.getMinimumUserStartDate(hikeType).getTime()) {
+    if (
+      !isAdmin &&
+      hikeType !== 'group' &&
+      startDate &&
+      startDate.getTime() < this.getMinimumUserStartDate(hikeType).getTime()
+    ) {
       throw new BadRequestException(
         'User campaigns must be scheduled at least 2 days in advance',
       );
@@ -926,11 +1110,12 @@ export class CampaignService {
     this.validateTiming(startDate, resolvedEndDate, joinOpenDate);
 
     const maxParticipants = Math.max(1, Number(dto.maxParticipants ?? 1));
-    const minParticipants = hikeType === 'group'
-      ? Math.max(1, Number(dto.minParticipants ?? 2))
-      : 1;
+    const minParticipants =
+      hikeType === 'group' ? Math.max(1, Number(dto.minParticipants ?? 2)) : 1;
     if (minParticipants > maxParticipants) {
-      throw new BadRequestException('minParticipants cannot be greater than maxParticipants');
+      throw new BadRequestException(
+        'minParticipants cannot be greater than maxParticipants',
+      );
     }
 
     const {
@@ -953,35 +1138,49 @@ export class CampaignService {
     const normalizedDistrict = this.normalizeLocationPart(district);
     const normalizedMunicipality = this.normalizeLocationPart(municipality);
     const normalizedPlaceName = this.normalizeLocationPart(placeName);
-    const normalizedLocation = this.normalizeLocationPart(location)
-      ?? this.buildDisplayLocation(normalizedProvince, normalizedDistrict, normalizedMunicipality, normalizedPlaceName);
+    const normalizedLocation =
+      this.normalizeLocationPart(location) ??
+      this.buildDisplayLocation(
+        normalizedProvince,
+        normalizedDistrict,
+        normalizedMunicipality,
+        normalizedPlaceName,
+      );
 
-    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(dto.difficulty);
-    const approvalStatus: CampaignApprovalStatus = requiresAdminApproval ? 'submitted' : 'approved';
+    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(
+      dto.difficulty,
+    );
+    const approvalStatus: CampaignApprovalStatus = requiresAdminApproval
+      ? 'submitted'
+      : 'approved';
     const now = new Date();
     const planningState = dto.planning
       ? {
-        transportDecision: dto.planning.transportDecision?.trim() || null,
-        meetingPoint: dto.planning.meetingPoint?.trim() || null,
-        meetingTime: dto.planning.meetingTime ? new Date(dto.planning.meetingTime) : null,
-        costBreakdown: {
-          transport: Number(dto.planning.costBreakdown?.transport ?? 0),
-          food: Number(dto.planning.costBreakdown?.food ?? 0),
-          guide: Number(dto.planning.costBreakdown?.guide ?? 0),
-          misc: Number(dto.planning.costBreakdown?.misc ?? 0),
-          totalCost: 0,
-          costPerPerson: 0,
-        },
-        tasks: (dto.planning.tasks ?? []).map((task) => ({
-          title: task.title.trim(),
-          assignedUserId: task.assignedUserId ? new Types.ObjectId(task.assignedUserId) : null,
-          completed: task.completed === true,
-          completedAt: task.completed === true ? new Date() : null,
-        })),
-        isComplete: false,
-        completenessErrors: [],
-        lastUpdatedAt: now,
-      }
+          transportDecision: dto.planning.transportDecision?.trim() || null,
+          meetingPoint: dto.planning.meetingPoint?.trim() || null,
+          meetingTime: dto.planning.meetingTime
+            ? new Date(dto.planning.meetingTime)
+            : null,
+          costBreakdown: {
+            transport: Number(dto.planning.costBreakdown?.transport ?? 0),
+            food: Number(dto.planning.costBreakdown?.food ?? 0),
+            guide: Number(dto.planning.costBreakdown?.guide ?? 0),
+            misc: Number(dto.planning.costBreakdown?.misc ?? 0),
+            totalCost: 0,
+            costPerPerson: 0,
+          },
+          tasks: (dto.planning.tasks ?? []).map((task) => ({
+            title: task.title.trim(),
+            assignedUserId: task.assignedUserId
+              ? new Types.ObjectId(task.assignedUserId)
+              : null,
+            completed: task.completed === true,
+            completedAt: task.completed === true ? new Date() : null,
+          })),
+          isComplete: false,
+          completenessErrors: [],
+          lastUpdatedAt: now,
+        }
       : this.getDefaultPlanningState();
 
     const baseTimeline = {
@@ -1003,14 +1202,16 @@ export class CampaignService {
       baseTimeline.planningAt = lifecycleTimeline.planningAt;
       baseTimeline.verificationAt = lifecycleTimeline.verificationAt;
       baseTimeline.readyAt = lifecycleTimeline.readyAt;
-      baseTimeline.nextTransitionAt = approvalStatus === 'approved'
-        ? lifecycleTimeline.nextTransitionAt
-        : null;
+      baseTimeline.nextTransitionAt =
+        approvalStatus === 'approved'
+          ? lifecycleTimeline.nextTransitionAt
+          : null;
       lifecyclePhase = approvalStatus === 'approved' ? 'open' : 'draft';
     } else {
       const readyAt = new Date(startDate.getTime() - CampaignService.DAY_MS);
       baseTimeline.readyAt = readyAt;
-      baseTimeline.nextTransitionAt = approvalStatus === 'approved' ? startDate : null;
+      baseTimeline.nextTransitionAt =
+        approvalStatus === 'approved' ? startDate : null;
       lifecyclePhase = approvalStatus === 'approved' ? 'ready' : 'draft';
     }
 
@@ -1024,7 +1225,9 @@ export class CampaignService {
       const user = await this.userModel.findById(hostId);
       if (user) {
         const nowYear = new Date().getUTCFullYear();
-        const lastResetYear = user.campaignQuotaResetAt ? new Date(user.campaignQuotaResetAt).getUTCFullYear() : null;
+        const lastResetYear = user.campaignQuotaResetAt
+          ? new Date(user.campaignQuotaResetAt).getUTCFullYear()
+          : null;
         if (lastResetYear === null || lastResetYear < nowYear) {
           user.campaignQuota = 5;
           // set to Jan 1 of current year
@@ -1032,7 +1235,9 @@ export class CampaignService {
         }
 
         if (!user.campaignQuota || user.campaignQuota <= 0) {
-          throw new BadRequestException('Campaign creation quota exceeded for this year');
+          throw new BadRequestException(
+            'Campaign creation quota exceeded for this year',
+          );
         }
 
         user.campaignQuota = Math.max(0, Number(user.campaignQuota) - 1);
@@ -1075,7 +1280,8 @@ export class CampaignService {
       approvalStatus,
       submittedAt: requiresAdminApproval ? now : null,
       approvedAt: !requiresAdminApproval ? now : null,
-      approvedBy: !requiresAdminApproval && isAdmin ? new Types.ObjectId(hostId) : null,
+      approvedBy:
+        !requiresAdminApproval && isAdmin ? new Types.ObjectId(hostId) : null,
       rejectedAt: null,
       rejectedBy: null,
       approvalNote: null,
@@ -1126,16 +1332,10 @@ export class CampaignService {
           approvalStatus: 'approved',
         },
         {
-          $or: [
-            { startDate: null },
-            { startDate: { $lte: now } },
-          ],
+          $or: [{ startDate: null }, { startDate: { $lte: now } }],
         },
         {
-          $or: [
-            { joinOpenDate: null },
-            { joinOpenDate: { $lte: now } },
-          ],
+          $or: [{ joinOpenDate: null }, { joinOpenDate: { $lte: now } }],
         },
       ];
     }
@@ -1145,7 +1345,9 @@ export class CampaignService {
       .skip(skip)
       .limit(limit)
       .lean();
-    const items = await this.enrichWithCreator(rawItems as Array<Record<string, any>>);
+    const items = await this.enrichWithCreator(
+      rawItems as Array<Record<string, any>>,
+    );
     const total = await this.campaignModel.countDocuments(filter);
     return {
       items,
@@ -1193,12 +1395,21 @@ export class CampaignService {
       .limit(limit)
       .lean();
 
-    const items = await this.enrichWithCreator(rawItems as Array<Record<string, any>>);
-    const total = await this.campaignModel.countDocuments({ deletedByAdmin: true });
+    const items = await this.enrichWithCreator(
+      rawItems as Array<Record<string, any>>,
+    );
+    const total = await this.campaignModel.countDocuments({
+      deletedByAdmin: true,
+    });
 
     return {
       items,
-      pagination: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
     };
   }
 
@@ -1209,7 +1420,9 @@ export class CampaignService {
     if (!item || item.deletedByAdmin)
       throw new NotFoundException('Campaign not found');
 
-    const [enriched] = await this.enrichWithCreator([item as Record<string, any>]);
+    const [enriched] = await this.enrichWithCreator([
+      item as Record<string, any>,
+    ]);
     return enriched;
   }
 
@@ -1225,7 +1438,11 @@ export class CampaignService {
       throw new BadRequestException('Only approved campaigns can be joined');
     }
 
-    if (campaign.completed || campaign.failed || campaign.awaitingVerification) {
+    if (
+      campaign.completed ||
+      campaign.failed ||
+      campaign.awaitingVerification
+    ) {
       throw new BadRequestException('Campaign is closed');
     }
 
@@ -1234,11 +1451,16 @@ export class CampaignService {
     }
 
     if (campaign.participantsLocked) {
-      throw new BadRequestException('Participants are locked for this campaign');
+      throw new BadRequestException(
+        'Participants are locked for this campaign',
+      );
     }
 
     const now = new Date();
-    if (campaign.joinOpenDate && campaign.joinOpenDate.getTime() > now.getTime()) {
+    if (
+      campaign.joinOpenDate &&
+      campaign.joinOpenDate.getTime() > now.getTime()
+    ) {
       throw new BadRequestException('Campaign is not open for enrollment yet');
     }
 
@@ -1256,11 +1478,15 @@ export class CampaignService {
     );
 
     if (existingParticipant?.status === 'accepted') {
-      throw new BadRequestException('You are already enrolled in this campaign');
+      throw new BadRequestException(
+        'You are already enrolled in this campaign',
+      );
     }
 
     if (existingParticipant?.status === 'pending') {
-      throw new BadRequestException('Your request is already pending for this campaign');
+      throw new BadRequestException(
+        'Your request is already pending for this campaign',
+      );
     }
 
     const acceptedCount = participants.filter(
@@ -1313,14 +1539,19 @@ export class CampaignService {
     });
 
     return {
-      message: nextStatus === 'accepted'
-        ? 'Successfully enrolled in campaign'
-        : 'Campaign join request submitted',
+      message:
+        nextStatus === 'accepted'
+          ? 'Successfully enrolled in campaign'
+          : 'Campaign join request submitted',
       campaign: await this.getCampaignById(id),
     };
   }
 
-  private ensureCampaignManagePermission(campaign: any, requesterId: string, isAdmin = false) {
+  private ensureCampaignManagePermission(
+    campaign: any,
+    requesterId: string,
+    isAdmin = false,
+  ) {
     if (!isAdmin && campaign.hostId.toString() !== requesterId) {
       throw new ForbiddenException('Not allowed to manage this campaign');
     }
@@ -1333,14 +1564,22 @@ export class CampaignService {
     }
 
     const participant = (campaign.participants ?? []).find(
-      (item: any) => item.userId.toString() === userId && item.status === 'accepted',
+      (item: any) =>
+        item.userId.toString() === userId && item.status === 'accepted',
     );
     if (!participant) {
-      throw new BadRequestException('You are not an active participant in this campaign');
+      throw new BadRequestException(
+        'You are not an active participant in this campaign',
+      );
     }
 
-    if (campaign.lifecyclePhase !== 'open' && campaign.lifecyclePhase !== 'planning') {
-      throw new BadRequestException('Leaving is allowed only during open/planning phases');
+    if (
+      campaign.lifecyclePhase !== 'open' &&
+      campaign.lifecyclePhase !== 'planning'
+    ) {
+      throw new BadRequestException(
+        'Leaving is allowed only during open/planning phases',
+      );
     }
 
     participant.status = 'left';
@@ -1370,7 +1609,8 @@ export class CampaignService {
     }
 
     const participant = (campaign.participants ?? []).find(
-      (item: any) => item.userId.toString() === userId && item.status === 'accepted',
+      (item: any) =>
+        item.userId.toString() === userId && item.status === 'accepted',
     );
     if (!participant) {
       throw new BadRequestException('Only active participants can confirm');
@@ -1436,7 +1676,9 @@ export class CampaignService {
     this.ensureCampaignManagePermission(campaign, requesterId, isAdmin);
 
     if (campaign.lifecyclePhase !== 'planning' && !isAdmin) {
-      throw new BadRequestException('Planning can be edited only during planning phase');
+      throw new BadRequestException(
+        'Planning can be edited only during planning phase',
+      );
     }
 
     campaign.planning = campaign.planning ?? this.getDefaultPlanningState();
@@ -1491,7 +1733,12 @@ export class CampaignService {
     return this.getCampaignById(id);
   }
 
-  async addTask(id: string, dto: AddTaskDto, requesterId: string, isAdmin = false) {
+  async addTask(
+    id: string,
+    dto: AddTaskDto,
+    requesterId: string,
+    isAdmin = false,
+  ) {
     const campaign = await this.campaignModel.findById(id);
     if (!campaign || campaign.deletedByAdmin) {
       throw new NotFoundException('Campaign not found');
@@ -1502,7 +1749,9 @@ export class CampaignService {
     campaign.planning.tasks = campaign.planning.tasks ?? [];
     campaign.planning.tasks.push({
       title: dto.title.trim(),
-      assignedUserId: dto.assignedUserId ? new Types.ObjectId(dto.assignedUserId) : null,
+      assignedUserId: dto.assignedUserId
+        ? new Types.ObjectId(dto.assignedUserId)
+        : null,
       completed: false,
       completedAt: null,
     } as any);
@@ -1537,7 +1786,9 @@ export class CampaignService {
       task.title = dto.title.trim();
     }
     if (dto.assignedUserId !== undefined) {
-      task.assignedUserId = dto.assignedUserId ? new Types.ObjectId(dto.assignedUserId) : null;
+      task.assignedUserId = dto.assignedUserId
+        ? new Types.ObjectId(dto.assignedUserId)
+        : null;
     }
     if (dto.completed !== undefined) {
       task.completed = dto.completed;
@@ -1563,11 +1814,18 @@ export class CampaignService {
       .skip(skip)
       .limit(limit)
       .lean();
-    const items = await this.enrichWithCreator(rawItems as Array<Record<string, any>>);
+    const items = await this.enrichWithCreator(
+      rawItems as Array<Record<string, any>>,
+    );
     const total = await this.campaignModel.countDocuments(filter);
     return {
       items,
-      pagination: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
     };
   }
 
@@ -1582,15 +1840,22 @@ export class CampaignService {
       return;
     }
 
-    if (campaign.timeline?.nextTransitionAt && new Date(campaign.timeline.nextTransitionAt).getTime() > now.getTime()) {
+    if (
+      campaign.timeline?.nextTransitionAt &&
+      new Date(campaign.timeline.nextTransitionAt).getTime() > now.getTime()
+    ) {
       return;
     }
 
     let nextPhase: CampaignLifecyclePhase | null = null;
     if (phase === 'open') {
-      if (this.countAcceptedParticipants(campaign) < Math.max(1, Number(campaign.minParticipants ?? 1))) {
+      if (
+        this.countAcceptedParticipants(campaign) <
+        Math.max(1, Number(campaign.minParticipants ?? 1))
+      ) {
         nextPhase = 'cancelled';
-        campaign.cancellationReason = 'Not enough participants to meet minimum requirement';
+        campaign.cancellationReason =
+          'Not enough participants to meet minimum requirement';
       } else {
         nextPhase = 'planning';
       }
@@ -1601,9 +1866,15 @@ export class CampaignService {
           campaign,
           'Planning incomplete',
           `Campaign "${campaign.title}" planning is incomplete. Please fill required planning details.`,
-          { campaignId: campaign._id.toString(), phase: 'planning', missing: campaign.planning?.completenessErrors ?? [] },
+          {
+            campaignId: campaign._id.toString(),
+            phase: 'planning',
+            missing: campaign.planning?.completenessErrors ?? [],
+          },
         );
-        campaign.timeline.nextTransitionAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+        campaign.timeline.nextTransitionAt = new Date(
+          now.getTime() + 6 * 60 * 60 * 1000,
+        );
         await campaign.save();
         return;
       }
@@ -1623,7 +1894,9 @@ export class CampaignService {
           `Campaign "${campaign.title}" is waiting for admin verification.`,
           { campaignId: campaign._id.toString(), phase: 'verification' },
         );
-        campaign.timeline.nextTransitionAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+        campaign.timeline.nextTransitionAt = new Date(
+          now.getTime() + 6 * 60 * 60 * 1000,
+        );
         await campaign.save();
         return;
       }
@@ -1636,9 +1909,16 @@ export class CampaignService {
           campaign,
           'Confirmation required',
           `Campaign "${campaign.title}" has unconfirmed participants.`,
-          { campaignId: campaign._id.toString(), phase: 'ready', accepted, confirmed },
+          {
+            campaignId: campaign._id.toString(),
+            phase: 'ready',
+            accepted,
+            confirmed,
+          },
         );
-        campaign.timeline.nextTransitionAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+        campaign.timeline.nextTransitionAt = new Date(
+          now.getTime() + 2 * 60 * 60 * 1000,
+        );
         await campaign.save();
         return;
       }
@@ -1646,7 +1926,9 @@ export class CampaignService {
     } else if (phase === 'started') {
       const endTime = this.getCampaignEndTime(campaign);
       if (!Number.isFinite(endTime) || now.getTime() < endTime) {
-        campaign.timeline.nextTransitionAt = Number.isFinite(endTime) ? new Date(endTime) : null;
+        campaign.timeline.nextTransitionAt = Number.isFinite(endTime)
+          ? new Date(endTime)
+          : null;
         await campaign.save();
         return;
       }
@@ -1689,7 +1971,9 @@ export class CampaignService {
   }
 
   private async processHostInactivity() {
-    const threshold = new Date(Date.now() - CampaignService.HOST_INACTIVITY_LIMIT_MS);
+    const threshold = new Date(
+      Date.now() - CampaignService.HOST_INACTIVITY_LIMIT_MS,
+    );
     const candidates = await this.campaignModel.find({
       deletedByAdmin: false,
       lifecyclePhase: 'planning',
@@ -1709,7 +1993,10 @@ export class CampaignService {
           campaign,
           'Host inactivity reminder',
           `Planning activity is required for campaign "${campaign.title}".`,
-          { campaignId: campaign._id.toString(), reminders: campaign.hostInactivityReminderCount },
+          {
+            campaignId: campaign._id.toString(),
+            reminders: campaign.hostInactivityReminderCount,
+          },
         );
       } else {
         await this.transitionCampaignPhase(
@@ -1757,7 +2044,9 @@ export class CampaignService {
       const accepted = this.countAcceptedParticipants(campaign);
       const confirmed = this.countConfirmedParticipants(campaign);
       if (accepted > confirmed) {
-        throw new BadRequestException('All active participants must confirm before campaign starts');
+        throw new BadRequestException(
+          'All active participants must confirm before campaign starts',
+        );
       }
     }
 
@@ -1768,7 +2057,8 @@ export class CampaignService {
 
     if (toPhase === 'planning') {
       campaign.participantsLocked = true;
-      campaign.timeline.nextTransitionAt = campaign.timeline.verificationAt ?? null;
+      campaign.timeline.nextTransitionAt =
+        campaign.timeline.verificationAt ?? null;
     } else if (toPhase === 'verification') {
       campaign.timeline.nextTransitionAt = campaign.timeline.readyAt ?? null;
       campaign.adminVerification = campaign.adminVerification ?? {
@@ -1782,14 +2072,17 @@ export class CampaignService {
     } else if (toPhase === 'started') {
       campaign.timeline.startedAt = now;
       const endTime = this.getCampaignEndTime(campaign);
-      campaign.timeline.nextTransitionAt = Number.isFinite(endTime) ? new Date(endTime) : null;
+      campaign.timeline.nextTransitionAt = Number.isFinite(endTime)
+        ? new Date(endTime)
+        : null;
     } else if (toPhase === 'completed') {
       campaign.timeline.completedAt = now;
       campaign.timeline.nextTransitionAt = null;
     } else if (toPhase === 'cancelled') {
       campaign.timeline.cancelledAt = now;
       campaign.timeline.nextTransitionAt = null;
-      campaign.cancellationReason = reason?.trim() || campaign.cancellationReason || 'Cancelled';
+      campaign.cancellationReason =
+        reason?.trim() || campaign.cancellationReason || 'Cancelled';
     } else if (toPhase === 'open') {
       campaign.participantsLocked = false;
       campaign.timeline.nextTransitionAt = campaign.timeline.planningAt ?? null;
@@ -1819,7 +2112,11 @@ export class CampaignService {
     return this.getCampaignById(id);
   }
 
-  async approvePlanningVerification(id: string, adminId: string, note?: string) {
+  async approvePlanningVerification(
+    id: string,
+    adminId: string,
+    note?: string,
+  ) {
     const campaign = await this.campaignModel.findById(id);
     if (!campaign || campaign.deletedByAdmin) {
       throw new NotFoundException('Campaign not found');
@@ -1835,7 +2132,8 @@ export class CampaignService {
       rejectionReason: note?.trim() || null,
     };
     campaign.timeline = campaign.timeline ?? {};
-    campaign.timeline.nextTransitionAt = campaign.timeline.readyAt ?? new Date();
+    campaign.timeline.nextTransitionAt =
+      campaign.timeline.readyAt ?? new Date();
     await campaign.save();
 
     await this.audit.logEvent({
@@ -1855,7 +2153,11 @@ export class CampaignService {
     return this.getCampaignById(id);
   }
 
-  async rejectPlanningVerification(id: string, adminId: string, reason: string) {
+  async rejectPlanningVerification(
+    id: string,
+    adminId: string,
+    reason: string,
+  ) {
     const campaign = await this.campaignModel.findById(id);
     if (!campaign || campaign.deletedByAdmin) {
       throw new NotFoundException('Campaign not found');
@@ -1878,7 +2180,9 @@ export class CampaignService {
     campaign.lifecyclePhase = 'planning';
     campaign.participantsLocked = true;
     campaign.timeline = campaign.timeline ?? {};
-    campaign.timeline.nextTransitionAt = new Date(Date.now() + 6 * 60 * 60 * 1000);
+    campaign.timeline.nextTransitionAt = new Date(
+      Date.now() + 6 * 60 * 60 * 1000,
+    );
     await campaign.save();
 
     await this.audit.logEvent({
@@ -1916,79 +2220,108 @@ export class CampaignService {
       throw new ForbiddenException('Failed campaigns cannot be edited');
     }
 
-    if (!isAdmin && ['completed', 'cancelled'].includes(campaign.lifecyclePhase)) {
+    if (
+      !isAdmin &&
+      ['completed', 'cancelled'].includes(campaign.lifecyclePhase)
+    ) {
       throw new ForbiddenException('Finished campaigns cannot be edited');
     }
 
-    const nextScheduleType = dto.scheduleType ?? campaign.scheduleType ?? 'scheduled';
-    const nextActivity = dto.category !== undefined || dto.subcategory !== undefined
-      ? await this.resolveCampaignActivity(
-        dto.category ?? campaign.category,
-        dto.subcategory !== undefined
-          ? dto.subcategory
-          : dto.category !== undefined
-            ? null
-            : campaign.subcategory,
-      )
-      : {
-        category: campaign.category,
-        subcategory: campaign.subcategory ?? null,
-      };
-    const nextHikeType = dto.hikeType !== undefined
-      ? (() => {
-        const normalizedHikeType = this.normalizeCampaignType(dto.hikeType);
+    const nextScheduleType =
+      dto.scheduleType ?? campaign.scheduleType ?? 'scheduled';
+    const nextActivity =
+      dto.category !== undefined || dto.subcategory !== undefined
+        ? await this.resolveCampaignActivity(
+            dto.category ?? campaign.category,
+            dto.subcategory !== undefined
+              ? dto.subcategory
+              : dto.category !== undefined
+                ? null
+                : campaign.subcategory,
+          )
+        : {
+            category: campaign.category,
+            subcategory: campaign.subcategory ?? null,
+          };
+    const nextHikeType =
+      dto.hikeType !== undefined
+        ? (() => {
+            const normalizedHikeType = this.normalizeCampaignType(dto.hikeType);
 
-        if (!normalizedHikeType) {
-          throw new BadRequestException('hikeType is required');
-        }
+            if (!normalizedHikeType) {
+              throw new BadRequestException('hikeType is required');
+            }
 
-        return normalizedHikeType;
-      })()
-      : (campaign.hikeType ?? 'group');
+            return normalizedHikeType;
+          })()
+        : (campaign.hikeType ?? 'group');
 
     if (!isAdmin && nextScheduleType === 'instant') {
-      throw new BadRequestException('User campaigns must be scheduled at least 2 days in advance');
+      throw new BadRequestException(
+        'User campaigns must be scheduled at least 2 days in advance',
+      );
     }
 
-    let nextStartDate = dto.startDate !== undefined
-      ? this.parseDateValue(dto.startDate)
-      : (campaign.startDate ?? null);
-    let nextJoinOpenDate = dto.joinOpenDate !== undefined
-      ? this.parseDateValue(dto.joinOpenDate)
-      : (campaign.joinOpenDate ?? null);
-    const nextEndDate = dto.endDate !== undefined
-      ? this.parseDateValue(dto.endDate)
-      : (campaign.endDate ?? null);
+    let nextStartDate =
+      dto.startDate !== undefined
+        ? this.parseDateValue(dto.startDate)
+        : (campaign.startDate ?? null);
+    let nextJoinOpenDate =
+      dto.joinOpenDate !== undefined
+        ? this.parseDateValue(dto.joinOpenDate)
+        : (campaign.joinOpenDate ?? null);
+    const nextEndDate =
+      dto.endDate !== undefined
+        ? this.parseDateValue(dto.endDate)
+        : (campaign.endDate ?? null);
 
     if (nextScheduleType === 'instant') {
       nextStartDate ??= new Date();
       nextJoinOpenDate ??= nextStartDate;
     } else {
       if (!nextStartDate) {
-        throw new BadRequestException('startDate is required for scheduled campaigns');
+        throw new BadRequestException(
+          'startDate is required for scheduled campaigns',
+        );
       }
 
-      nextJoinOpenDate ??= nextHikeType === 'group' ? new Date() : nextStartDate;
+      nextJoinOpenDate ??=
+        nextHikeType === 'group' ? new Date() : nextStartDate;
     }
 
     if (nextHikeType === 'group' && campaign.lifecyclePhase === 'open') {
       nextJoinOpenDate = new Date();
     }
 
-    const resolvedEndDate = nextScheduleType === 'instant'
-      ? this.getInstantCampaignEndDate(nextStartDate)
-      : nextEndDate;
+    const resolvedEndDate =
+      nextScheduleType === 'instant'
+        ? this.getInstantCampaignEndDate(nextStartDate)
+        : nextEndDate;
 
     const scheduleWasChanged =
       (dto.startDate !== undefined &&
         nextStartDate?.getTime() !== campaign.startDate?.getTime()) ||
       (dto.hikeType !== undefined && nextHikeType !== campaign.hikeType);
 
-    if (scheduleWasChanged && nextHikeType === 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate('group').getTime()) {
-      throw new BadRequestException('Group campaigns must be scheduled at least 7 days in advance');
+    if (
+      scheduleWasChanged &&
+      nextHikeType === 'group' &&
+      nextStartDate &&
+      nextStartDate.getTime() < this.getMinimumUserStartDate('group').getTime()
+    ) {
+      throw new BadRequestException(
+        'Group campaigns must be scheduled at least 7 days in advance',
+      );
     }
 
-    if (!isAdmin && scheduleWasChanged && nextHikeType !== 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate(nextHikeType).getTime()) {
+    if (
+      !isAdmin &&
+      scheduleWasChanged &&
+      nextHikeType !== 'group' &&
+      nextStartDate &&
+      nextStartDate.getTime() <
+        this.getMinimumUserStartDate(nextHikeType).getTime()
+    ) {
       throw new BadRequestException(
         'User campaigns must be scheduled at least 2 days in advance',
       );
@@ -1996,14 +2329,23 @@ export class CampaignService {
 
     this.validateTiming(nextStartDate, resolvedEndDate, nextJoinOpenDate);
 
-    const nextMaxParticipants = dto.maxParticipants !== undefined
-      ? Math.max(1, Number(dto.maxParticipants))
-      : Math.max(1, Number(campaign.maxParticipants ?? 1));
-    const nextMinParticipants = dto.minParticipants !== undefined
-      ? Math.max(1, Number(dto.minParticipants))
-      : Math.max(1, Number(campaign.minParticipants ?? (nextHikeType === 'group' ? 2 : 1)));
+    const nextMaxParticipants =
+      dto.maxParticipants !== undefined
+        ? Math.max(1, Number(dto.maxParticipants))
+        : Math.max(1, Number(campaign.maxParticipants ?? 1));
+    const nextMinParticipants =
+      dto.minParticipants !== undefined
+        ? Math.max(1, Number(dto.minParticipants))
+        : Math.max(
+            1,
+            Number(
+              campaign.minParticipants ?? (nextHikeType === 'group' ? 2 : 1),
+            ),
+          );
     if (nextMinParticipants > nextMaxParticipants) {
-      throw new BadRequestException('minParticipants cannot be greater than maxParticipants');
+      throw new BadRequestException(
+        'minParticipants cannot be greater than maxParticipants',
+      );
     }
 
     const {
@@ -2022,24 +2364,39 @@ export class CampaignService {
       ...rest
     } = dto;
 
-    const nextProvince = dto.province !== undefined
-      ? this.normalizeLocationPart(province)
-      : this.normalizeLocationPart(campaign.province ?? null);
-    const nextDistrict = dto.district !== undefined
-      ? this.normalizeLocationPart(district)
-      : this.normalizeLocationPart(campaign.district ?? null);
-    const nextMunicipality = dto.municipality !== undefined
-      ? this.normalizeLocationPart(municipality)
-      : this.normalizeLocationPart((campaign as any).municipality ?? null);
-    const nextPlaceName = dto.placeName !== undefined
-      ? this.normalizeLocationPart(placeName)
-      : this.normalizeLocationPart(campaign.placeName ?? null);
+    const nextProvince =
+      dto.province !== undefined
+        ? this.normalizeLocationPart(province)
+        : this.normalizeLocationPart(campaign.province ?? null);
+    const nextDistrict =
+      dto.district !== undefined
+        ? this.normalizeLocationPart(district)
+        : this.normalizeLocationPart(campaign.district ?? null);
+    const nextMunicipality =
+      dto.municipality !== undefined
+        ? this.normalizeLocationPart(municipality)
+        : this.normalizeLocationPart((campaign as any).municipality ?? null);
+    const nextPlaceName =
+      dto.placeName !== undefined
+        ? this.normalizeLocationPart(placeName)
+        : this.normalizeLocationPart(campaign.placeName ?? null);
 
-    const nextLocation = dto.location !== undefined
-      ? (this.normalizeLocationPart(location)
-        ?? this.buildDisplayLocation(nextProvince, nextDistrict, nextMunicipality, nextPlaceName))
-      : (this.normalizeLocationPart(campaign.location ?? null)
-        ?? this.buildDisplayLocation(nextProvince, nextDistrict, nextMunicipality, nextPlaceName));
+    const nextLocation =
+      dto.location !== undefined
+        ? (this.normalizeLocationPart(location) ??
+          this.buildDisplayLocation(
+            nextProvince,
+            nextDistrict,
+            nextMunicipality,
+            nextPlaceName,
+          ))
+        : (this.normalizeLocationPart(campaign.location ?? null) ??
+          this.buildDisplayLocation(
+            nextProvince,
+            nextDistrict,
+            nextMunicipality,
+            nextPlaceName,
+          ));
 
     Object.assign(campaign, rest);
     campaign.location = nextLocation;
@@ -2055,10 +2412,13 @@ export class CampaignService {
     campaign.endDate = resolvedEndDate;
     campaign.joinOpenDate = nextJoinOpenDate;
     campaign.maxParticipants = nextMaxParticipants;
-    campaign.minParticipants = nextHikeType === 'group' ? nextMinParticipants : 1;
+    campaign.minParticipants =
+      nextHikeType === 'group' ? nextMinParticipants : 1;
 
     if (nextHikeType === 'group' && nextStartDate) {
-      const createdAt = campaign.timeline?.createdAt ? new Date(campaign.timeline.createdAt) : new Date();
+      const createdAt = campaign.timeline?.createdAt
+        ? new Date(campaign.timeline.createdAt)
+        : new Date();
       const timeline = this.calculateGroupTimeline(nextStartDate, createdAt);
       campaign.timeline = campaign.timeline ?? {};
       campaign.timeline.createdAt = createdAt;
@@ -2077,16 +2437,22 @@ export class CampaignService {
       }
     } else if (nextStartDate) {
       campaign.timeline = campaign.timeline ?? {};
-      campaign.timeline.readyAt = new Date(nextStartDate.getTime() - CampaignService.DAY_MS);
+      campaign.timeline.readyAt = new Date(
+        nextStartDate.getTime() - CampaignService.DAY_MS,
+      );
       if (campaign.lifecyclePhase === 'ready') {
         campaign.timeline.nextTransitionAt = nextStartDate;
       }
     }
 
     if (!isAdmin && campaign.lifecyclePhase !== 'started') {
-      const requiresAdminApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+      const requiresAdminApproval = await this.getDifficultyApprovalRequirement(
+        campaign.difficulty,
+      );
 
-      campaign.approvalStatus = requiresAdminApproval ? 'submitted' : 'approved';
+      campaign.approvalStatus = requiresAdminApproval
+        ? 'submitted'
+        : 'approved';
       campaign.submittedAt = requiresAdminApproval ? new Date() : null;
       campaign.approvedAt = null;
       campaign.approvedBy = null;
@@ -2119,7 +2485,9 @@ export class CampaignService {
     }
 
     if (campaign.completed) {
-      throw new BadRequestException('Completed campaigns cannot be submitted for review');
+      throw new BadRequestException(
+        'Completed campaigns cannot be submitted for review',
+      );
     }
 
     if (campaign.approvalStatus === 'approved') {
@@ -2130,13 +2498,18 @@ export class CampaignService {
       throw new BadRequestException('Campaign is already submitted for review');
     }
 
-    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
+    const requiresAdminApproval = await this.getDifficultyApprovalRequirement(
+      campaign.difficulty,
+    );
     const now = new Date();
 
     campaign.approvalStatus = requiresAdminApproval ? 'submitted' : 'approved';
     campaign.submittedAt = requiresAdminApproval ? now : null;
     campaign.approvedAt = requiresAdminApproval ? null : now;
-    campaign.approvedBy = !requiresAdminApproval && isAdmin ? new Types.ObjectId(requesterId) : null;
+    campaign.approvedBy =
+      !requiresAdminApproval && isAdmin
+        ? new Types.ObjectId(requesterId)
+        : null;
     campaign.rejectedAt = null;
     campaign.rejectedBy = null;
     campaign.approvalNote = null;
@@ -2150,7 +2523,10 @@ export class CampaignService {
           campaign.timeline.nextTransitionAt = campaign.timeline.planningAt;
         }
       } else {
-        campaign.lifecyclePhase = campaign.lifecyclePhase === 'draft' ? 'ready' : campaign.lifecyclePhase;
+        campaign.lifecyclePhase =
+          campaign.lifecyclePhase === 'draft'
+            ? 'ready'
+            : campaign.lifecyclePhase;
         campaign.timeline = campaign.timeline ?? {};
         campaign.timeline.nextTransitionAt = campaign.startDate ?? null;
       }
@@ -2185,11 +2561,16 @@ export class CampaignService {
     campaign.approvalNote = note?.trim() || null;
 
     if (campaign.hikeType === 'group') {
-      campaign.lifecyclePhase = campaign.lifecyclePhase === 'draft' ? 'open' : campaign.lifecyclePhase;
+      campaign.lifecyclePhase =
+        campaign.lifecyclePhase === 'draft' ? 'open' : campaign.lifecyclePhase;
       campaign.timeline = campaign.timeline ?? {};
-      campaign.timeline.nextTransitionAt = campaign.timeline.planningAt ?? campaign.timeline.nextTransitionAt ?? null;
+      campaign.timeline.nextTransitionAt =
+        campaign.timeline.planningAt ??
+        campaign.timeline.nextTransitionAt ??
+        null;
     } else {
-      campaign.lifecyclePhase = campaign.lifecyclePhase === 'draft' ? 'ready' : campaign.lifecyclePhase;
+      campaign.lifecyclePhase =
+        campaign.lifecyclePhase === 'draft' ? 'ready' : campaign.lifecyclePhase;
       campaign.timeline = campaign.timeline ?? {};
       campaign.timeline.nextTransitionAt = campaign.startDate ?? null;
     }
@@ -2353,7 +2734,9 @@ export class CampaignService {
     }
 
     if (!campaign.deletedByAdmin) {
-      throw new BadRequestException('Move campaign to bin before permanent delete');
+      throw new BadRequestException(
+        'Move campaign to bin before permanent delete',
+      );
     }
 
     await this.campaignModel.findByIdAndDelete(id);

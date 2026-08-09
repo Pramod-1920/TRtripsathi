@@ -1597,13 +1597,15 @@ export class UserService {
     const locationKey = this.resolveLocationKey(context);
     const districtKey = this.resolveDistrictKey(context);
     const firstVisit =
-      context.firstVisit !== undefined
+      Boolean(locationKey) &&
+      (context.firstVisit !== undefined
         ? Boolean(context.firstVisit)
-        : !this.hasVisitedLocation(history, locationKey);
+        : !this.hasVisitedLocation(history, locationKey));
     const newDistrict =
-      context.newDistrict !== undefined
+      Boolean(districtKey) &&
+      (context.newDistrict !== undefined
         ? Boolean(context.newDistrict)
-        : !this.hasVisitedDistrict(history, districtKey);
+        : !this.hasVisitedDistrict(history, districtKey));
 
     const explorationBonus =
       (firstVisit
@@ -2331,6 +2333,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    await this.assertManagedUser(profile);
+
     return this.evaluateXpForProfile(profile, eventKey, context, {
       simulateOnly: true,
     });
@@ -2417,6 +2421,38 @@ export class UserService {
     };
   }
 
+  async adminGetXpHistory(profileId: string, page = 1, limit = 20) {
+    const profile = await this.userModel.findById(this.toObjectId(profileId));
+
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    await this.assertManagedUser(profile);
+
+    const history = [...(profile.xpHistory ?? [])].sort(
+      (first, second) =>
+        new Date(second.awardedAt).getTime() -
+        new Date(first.awardedAt).getTime(),
+    );
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 20), 100);
+    const startIndex = (safePage - 1) * safeLimit;
+
+    return {
+      items: history.slice(startIndex, startIndex + safeLimit),
+      pagination: {
+        total: history.length,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil(history.length / safeLimit)),
+      },
+      currentXp: this.getTotalXp(profile),
+      level: profile.level ?? 1,
+      rank: profile.experienceLevel ?? ExperienceLevel.F,
+    };
+  }
+
   async adminUpdateXpHistoryEntry(
     profileId: string,
     historyId: string,
@@ -2431,6 +2467,8 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
+
+    await this.assertManagedUser(profile);
 
     const newPoints = Math.max(0, Math.floor(Number(payload.points)));
 
@@ -2528,6 +2566,8 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    await this.assertManagedUser(profile);
+
     const history = [...(profile.xpHistory ?? [])];
     const index = history.findIndex((entry) => {
       const entryId = String(
@@ -2599,6 +2639,8 @@ export class UserService {
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
+
+    await this.assertManagedUser(profile);
 
     // Validate input
     const safeXp = Math.max(1, Math.min(500, Math.floor(Number(xpToAdd))));

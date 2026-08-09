@@ -65,6 +65,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/extra/places', label: 'Places' },
     { href: '/extra/difficulty', label: 'Difficulty' },
     { href: '/extra/activities', label: 'Activities' },
+    { href: '/extra/xp', label: 'XP Rules' },
+    { href: '/extra/badge', label: 'Rank Badges' },
   ];
 
   const isCampaignSectionActive = pathname.startsWith('/campaigns');

@@ -10,7 +10,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiOkResponse, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiOkResponse,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -21,6 +29,7 @@ import { UpdateExtraDto } from './dto/update-extra.dto';
 import { ExtraCategory } from './constants/extra-category.enum';
 import { ExtraService } from './extra.service';
 import { PlacesService } from './places.service';
+import { XP_EVENT_CATALOG } from './constants/xp-event-catalog';
 
 @ApiTags('extra')
 @Controller('extra')
@@ -32,7 +41,9 @@ export class ExtraController {
 
   // PUBLIC ENDPOINTS (no auth required)
   @Get('places')
-  @ApiOperation({ summary: 'Get places hierarchy (public - for user dropdowns)' })
+  @ApiOperation({
+    summary: 'Get places hierarchy (public - for user dropdowns)',
+  })
   @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
   async getPublicPlaces() {
     const result = await this.extraService.getPlaceCatalog();
@@ -40,13 +51,24 @@ export class ExtraController {
   }
 
   @Get('activities')
-  @ApiOperation({ summary: 'Get enabled activity categories and subcategories (public)' })
+  @ApiOperation({
+    summary: 'Get enabled activity categories and subcategories (public)',
+  })
   @ApiOkResponse({ description: 'Activity catalog fetched successfully' })
   getPublicActivities() {
     return this.extraService.getPublicActivities();
   }
 
   // ADMIN ENDPOINTS (require auth)
+  @Get('xp/events')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({ summary: 'Admin: list registered XP reward triggers' })
+  getXpEventCatalog() {
+    return { items: XP_EVENT_CATALOG };
+  }
+
   @Post()
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -82,19 +104,26 @@ export class ExtraController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: get places hierarchy (province + district + municipality)' })
+  @ApiOperation({
+    summary: 'Admin: get places hierarchy (province + district + municipality)',
+  })
   @ApiQuery({ name: 'includeDeleted', required: false, example: false })
   @ApiOkResponse({ description: 'Places hierarchy fetched successfully' })
   getPlacesHierarchy(@Query('includeDeleted') includeDeleted = 'false') {
-    const shouldIncludeDeleted = includeDeleted === 'true' || includeDeleted === '1';
-    return this.placesService.getHierarchy({ includeDeleted: shouldIncludeDeleted });
+    const shouldIncludeDeleted =
+      includeDeleted === 'true' || includeDeleted === '1';
+    return this.placesService.getHierarchy({
+      includeDeleted: shouldIncludeDeleted,
+    });
   }
 
   @Post('places/bulk-seed')
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: replace full places hierarchy via bulk seed' })
+  @ApiOperation({
+    summary: 'Admin: replace full places hierarchy via bulk seed',
+  })
   @ApiBody({ type: BulkSeedPlacesDto })
   @ApiOkResponse({ description: 'Places hierarchy seeded successfully' })
   bulkSeedPlaces(@Body() dto: BulkSeedPlacesDto) {
@@ -105,7 +134,9 @@ export class ExtraController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: patch places hierarchy with atomic operations' })
+  @ApiOperation({
+    summary: 'Admin: patch places hierarchy with atomic operations',
+  })
   @ApiBody({ type: PatchPlacesDto })
   @ApiOkResponse({ description: 'Places hierarchy updated successfully' })
   patchPlaces(@Body() dto: PatchPlacesDto) {
@@ -126,7 +157,9 @@ export class ExtraController {
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Admin: replace full difficulty configuration list' })
+  @ApiOperation({
+    summary: 'Admin: replace full difficulty configuration list',
+  })
   @ApiOkResponse({ description: 'Difficulty list saved successfully' })
   saveDifficulties(@Body() body: unknown) {
     return this.extraService.saveDifficulties(body);

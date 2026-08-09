@@ -11,6 +11,10 @@ import { CreateExtraDto } from './dto/create-extra.dto';
 import { UpdateExtraDto } from './dto/update-extra.dto';
 import { PlacesService } from './places.service';
 import { ExtraItem } from './schemas/extra.schema';
+import {
+  REGISTERED_XP_EVENT_KEYS,
+  XP_EVENT_CATALOG,
+} from './constants/xp-event-catalog';
 
 function normalizeText(value?: string | null) {
   return value?.trim() || null;
@@ -38,25 +42,180 @@ export class ExtraService {
     private readonly placesService: PlacesService,
   ) {}
 
-  private assertXpEventIsSupported(
-    category: ExtraCategory,
-    value?: string | null,
-  ) {
-    if (category !== ExtraCategory.Xp || !value?.trim()) {
+  private assertXpRuleIsValid(category: ExtraCategory, value?: string | null) {
+    if (category !== ExtraCategory.Xp) {
       return;
     }
 
+    if (!value?.trim()) {
+      throw new BadRequestException('XP rule configuration is required');
+    }
+
     try {
-      const parsed = JSON.parse(value) as { eventKey?: unknown };
-      const eventKey = String(parsed.eventKey ?? '').trim().toLowerCase();
+      const parsed = JSON.parse(value) as {
+        eventKey?: unknown;
+        baseXp?: unknown;
+        points?: unknown;
+        bonusXp?: unknown;
+        socialBonusXp?: unknown;
+        repeat?: unknown;
+        ruleType?: unknown;
+        difficultyMultipliers?: Record<string, unknown>;
+        explorationBonuses?: Record<string, unknown>;
+        conditions?: Record<string, unknown>;
+      };
+      const eventKey =
+        typeof parsed.eventKey === 'string'
+          ? parsed.eventKey.trim().toLowerCase()
+          : '';
+
+      if (!eventKey || !/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(eventKey)) {
+        throw new BadRequestException(
+          'XP eventKey is required and must use lowercase snake_case',
+        );
+      }
 
       if (['daily_streak', 'daily-streak', 'daily streak'].includes(eventKey)) {
-        throw new BadRequestException('The daily streak XP event has been removed');
+        throw new BadRequestException(
+          'The daily streak XP event has been removed',
+        );
+      }
+
+      if (!REGISTERED_XP_EVENT_KEYS.has(eventKey)) {
+        throw new BadRequestException(
+          'XP eventKey is not connected to a registered backend trigger',
+        );
+      }
+
+      const eventDefinition = XP_EVENT_CATALOG.find(
+        (event) => event.key === eventKey,
+      );
+      if (!eventDefinition) {
+        throw new BadRequestException('XP event trigger was not found');
+      }
+
+      const baseXp = Number(parsed.baseXp ?? parsed.points);
+      if (!Number.isFinite(baseXp) || baseXp < 0 || baseXp > 10000) {
+        throw new BadRequestException('XP baseXp must be between 0 and 10000');
+      }
+
+      const repeatModes = new Set([
+        'always',
+        'once_per_user',
+        'once_per_campaign',
+        'once_per_district',
+        'once_per_difficulty',
+        'once_per_referred_user',
+      ]);
+      const repeat =
+        parsed.repeat === undefined
+          ? 'always'
+          : typeof parsed.repeat === 'string'
+            ? parsed.repeat
+            : '';
+      if (!repeatModes.has(repeat)) {
+        throw new BadRequestException('XP repeat policy is invalid');
+      }
+
+      const repeatContext: Partial<Record<string, string>> = {
+        once_per_campaign: 'campaignId',
+        once_per_district: 'district',
+        once_per_difficulty: 'difficulty',
+        once_per_referred_user: 'referredUserId',
+      };
+      const requiredRepeatContext = repeatContext[repeat];
+      if (
+        requiredRepeatContext &&
+        !eventDefinition.contextFields.includes(requiredRepeatContext)
+      ) {
+        throw new BadRequestException(
+          `${repeat} cannot be used because this trigger does not provide ${requiredRepeatContext}`,
+        );
+      }
+
+      const ruleTypes = new Set(['global', 'activity', 'location', 'social']);
+      if (
+        parsed.ruleType !== undefined &&
+        (typeof parsed.ruleType !== 'string' || !ruleTypes.has(parsed.ruleType))
+      ) {
+        throw new BadRequestException('XP ruleType is invalid');
+      }
+
+      const validateNonNegativeNumbers = (
+        values: Record<string, unknown> | undefined,
+        label: string,
+      ) => {
+        for (const valueToCheck of Object.values(values ?? {})) {
+          const numberValue = Number(valueToCheck);
+          if (!Number.isFinite(numberValue) || numberValue < 0) {
+            throw new BadRequestException(
+              `${label} values must be non-negative numbers`,
+            );
+          }
+        }
+      };
+
+      validateNonNegativeNumbers(
+        parsed.difficultyMultipliers,
+        'Difficulty multiplier',
+      );
+      validateNonNegativeNumbers(
+        parsed.explorationBonuses,
+        'Exploration bonus',
+      );
+
+      for (const [label, valueToCheck] of [
+        ['bonusXp', parsed.bonusXp],
+        ['socialBonusXp', parsed.socialBonusXp],
+      ] as const) {
+        if (
+          valueToCheck !== undefined &&
+          (!Number.isFinite(Number(valueToCheck)) || Number(valueToCheck) < 0)
+        ) {
+          throw new BadRequestException(
+            `${label} must be a non-negative number`,
+          );
+        }
+      }
+
+      if (parsed.conditions?.ratingGte !== undefined) {
+        const rating = Number(parsed.conditions.ratingGte);
+        if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+          throw new BadRequestException(
+            'Minimum rating must be between 1 and 5',
+          );
+        }
+      }
+
+      const conditionContext: Record<string, string> = {
+        difficulty: 'difficulty',
+        district: 'district',
+        locationKey: 'locationKey',
+        activityType: 'activityType',
+        ratingGte: 'rating',
+        solo: 'solo',
+        hostOnly: 'hostOnly',
+        hiddenGem: 'hiddenGem',
+        rareRoute: 'rareRoute',
+      };
+      for (const [condition, requiredContext] of Object.entries(
+        conditionContext,
+      )) {
+        if (
+          parsed.conditions?.[condition] !== undefined &&
+          !eventDefinition.contextFields.includes(requiredContext)
+        ) {
+          throw new BadRequestException(
+            `${condition} cannot be used because this trigger does not provide ${requiredContext}`,
+          );
+        }
       }
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
+
+      throw new BadRequestException('XP rule configuration must be valid JSON');
     }
   }
 
@@ -111,15 +270,20 @@ export class ExtraService {
     }
 
     if (parent.parentId) {
-      throw new BadRequestException('Activity subcategories can only be one level deep');
+      throw new BadRequestException(
+        'Activity subcategories can only be one level deep',
+      );
     }
 
     return parent._id as Types.ObjectId;
   }
 
   async createExtra(dto: CreateExtraDto) {
-    this.assertXpEventIsSupported(dto.category, dto.value);
-    const parentId = await this.resolveActivityParent(dto.category, dto.parentId);
+    this.assertXpRuleIsValid(dto.category, dto.value);
+    const parentId = await this.resolveActivityParent(
+      dto.category,
+      dto.parentId,
+    );
 
     const extra = await this.extraModel.create({
       extraCode: await this.createUniqueExtraCode(),
@@ -139,7 +303,11 @@ export class ExtraService {
     return extra;
   }
 
-  async listExtras(params: { category?: ExtraCategory; page: number; limit: number }) {
+  async listExtras(params: {
+    category?: ExtraCategory;
+    page: number;
+    limit: number;
+  }) {
     const filter: { category?: ExtraCategory } = {};
 
     if (params.category) {
@@ -151,7 +319,11 @@ export class ExtraService {
     const skip = (page - 1) * limit;
 
     const [items, total] = await Promise.all([
-      this.extraModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      this.extraModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
       this.extraModel.countDocuments(filter),
     ]);
 
@@ -182,10 +354,7 @@ export class ExtraService {
         name: root.name.trim(),
         description: root.description ?? null,
         subcategories: items
-          .filter(
-            (item) =>
-              item.parentId?.toString() === root._id.toString(),
-          )
+          .filter((item) => item.parentId?.toString() === root._id.toString())
           .map((item) => ({
             id: item._id.toString(),
             name: item.name.trim(),
@@ -195,7 +364,10 @@ export class ExtraService {
     };
   }
 
-  async resolveActivitySelection(categoryName: string, subcategoryName?: string | null) {
+  async resolveActivitySelection(
+    categoryName: string,
+    subcategoryName?: string | null,
+  ) {
     const requestedCategory = categoryName.trim();
     const requestedSubcategory = subcategoryName?.trim() || null;
     const roots = await this.extraModel.find({
@@ -204,11 +376,14 @@ export class ExtraService {
       parentId: null,
     });
     const category = roots.find(
-      (item) => item.name.trim().toLowerCase() === requestedCategory.toLowerCase(),
+      (item) =>
+        item.name.trim().toLowerCase() === requestedCategory.toLowerCase(),
     );
 
     if (!category) {
-      throw new BadRequestException('Selected activity category is not enabled');
+      throw new BadRequestException(
+        'Selected activity category is not enabled',
+      );
     }
 
     if (!requestedSubcategory) {
@@ -221,7 +396,8 @@ export class ExtraService {
       parentId: category._id,
     });
     const subcategory = children.find(
-      (item) => item.name.trim().toLowerCase() === requestedSubcategory.toLowerCase(),
+      (item) =>
+        item.name.trim().toLowerCase() === requestedSubcategory.toLowerCase(),
     );
 
     if (!subcategory) {
@@ -251,20 +427,23 @@ export class ExtraService {
       throw new NotFoundException('Extra item not found');
     }
 
-    this.assertXpEventIsSupported(
+    this.assertXpRuleIsValid(
       dto.category ?? extra.category,
       dto.value !== undefined ? dto.value : extra.value,
     );
 
     const nextCategory = dto.category ?? extra.category;
-    const nextParentId = dto.parentId !== undefined
-      ? await this.resolveActivityParent(nextCategory, dto.parentId, id)
-      : extra.parentId;
+    const nextParentId =
+      dto.parentId !== undefined
+        ? await this.resolveActivityParent(nextCategory, dto.parentId, id)
+        : extra.parentId;
 
     if (dto.category !== undefined && dto.category !== extra.category) {
       const hasChildren = await this.extraModel.exists({ parentId: extra._id });
       if (hasChildren) {
-        throw new ConflictException('Move or delete this category’s subcategories first');
+        throw new ConflictException(
+          'Move or delete this category’s subcategories first',
+        );
       }
     }
 
@@ -275,7 +454,9 @@ export class ExtraService {
     if (extra.parentId == null && nextParentId) {
       const hasChildren = await this.extraModel.exists({ parentId: extra._id });
       if (hasChildren) {
-        throw new ConflictException('Move or delete this category’s subcategories first');
+        throw new ConflictException(
+          'Move or delete this category’s subcategories first',
+        );
       }
     }
 
@@ -387,7 +568,9 @@ export class ExtraService {
     }
   }
 
-  private throwDifficultyValidation(errors: DifficultyValidationError[]): never {
+  private throwDifficultyValidation(
+    errors: DifficultyValidationError[],
+  ): never {
     throw new BadRequestException({
       message: 'Validation failed',
       errors,
@@ -443,7 +626,11 @@ export class ExtraService {
         errors.push({ index, field: 'label', message: 'label is required' });
       }
 
-      if (!Number.isFinite(xpMultiplier) || xpMultiplier < 0.5 || xpMultiplier > 10) {
+      if (
+        !Number.isFinite(xpMultiplier) ||
+        xpMultiplier < 0.5 ||
+        xpMultiplier > 10
+      ) {
         errors.push({
           index,
           field: 'xpMultiplier',
@@ -508,7 +695,9 @@ export class ExtraService {
       .find({ category: ExtraCategory.Difficulty })
       .sort({ createdAt: 1 });
 
-    const existing = docs.find((doc) => this.parseDifficultyValue(doc.value) !== null) ?? docs[0];
+    const existing =
+      docs.find((doc) => this.parseDifficultyValue(doc.value) !== null) ??
+      docs[0];
 
     if (existing) {
       existing.name = 'Difficulty Configuration';
