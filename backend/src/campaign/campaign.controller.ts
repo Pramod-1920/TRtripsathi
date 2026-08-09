@@ -53,7 +53,7 @@ export class CampaignController {
 
   @Get()
   async list(@Query('page') page = '1', @Query('limit') limit = '20') {
-    return this.service.listCampaigns(Number(page), Number(limit), false);
+    return this.service.listCampaigns(Number(page), Number(limit), false, undefined, true);
   }
 
   @Get('admin/phase/:phase')
@@ -92,6 +92,20 @@ export class CampaignController {
     @Query('limit') limit = '20',
   ) {
     return this.service.listDeletedCampaigns(Number(page), Number(limit));
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  async listMine(
+    @GetCurrentUser('userId') userId: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '50',
+  ) {
+    return this.service.listUserCampaigns(
+      userId,
+      Number(page),
+      Number(limit),
+    );
   }
 
   @Get(':id')
@@ -266,19 +280,22 @@ export class CampaignController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.Admin)
-  async adminDelete(
+  @UseGuards(JwtAuthGuard)
+  async deleteCampaign(
     @Param('id') id: string,
-    @GetCurrentUser('userId') adminId: string,
+    @GetCurrentUser('userId') requesterId: string,
+    @Req() req,
     @Query('reason') reason?: string,
   ) {
-    return this.service.adminDeleteCampaign(
-      id,
-      adminId,
-      reason,
-      this.userModel,
-    );
+    if (req.user?.role === Role.Admin) {
+      return this.service.adminDeleteCampaign(
+        id,
+        requesterId,
+        reason,
+        this.userModel,
+      );
+    }
+    return this.service.deleteOwnCampaign(id, requesterId);
   }
 
   @Post(':id/restore')

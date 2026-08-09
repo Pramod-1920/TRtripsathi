@@ -931,6 +931,61 @@ class ApiService {
     throw Exception(_errorMessage(res, 'Unable to create campaign'));
   }
 
+  /// PATCH /campaigns/{id} - Update a campaign owned by the signed-in user.
+  static Future<Map<String, dynamic>> updateCampaign(
+    String campaignId,
+    Map<String, dynamic> campaignData,
+  ) async {
+    final res = await _patchWithAuth(
+      Uri.parse('$baseUrl/campaigns/$campaignId'),
+      body: jsonEncode(campaignData),
+    );
+    if (res.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Unable to update campaign'));
+  }
+
+  /// DELETE /campaigns/{id} - Delete a campaign owned by the signed-in user.
+  static Future<void> deleteCampaign(String campaignId) async {
+    final res = await _deleteWithAuth(
+      Uri.parse('$baseUrl/campaigns/$campaignId'),
+    );
+    if (res.statusCode == 200 || res.statusCode == 204) return;
+    throw Exception(_errorMessage(res, 'Unable to delete campaign'));
+  }
+
+  /// GET /campaigns/mine - Every campaign hosted by the signed-in user.
+  static Future<Map<String, dynamic>> listMyCampaigns({
+    int page = 1,
+    int limit = 100,
+  }) async {
+    final uri = Uri.parse('$baseUrl/campaigns/mine').replace(
+      queryParameters: {'page': '$page', 'limit': '$limit'},
+    );
+    final res = await _getWithAuth(uri);
+    if (res.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    // The saved-ID compatibility path remains available until this endpoint
+    // reaches older deployed servers. On those servers, `mine` can be handled
+    // by the older `/:id` route and produce an ObjectId/campaign-not-found
+    // response instead of a normal 404.
+    if (res.statusCode == 404) {
+      return {'items': <dynamic>[], '_legacyUnavailable': true};
+    }
+    final legacyRouteBody = res.body.toLowerCase();
+    final isLegacyMineRoute = res.statusCode == 500 ||
+        (res.statusCode == 400 &&
+            (legacyRouteBody.contains('objectid') ||
+                legacyRouteBody.contains('cast to') ||
+                legacyRouteBody.contains('campaign not found')));
+    if (isLegacyMineRoute) {
+      return {'items': <dynamic>[], '_legacyUnavailable': true};
+    }
+    throw Exception(_errorMessage(res, 'Unable to load your campaigns'));
+  }
+
   /// GET /campaigns/{id} - Get campaign details
   static Future<Map<String, dynamic>> getCampaignDetails(
       String campaignId) async {

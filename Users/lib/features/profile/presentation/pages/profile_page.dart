@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
+import 'package:trtripsathi_mobile/features/profile/presentation/pages/my_journeys_page.dart';
 
 const _profileForest = Color(0xFF173F38);
 const _profileForestLight = Color(0xFF28685A);
@@ -251,6 +252,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: 'Profile photo',
                         subtitle: 'Choose a clear photo of yourself',
                         onTap: _openEditProfile,
+                      ),
+                      _SettingsTile(
+                        icon: Icons.route_rounded,
+                        title: 'My journeys',
+                        subtitle: 'Completed, expired and cancelled trips',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const MyJourneysPage(),
+                          ),
+                        ),
                       ),
                     ],
                   ),

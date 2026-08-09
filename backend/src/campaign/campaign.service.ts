@@ -1105,6 +1105,7 @@ export class CampaignService {
     limit = 20,
     includeFuture = false,
     approvalStatus?: CampaignApprovalStatus,
+    groupOnly = false,
   ) {
     await this.runVerificationHousekeeping();
 
@@ -1112,6 +1113,7 @@ export class CampaignService {
     const now = new Date();
     const filter: Record<string, unknown> = {
       deletedByAdmin: false,
+      ...(groupOnly ? { hikeType: 'group' } : {}),
     };
 
     if (approvalStatus) {
@@ -1148,6 +1150,36 @@ export class CampaignService {
     return {
       items,
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async listUserCampaigns(hostId: string, page = 1, limit = 50) {
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(Math.max(1, limit), 100);
+    const filter = {
+      hostId: new Types.ObjectId(hostId),
+      deletedByAdmin: false,
+    };
+    const [rawItems, total] = await Promise.all([
+      this.campaignModel
+        .find(filter)
+        .sort({ startDate: -1, createdAt: -1 })
+        .skip((safePage - 1) * safeLimit)
+        .limit(safeLimit)
+        .lean(),
+      this.campaignModel.countDocuments(filter),
+    ]);
+    const items = await this.enrichWithCreator(
+      rawItems as Array<Record<string, any>>,
+    );
+    return {
+      items,
+      pagination: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+      },
     };
   }
 
@@ -1884,8 +1916,8 @@ export class CampaignService {
       throw new ForbiddenException('Failed campaigns cannot be edited');
     }
 
-    if (!isAdmin && !this.canUserEditCampaign(campaign.approvalStatus)) {
-      throw new ForbiddenException('Only draft or rejected campaigns can be edited by users');
+    if (!isAdmin && ['completed', 'cancelled'].includes(campaign.lifecyclePhase)) {
+      throw new ForbiddenException('Finished campaigns cannot be edited');
     }
 
     const nextScheduleType = dto.scheduleType ?? campaign.scheduleType ?? 'scheduled';
@@ -1947,11 +1979,16 @@ export class CampaignService {
       ? this.getInstantCampaignEndDate(nextStartDate)
       : nextEndDate;
 
-    if (nextHikeType === 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate('group').getTime()) {
+    const scheduleWasChanged =
+      (dto.startDate !== undefined &&
+        nextStartDate?.getTime() !== campaign.startDate?.getTime()) ||
+      (dto.hikeType !== undefined && nextHikeType !== campaign.hikeType);
+
+    if (scheduleWasChanged && nextHikeType === 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate('group').getTime()) {
       throw new BadRequestException('Group campaigns must be scheduled at least 7 days in advance');
     }
 
-    if (!isAdmin && nextHikeType !== 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate(nextHikeType).getTime()) {
+    if (!isAdmin && scheduleWasChanged && nextHikeType !== 'group' && nextStartDate && nextStartDate.getTime() < this.getMinimumUserStartDate(nextHikeType).getTime()) {
       throw new BadRequestException(
         'User campaigns must be scheduled at least 2 days in advance',
       );
@@ -2046,7 +2083,7 @@ export class CampaignService {
       }
     }
 
-    if (!isAdmin) {
+    if (!isAdmin && campaign.lifecyclePhase !== 'started') {
       const requiresAdminApproval = await this.getDifficultyApprovalRequirement(campaign.difficulty);
 
       campaign.approvalStatus = requiresAdminApproval ? 'submitted' : 'approved';
@@ -2268,6 +2305,23 @@ export class CampaignService {
       reason,
     });
     return { message: 'Campaign deleted by admin' };
+  }
+
+  async deleteOwnCampaign(id: string, requesterId: string) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign || campaign.deletedByAdmin) {
+      throw new NotFoundException('Campaign not found');
+    }
+    if (campaign.hostId.toString() !== requesterId) {
+      throw new ForbiddenException('Only the campaign owner can delete it');
+    }
+    await this.campaignModel.findByIdAndDelete(id);
+    await this.audit.logEvent({
+      type: 'campaign.delete_by_owner',
+      campaignId: id,
+      requesterId,
+    });
+    return { message: 'Campaign deleted' };
   }
 
   async restoreDeletedCampaign(id: string, adminId: string) {

@@ -9,7 +9,9 @@ import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 
 class CreateTripWizard extends StatefulWidget {
-  const CreateTripWizard({super.key});
+  const CreateTripWizard({super.key, this.campaign});
+
+  final Map<String, dynamic>? campaign;
 
   @override
   State<CreateTripWizard> createState() => _CreateTripWizardState();
@@ -47,13 +49,49 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
   String? _district;
   DateTime? _startDate;
   XFile? _coverPhoto;
+  String? _existingCoverUrl;
   List<_CampaignCategory> _categories = const [];
   List<_TripProvince> _places = const [];
 
   @override
   void initState() {
     super.initState();
+    _prefillCampaign();
     _loadOptions();
+  }
+
+  bool get _isEditing => widget.campaign != null;
+
+  void _prefillCampaign() {
+    final campaign = widget.campaign;
+    if (campaign == null) return;
+    _title.text = (campaign['title'] ?? '').toString();
+    _description.text = (campaign['description'] ?? '').toString();
+    _category.text = (campaign['category'] ?? '').toString();
+    _subcategory = (campaign['subcategory'] ?? '').toString().trim();
+    if (_subcategory!.isEmpty) _subcategory = null;
+    _hikeType = (campaign['hikeType'] ?? 'group').toString();
+    _province = (campaign['province'] ?? '').toString().trim();
+    if (_province!.isEmpty) _province = null;
+    _district = (campaign['district'] ?? '').toString().trim();
+    if (_district!.isEmpty) _district = null;
+    _municipality.text = (campaign['municipality'] ?? '').toString();
+    _placeName.text = (campaign['placeName'] ?? '').toString();
+    _difficulty = (campaign['difficulty'] ?? 'moderate').toString();
+    _joinMode = (campaign['joinMode'] ?? 'open').toString();
+    _duration.text = (campaign['durationDays'] ?? 1).toString();
+    _estimatedCost.text = (campaign['estimatedNPR'] ?? 0).toString();
+    _minParticipants.text = (campaign['minParticipants'] ?? 2).toString();
+    _maxParticipants.text = (campaign['maxParticipants'] ?? 10).toString();
+    _startDate = DateTime.tryParse(
+      (campaign['startDate'] ?? '').toString(),
+    )?.toLocal();
+    final photos = campaign['photos'];
+    if (photos is List && photos.isNotEmpty && photos.first is Map) {
+      final firstPhoto = Map<String, dynamic>.from(photos.first as Map);
+      _existingCoverUrl = (firstPhoto['url'] ?? '').toString().trim();
+      if (_existingCoverUrl!.isEmpty) _existingCoverUrl = null;
+    }
   }
 
   @override
@@ -72,6 +110,8 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
   }
 
   Future<void> _loadOptions() async {
+    final selectedCategory = _category.text.trim();
+    final selectedSubcategory = _subcategory;
     setState(() {
       _loadingOptions = true;
       _error = null;
@@ -100,8 +140,15 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
             .toList()
           ..sort((a, b) => a.name.compareTo(b.name));
         if (_categories.isNotEmpty) {
-          _category.text = _categories.first.name;
-          _subcategory = null;
+          final matchingCategory = _categories.any(
+            (item) => item.name == selectedCategory,
+          );
+          _category.text =
+              matchingCategory ? selectedCategory : _categories.first.name;
+          _subcategory =
+              matchingCategory && _subcategories.contains(selectedSubcategory)
+                  ? selectedSubcategory
+                  : null;
         } else {
           _category.clear();
         }
@@ -341,7 +388,11 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
             }
           ],
       };
-      final created = await campaignsProvider.createCampaign(payload);
+      final campaignId =
+          (widget.campaign?['_id'] ?? widget.campaign?['id'] ?? '').toString();
+      final created = _isEditing
+          ? await campaignsProvider.updateOwnedCampaign(campaignId, payload)
+          : await campaignsProvider.createCampaign(payload);
       if (!mounted) return;
       Navigator.pop(context, created);
     } catch (error) {
@@ -368,7 +419,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
             onPressed: _submitting ? null : _back,
             icon: const Icon(Icons.arrow_back_rounded),
           ),
-          title: const Text('Plan a trip'),
+          title: Text(_isEditing ? 'Edit trip' : 'Plan a trip'),
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -388,6 +439,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
           step: _step,
           lastStep: _steps.length - 1,
           submitting: _submitting,
+          editing: _isEditing,
           onBack: _back,
           onNext: _next,
         ),
@@ -448,6 +500,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                     hikeType: _hikeType,
                     loading: _loadingOptions,
                     coverPhoto: _coverPhoto,
+                    existingCoverUrl: _existingCoverUrl,
                     onPickCover: _pickCoverPhoto,
                     onRetry: _loadOptions,
                     onCategoryChanged: (value) => setState(() {
@@ -536,6 +589,7 @@ class _IdeaStep extends StatelessWidget {
     required this.hikeType,
     required this.loading,
     required this.coverPhoto,
+    required this.existingCoverUrl,
     required this.onPickCover,
     required this.onRetry,
     required this.onCategoryChanged,
@@ -551,6 +605,7 @@ class _IdeaStep extends StatelessWidget {
   final String hikeType;
   final bool loading;
   final XFile? coverPhoto;
+  final String? existingCoverUrl;
   final VoidCallback onPickCover;
   final VoidCallback onRetry;
   final ValueChanged<String> onCategoryChanged;
@@ -562,7 +617,11 @@ class _IdeaStep extends StatelessWidget {
         children: [
           _TripTypeSelector(value: hikeType, onChanged: onHikeTypeChanged),
           const SizedBox(height: 16),
-          _CoverPhotoPicker(photo: coverPhoto, onTap: onPickCover),
+          _CoverPhotoPicker(
+            photo: coverPhoto,
+            existingUrl: existingCoverUrl,
+            onTap: onPickCover,
+          ),
           const SizedBox(height: 16),
           _WizardCard(
             children: [
@@ -607,8 +666,7 @@ class _IdeaStep extends StatelessWidget {
                   value: subcategories.contains(selectedSubcategory)
                       ? selectedSubcategory
                       : null,
-                  decoration: const InputDecoration(
-                      labelText: 'Subcategory (optional)'),
+                  decoration: const InputDecoration(labelText: 'Subcategory'),
                   items: subcategories
                       .map((item) =>
                           DropdownMenuItem(value: item, child: Text(item)))
@@ -1110,12 +1168,14 @@ class _WizardFooter extends StatelessWidget {
     required this.step,
     required this.lastStep,
     required this.submitting,
+    required this.editing,
     required this.onBack,
     required this.onNext,
   });
   final int step;
   final int lastStep;
   final bool submitting;
+  final bool editing;
   final VoidCallback onBack;
   final VoidCallback onNext;
 
@@ -1167,9 +1227,9 @@ class _WizardFooter extends StatelessWidget {
                           : Icons.arrow_forward_rounded),
                   label: Text(
                     submitting
-                        ? 'Publishing…'
+                        ? (editing ? 'Saving…' : 'Publishing…')
                         : step == lastStep
-                            ? 'Publish trip'
+                            ? (editing ? 'Save changes' : 'Publish trip')
                             : 'Continue',
                   ),
                 ),
@@ -1212,79 +1272,92 @@ class _TripTypeSelector extends StatelessWidget {
 }
 
 class _CoverPhotoPicker extends StatelessWidget {
-  const _CoverPhotoPicker({required this.photo, required this.onTap});
+  const _CoverPhotoPicker({
+    required this.photo,
+    required this.existingUrl,
+    required this.onTap,
+  });
   final XFile? photo;
+  final String? existingUrl;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          height: 142,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE9EEE9),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.line),
-            image: photo == null
-                ? null
-                : DecorationImage(
-                    image: FileImage(File(photo!.path)),
-                    fit: BoxFit.cover,
-                    colorFilter: ColorFilter.mode(
-                      Colors.black.withValues(alpha: .12),
-                      BlendMode.darken,
-                    ),
+  Widget build(BuildContext context) {
+    final hasPhoto = photo != null || (existingUrl ?? '').isNotEmpty;
+    final image = photo != null
+        ? FileImage(File(photo!.path)) as ImageProvider
+        : hasPhoto
+            ? NetworkImage(existingUrl!)
+            : null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        height: 142,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE9EEE9),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.line),
+          image: image == null
+              ? null
+              : DecorationImage(
+                  image: image,
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: .12),
+                    BlendMode.darken,
                   ),
-          ),
-          child: Stack(
-            children: [
-              if (photo == null)
-                const Positioned(
-                  right: 18,
-                  bottom: -12,
-                  child: Icon(Icons.landscape_rounded,
-                      color: Color(0xFFD1DDD5), size: 118),
                 ),
-              Positioned(
-                left: 14,
-                bottom: 14,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: photo == null
-                        ? AppColors.navy
-                        : Colors.black.withValues(alpha: .62),
-                    borderRadius: BorderRadius.circular(13),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        photo == null
-                            ? Icons.add_photo_alternate_outlined
-                            : Icons.edit_outlined,
+        ),
+        child: Stack(
+          children: [
+            if (!hasPhoto)
+              const Positioned(
+                right: 18,
+                bottom: -12,
+                child: Icon(Icons.landscape_rounded,
+                    color: Color(0xFFD1DDD5), size: 118),
+              ),
+            Positioned(
+              left: 14,
+              bottom: 14,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: !hasPhoto
+                      ? AppColors.navy
+                      : Colors.black.withValues(alpha: .62),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      !hasPhoto
+                          ? Icons.add_photo_alternate_outlined
+                          : Icons.edit_outlined,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      !hasPhoto ? 'Add a cover photo' : 'Change photo',
+                      style: const TextStyle(
                         color: Colors.white,
-                        size: 18,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                       ),
-                      const SizedBox(width: 7),
-                      Text(
-                        photo == null ? 'Add a cover photo' : 'Change photo',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _TripTypeCard extends StatelessWidget {
