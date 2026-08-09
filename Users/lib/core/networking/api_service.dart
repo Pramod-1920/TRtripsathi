@@ -73,7 +73,8 @@ class ApiService {
   }
 
   static ApiRateLimitException _rateLimitException(http.Response response) {
-    final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
+    final retryAfter =
+        int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
     return ApiRateLimitException(retryAfter.clamp(1, 3600));
   }
 
@@ -85,6 +86,7 @@ class ApiService {
   );
   static const _accessKey = 'jwt';
   static const _refreshKey = 'refresh';
+  static const _identityKey = 'account_identity';
 
   static Future<bool> hasStoredAccessToken() async {
     try {
@@ -101,6 +103,7 @@ class ApiService {
     final refreshToken = await _storage.read(key: _refreshKey);
     if (refreshToken == null || refreshToken.isEmpty) {
       await _storage.delete(key: _accessKey);
+      await _storage.delete(key: _identityKey);
       onAuthStateChanged?.call(false);
       return false;
     }
@@ -169,6 +172,8 @@ class ApiService {
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       await _storeTokens(body);
+      await _cacheAccountIdentity(body);
+      await _cacheAccountIdentity(fullPayload);
       onAuthStateChanged?.call(true);
 
       if (usedLegacySignup) {
@@ -224,14 +229,15 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> _uploadProfileImageToCloudinary(
-    File image,
-  ) async {
-    final sig = await _getCloudinarySignature(folder: 'profile_images');
+    File image, {
+    String folder = 'profile_images',
+  }) async {
+    final sig = await _getCloudinarySignature(folder: folder);
     final cloudName = (sig['cloudName'] ?? '').toString();
     final apiKey = (sig['apiKey'] ?? '').toString();
     final timestamp = (sig['timestamp'] ?? '').toString();
     final signature = (sig['signature'] ?? '').toString();
-    final folder = (sig['folder'] ?? '').toString();
+    final signedFolder = (sig['folder'] ?? '').toString();
 
     if (cloudName.isEmpty ||
         apiKey.isEmpty ||
@@ -246,7 +252,7 @@ class ApiService {
     req.fields['api_key'] = apiKey;
     req.fields['timestamp'] = timestamp;
     req.fields['signature'] = signature;
-    if (folder.isNotEmpty) req.fields['folder'] = folder;
+    if (signedFolder.isNotEmpty) req.fields['folder'] = signedFolder;
     req.files.add(await http.MultipartFile.fromPath('file', image.path));
 
     final streamed = await req.send();
@@ -257,7 +263,7 @@ class ApiService {
     throw Exception('Image upload failed: HTTP ${res.statusCode} ${res.body}');
   }
 
-  static Future<void> uploadProfileImage(File image) async {
+  static Future<String> uploadProfileImage(File image) async {
     final upload = await _uploadProfileImageToCloudinary(image);
     final secureUrl = upload['secure_url'] as String?;
     final publicId = upload['public_id'] as String?;
@@ -269,6 +275,20 @@ class ApiService {
       if (publicId != null && publicId.isNotEmpty)
         'profilePhotoPublicId': publicId,
     });
+    return secureUrl;
+  }
+
+  static Future<Map<String, String>> uploadCampaignImage(File image) async {
+    final upload = await _uploadProfileImageToCloudinary(
+      image,
+      folder: 'campaigns',
+    );
+    final secureUrl = (upload['secure_url'] ?? '').toString();
+    final publicId = (upload['public_id'] ?? '').toString();
+    if (secureUrl.isEmpty) {
+      throw Exception('Campaign image upload did not return a secure URL');
+    }
+    return {'url': secureUrl, 'publicId': publicId};
   }
 
   /// POST /auth/login - Login with email/phone and password
@@ -295,6 +315,13 @@ class ApiService {
     if (res.statusCode == 200 || res.statusCode == 201) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       await _storeTokens(body);
+      await _cacheAccountIdentity(body);
+      await _cacheAccountIdentity({
+        if (isEmail)
+          'email': normalizedIdentifier
+        else
+          'phoneNumber': normalizedIdentifier,
+      });
       onAuthStateChanged?.call(true);
       return body;
     }
@@ -323,7 +350,26 @@ class ApiService {
     final uri = Uri.parse('$baseUrl/user/profile');
     final res = await _getWithAuth(uri);
     if (res.statusCode == 200) {
-      return jsonDecode(res.body) as Map<String, dynamic>;
+      final profile = _normalizeProfileResponse(
+        jsonDecode(res.body) as Map<String, dynamic>,
+      );
+
+      // Some deployed versions keep contact details only on the auth record.
+      // Merge them for display without making profile loading depend on this
+      // secondary compatibility endpoint.
+      try {
+        final authResponse = await _getWithAuth(Uri.parse('$baseUrl/auth/me'));
+        if (authResponse.statusCode == 200) {
+          final authData = _normalizeProfileResponse(
+            jsonDecode(authResponse.body) as Map<String, dynamic>,
+          );
+          _fillMissingIdentity(profile, authData);
+        }
+      } catch (_) {}
+
+      _fillMissingIdentity(profile, await _readCachedAccountIdentity());
+      await _cacheAccountIdentity(profile);
+      return profile;
     }
     throw Exception(_errorMessage(res, 'Unable to load profile'));
   }
@@ -332,13 +378,270 @@ class ApiService {
   static Future<Map<String, dynamic>> updateProfile(
       Map<String, dynamic> updates) async {
     final uri = Uri.parse('$baseUrl/user/profile');
-    final res = await _patchWithAuth(uri, body: jsonEncode(updates));
+    final normalizedUpdates = _normalizeProfileUpdate(updates);
+    var res = await _patchWithAuth(uri, body: jsonEncode(normalizedUpdates));
 
-    if (res.statusCode == 200) {
-      return jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode == 200) return _readUpdatedProfile(res);
+
+    // Compatibility for older deployed APIs that validate PATCH requests like
+    // full profile replacements. Preserve every existing field, normalize all
+    // arrays, then let the caller's requested fields win.
+    if (!normalizedUpdates.containsKey('phoneNumber') &&
+        _isLegacyFullProfileRequirement(res)) {
+      final currentProfile = await getProfile();
+      final profileSnapshot = _completeProfilePayload(currentProfile);
+
+      if (profileSnapshot.isNotEmpty) {
+        res = await _patchWithAuth(
+          uri,
+          body: jsonEncode({...profileSnapshot, ...normalizedUpdates}),
+        );
+        if (res.statusCode == 200) return _readUpdatedProfile(res);
+      }
     }
 
     throw Exception(_errorMessage(res, 'Unable to update profile'));
+  }
+
+  static Future<Map<String, dynamic>> getChatConversations({
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final uri = Uri.parse('$baseUrl/chat/conversations').replace(
+      queryParameters: {'page': '$page', 'limit': '$limit'},
+    );
+    final response = await _getWithAuth(uri);
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to load conversations'));
+  }
+
+  static Future<Map<String, dynamic>> getChatMessages(
+    String chatGroupId, {
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final uri = Uri.parse('$baseUrl/chat/messages/$chatGroupId').replace(
+      queryParameters: {'page': '$page', 'limit': '$limit'},
+    );
+    final response = await _getWithAuth(uri);
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to load messages'));
+  }
+
+  static Future<Map<String, dynamic>> sendChatMessage(
+    String chatGroupId,
+    String content,
+  ) async {
+    final response = await _postWithAuth(
+      Uri.parse('$baseUrl/chat/messages'),
+      body: jsonEncode({
+        'chatGroupId': chatGroupId,
+        'messageType': 'text',
+        'content': content.trim(),
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to send message'));
+  }
+
+  static Future<void> markChatMessagesRead(List<String> messageIds) async {
+    if (messageIds.isEmpty) return;
+    final response = await _patchWithAuth(
+      Uri.parse('$baseUrl/chat/messages/mark-read'),
+      body: jsonEncode({'messageIds': messageIds}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Unable to mark messages read'));
+    }
+  }
+
+  static Future<Map<String, dynamic>> _readUpdatedProfile(
+    http.Response response,
+  ) async {
+    final updated = _normalizeProfileResponse(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+    await _cacheAccountIdentity(updated);
+    return updated;
+  }
+
+  static bool _isLegacyFullProfileRequirement(http.Response response) {
+    if (response.statusCode < 400 || response.statusCode >= 500) return false;
+    final message = response.body.toLowerCase();
+    final mentionsProfileField = message.contains('phone') ||
+        message.contains('email') ||
+        message.contains('language') ||
+        message.contains('interest') ||
+        message.contains('profile');
+    final isRequirement = message.contains('required') ||
+        message.contains('must be') ||
+        message.contains('should not be empty') ||
+        message.contains('digit') ||
+        message.contains('array');
+    return mentionsProfileField && isRequirement;
+  }
+
+  static Map<String, dynamic> _completeProfilePayload(
+    Map<String, dynamic> profile,
+  ) {
+    final phone = normalizePhoneNumber(
+      (profile['phoneNumber'] ?? '').toString(),
+    );
+    final email = (profile['email'] ?? '').toString().trim().toLowerCase();
+    final interests = _normalizeStringList(profile['travelInterests']);
+
+    final payload = <String, dynamic>{
+      if (RegExp(r'^\d{10}$').hasMatch(phone)) 'phoneNumber': phone,
+      if (RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) 'email': email,
+      for (final key in const [
+        'firstName',
+        'middleName',
+        'lastName',
+        'dateOfBirth',
+        'profilePhoto',
+        'profilePhotoPublicId',
+        'bio',
+        'location',
+        'province',
+        'district',
+        'landmark',
+        'experienceLevel',
+        'gender',
+        'travelerExperience',
+        'travelStyle',
+      ])
+        if (profile[key] != null) key: profile[key],
+      'languagesKnown': _normalizeStringList(
+        profile['languagesKnown'] ?? profile['languages'],
+      ),
+      if (interests.length >= 2) 'travelInterests': interests,
+      'isProfilePublic': profile['isProfilePublic'] != false,
+    };
+    return _normalizeProfileUpdate(payload);
+  }
+
+  static Map<String, dynamic> _normalizeProfileUpdate(
+    Map<String, dynamic> updates,
+  ) {
+    final normalized = <String, dynamic>{...updates};
+    for (final key in const ['languagesKnown', 'travelInterests']) {
+      if (normalized.containsKey(key)) {
+        normalized[key] = _normalizeStringList(normalized[key]);
+      }
+    }
+    return normalized;
+  }
+
+  static Map<String, dynamic> _normalizeProfileResponse(
+    Map<String, dynamic> response,
+  ) {
+    final normalized = <String, dynamic>{...response};
+
+    for (var depth = 0; depth < 3; depth++) {
+      for (final key in const ['data', 'user', 'profile', 'account']) {
+        final nested = normalized[key];
+        if (nested is Map) {
+          normalized.addAll(Map<String, dynamic>.from(nested));
+        }
+      }
+    }
+
+    final nestedName = normalized['name'];
+    if (nestedName is Map) {
+      normalized.putIfAbsent('firstName', () => nestedName['first']);
+      normalized.putIfAbsent('middleName', () => nestedName['middle']);
+      normalized.putIfAbsent('lastName', () => nestedName['last']);
+    }
+    if (_isMissingIdentityValue(normalized['location']) &&
+        !_isMissingIdentityValue(normalized['address'])) {
+      normalized['location'] = normalized['address'];
+    }
+    if (_isMissingIdentityValue(normalized['dateOfBirth']) &&
+        !_isMissingIdentityValue(normalized['dob'])) {
+      normalized['dateOfBirth'] = normalized['dob'];
+    }
+    normalized['languagesKnown'] = _normalizeStringList(
+      normalized['languagesKnown'] ?? normalized['languages'],
+    );
+    normalized['travelInterests'] =
+        _normalizeStringList(normalized['travelInterests']);
+
+    return normalized;
+  }
+
+  static List<String> _normalizeStringList(dynamic value) {
+    final Iterable<dynamic> values = value is Iterable && value is! String
+        ? value
+        : (value ?? '').toString().split(',');
+    return values
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  static void _fillMissingIdentity(
+    Map<String, dynamic> target,
+    Map<String, dynamic> source,
+  ) {
+    for (final key in const [
+      'firstName',
+      'middleName',
+      'lastName',
+      'phoneNumber',
+      'email',
+      'dateOfBirth',
+      'age',
+    ]) {
+      if (_isMissingIdentityValue(target[key]) &&
+          !_isMissingIdentityValue(source[key])) {
+        target[key] = source[key];
+      }
+    }
+  }
+
+  static bool _isMissingIdentityValue(dynamic value) =>
+      value == null || (value is String && value.trim().isEmpty);
+
+  static Future<Map<String, dynamic>> _readCachedAccountIdentity() async {
+    try {
+      final encoded = await _storage.read(key: _identityKey);
+      if (encoded == null || encoded.isEmpty) return {};
+      return Map<String, dynamic>.from(jsonDecode(encoded) as Map);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<void> _cacheAccountIdentity(
+    Map<String, dynamic> response,
+  ) async {
+    final normalized = _normalizeProfileResponse(response);
+    final identity = <String, dynamic>{
+      ...await _readCachedAccountIdentity(),
+    };
+    for (final key in const [
+      'firstName',
+      'middleName',
+      'lastName',
+      'phoneNumber',
+      'email',
+      'dateOfBirth',
+      'age',
+    ]) {
+      if (!_isMissingIdentityValue(normalized[key])) {
+        identity[key] = normalized[key];
+      }
+    }
+    if (identity.isNotEmpty) {
+      await _storage.write(key: _identityKey, value: jsonEncode(identity));
+    }
   }
 
   /// DELETE /user/profile - Delete own account
@@ -611,7 +914,21 @@ class ApiService {
       return jsonDecode(res.body) as Map<String, dynamic>;
     }
 
-    throw Exception('Failed to load campaigns: HTTP ${res.statusCode}');
+    throw Exception(_errorMessage(res, 'Unable to load campaigns'));
+  }
+
+  /// POST /campaigns - Create a scheduled user campaign.
+  static Future<Map<String, dynamic>> createCampaign(
+    Map<String, dynamic> campaignData,
+  ) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/campaigns'),
+      body: jsonEncode(campaignData),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Unable to create campaign'));
   }
 
   /// GET /campaigns/{id} - Get campaign details
@@ -651,6 +968,60 @@ class ApiService {
       return body['items'] as List<dynamic>? ?? [];
     }
     throw Exception('Failed to load place hierarchy: ${res.statusCode}');
+  }
+
+  /// GET /extra/activities - Enabled Admin-managed activity hierarchy.
+  static Future<List<dynamic>> getActivityHierarchy() async {
+    final uri = Uri.parse('$baseUrl/extra/activities');
+    final res =
+        await http.get(uri, headers: {'Content-Type': 'application/json'});
+    if (res.statusCode == 200) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final items = body['items'] as List<dynamic>? ?? [];
+      if (items.isNotEmpty) return items;
+    }
+
+    // Compatibility for the currently deployed backend, where the public
+    // activity catalog route is not deployed yet and /extra/activities is
+    // interpreted as the protected /extra/:id endpoint. Public campaigns
+    // still contain the exact server-validated category/subcategory names.
+    if (res.statusCode == 200 ||
+        res.statusCode == 401 ||
+        res.statusCode == 403 ||
+        res.statusCode == 404) {
+      final campaignResponse = await http.get(
+        Uri.parse('$baseUrl/campaigns').replace(
+          queryParameters: {'page': '1', 'limit': '100'},
+        ),
+        headers: {'Content-Type': 'application/json'},
+      );
+      if (campaignResponse.statusCode == 200) {
+        final body = jsonDecode(campaignResponse.body) as Map<String, dynamic>;
+        final campaigns =
+            (body['items'] ?? body['data']) as List<dynamic>? ?? const [];
+        final categories = <String, Set<String>>{};
+        for (final campaign in campaigns.whereType<Map>()) {
+          final category = (campaign['category'] ?? '').toString().trim();
+          final subcategory = (campaign['subcategory'] ?? '').toString().trim();
+          if (category.isEmpty) continue;
+          categories.putIfAbsent(category, () => <String>{});
+          if (subcategory.isNotEmpty) categories[category]!.add(subcategory);
+        }
+        if (categories.isNotEmpty) {
+          return categories.entries
+              .map((entry) => {
+                    'name': entry.key,
+                    'subcategories':
+                        entry.value.map((name) => {'name': name}).toList(),
+                  })
+              .toList();
+        }
+      }
+    }
+    throw Exception(
+      'The activity catalog is not available on the deployed backend yet. '
+      'Deploy or restart the updated backend and retry.',
+    );
   }
 
   // ============ Helper Methods ============
@@ -759,6 +1130,7 @@ class ApiService {
       if (res.statusCode == 200 || res.statusCode == 201) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         await _storeTokens(body);
+        await _cacheAccountIdentity(body);
         onAuthStateChanged?.call(true);
         return true;
       }
@@ -769,6 +1141,7 @@ class ApiService {
     // If refresh failed, clear stored tokens and notify app
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
+    await _storage.delete(key: _identityKey);
     onAuthStateChanged?.call(false);
     return false;
   }
@@ -784,6 +1157,7 @@ class ApiService {
     } catch (_) {}
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
+    await _storage.delete(key: _identityKey);
     onAuthStateChanged?.call(false);
   }
 }

@@ -166,6 +166,35 @@ export class ExtraService {
     };
   }
 
+  async getPublicActivities() {
+    const items = await this.extraModel
+      .find({
+        category: ExtraCategory.Activities,
+        enabled: { $ne: false },
+      })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const roots = items.filter((item) => !item.parentId);
+    return {
+      items: roots.map((root) => ({
+        id: root._id.toString(),
+        name: root.name.trim(),
+        description: root.description ?? null,
+        subcategories: items
+          .filter(
+            (item) =>
+              item.parentId?.toString() === root._id.toString(),
+          )
+          .map((item) => ({
+            id: item._id.toString(),
+            name: item.name.trim(),
+            description: item.description ?? null,
+          })),
+      })),
+    };
+  }
+
   async resolveActivitySelection(categoryName: string, subcategoryName?: string | null) {
     const requestedCategory = categoryName.trim();
     const requestedSubcategory = subcategoryName?.trim() || null;

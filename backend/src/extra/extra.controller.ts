@@ -39,6 +39,13 @@ export class ExtraController {
     return result;
   }
 
+  @Get('activities')
+  @ApiOperation({ summary: 'Get enabled activity categories and subcategories (public)' })
+  @ApiOkResponse({ description: 'Activity catalog fetched successfully' })
+  getPublicActivities() {
+    return this.extraService.getPublicActivities();
+  }
+
   // ADMIN ENDPOINTS (require auth)
   @Post()
   @ApiBearerAuth('access-token')

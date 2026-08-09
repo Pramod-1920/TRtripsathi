@@ -182,9 +182,9 @@ class _LoginScreenState extends State<LoginScreen>
                                 AutofillHints.telephoneNumber,
                               ],
                               decoration: const InputDecoration(
-                                labelText: 'Email or phone number',
-                                hintText: '9841234567 or you@example.com',
-                                prefixIcon: Icon(Icons.alternate_email_rounded),
+                                labelText: 'Phone Number',
+                                hintText: '98xxxxxxxx',
+                                prefixIcon: Icon(Icons.phone_rounded),
                               ),
                               validator: _validateIdentifier,
                             ),
@@ -233,8 +233,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   ? 'Try again in ${_cooldownSeconds}s'
                                   : 'Sign In',
                               loading: _loading,
-                              onPressed:
-                                  _cooldownSeconds > 0 ? null : _submit,
+                              onPressed: _cooldownSeconds > 0 ? null : _submit,
                             ),
                             const SizedBox(height: 22),
                             Row(
@@ -275,8 +274,8 @@ class _LoginScreenState extends State<LoginScreen>
   String? _validateIdentifier(String? rawValue) {
     final value = rawValue?.trim() ?? '';
     if (value.isEmpty) return 'Enter your email or phone number';
-    final isPhone = RegExp(r'^\d{10}$')
-        .hasMatch(ApiService.normalizePhoneNumber(value));
+    final isPhone =
+        RegExp(r'^\d{10}$').hasMatch(ApiService.normalizePhoneNumber(value));
     final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value);
     return isPhone || isEmail
         ? null
