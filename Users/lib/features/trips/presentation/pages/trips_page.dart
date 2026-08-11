@@ -8,6 +8,7 @@ import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/create_trip_wizard.dart';
+import 'package:trtripsathi_mobile/features/trips/presentation/pages/trip_details_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
 
 class TripsListScreen extends StatefulWidget {
@@ -62,6 +63,17 @@ class _TripsListScreenState extends State<TripsListScreen> {
       const SnackBar(
         content: Text('Trip changes saved.'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _openTripDetails(Map<String, dynamic> trip, {bool campaign = false}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TripDetailsScreen(
+          initialTrip: trip,
+          isCampaign: campaign,
+        ),
       ),
     );
   }
@@ -283,6 +295,7 @@ class _TripsListScreenState extends State<TripsListScreen> {
                     onEdit: _editTrip,
                     onDelete: _deleteTrip,
                     onVerify: _submitCompletionEvidence,
+                    onOpen: (trip) => _openTripDetails(trip, campaign: true),
                     loading: campaignsProvider.loading,
                   ),
                   if (tripsProvider.trips.isNotEmpty) ...[
@@ -292,7 +305,14 @@ class _TripsListScreenState extends State<TripsListScreen> {
                       subtitle: 'Journeys from the TripSathi community',
                     ),
                     const SizedBox(height: 11),
-                    ...tripsProvider.trips.map((trip) => TripCard(trip: trip)),
+                    ...tripsProvider.trips.map(
+                      (trip) => TripCard(
+                        trip: trip,
+                        onTap: () => _openTripDetails(
+                          Map<String, dynamic>.from(trip as Map),
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -321,8 +341,9 @@ class _TripsListScreenState extends State<TripsListScreen> {
 }
 
 class TripCard extends StatelessWidget {
-  const TripCard({super.key, required this.trip});
+  const TripCard({super.key, required this.trip, required this.onTap});
   final dynamic trip;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -380,9 +401,7 @@ class TripCard extends StatelessWidget {
             ),
           ),
         ),
-        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Trip details: $title')),
-        ),
+        onTap: onTap,
       ),
     );
   }
@@ -400,6 +419,7 @@ class _MyTripsPanel extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onVerify,
+    required this.onOpen,
     required this.loading,
   });
   final int selectedFilter;
@@ -412,6 +432,7 @@ class _MyTripsPanel extends StatelessWidget {
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<Map<String, dynamic>> onDelete;
   final ValueChanged<Map<String, dynamic>> onVerify;
+  final ValueChanged<Map<String, dynamic>> onOpen;
   final bool loading;
 
   @override
@@ -474,6 +495,7 @@ class _MyTripsPanel extends StatelessWidget {
                 onEdit: () => onEdit(trip),
                 onDelete: () => onDelete(trip),
                 onVerify: () => onVerify(trip),
+                onOpen: () => onOpen(trip),
               ),
             ),
         ],
@@ -552,12 +574,14 @@ class _MyTripCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onVerify,
+    required this.onOpen,
   });
   final Map<String, dynamic> campaign;
   final bool ongoing;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onVerify;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -573,138 +597,150 @@ class _MyTripCard extends StatelessWidget {
         : '';
     final date =
         DateTime.tryParse((campaign['startDate'] ?? '').toString())?.toLocal();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
         color: ongoing ? const Color(0xFF173F38) : Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: ongoing ? const Color(0xFF173F38) : AppColors.line,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: ongoing
-                  ? Colors.white.withValues(alpha: .12)
-                  : AppColors.gold.withValues(alpha: .2),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(
-              ongoing ? Icons.directions_walk_rounded : Icons.flag_outlined,
-              color: ongoing ? AppColors.gold : AppColors.navy,
-            ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(
+            color: ongoing ? const Color(0xFF173F38) : AppColors.line,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
               children: [
-                Text(
-                  (campaign['title'] ?? 'Untitled trip').toString(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: ongoing ? Colors.white : AppColors.navy,
-                    fontWeight: FontWeight.w900,
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: ongoing
+                        ? Colors.white.withValues(alpha: .12)
+                        : AppColors.gold.withValues(alpha: .2),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    ongoing
+                        ? Icons.directions_walk_rounded
+                        : Icons.flag_outlined,
+                    color: ongoing ? AppColors.gold : AppColors.navy,
                   ),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  [
-                    if (location.isNotEmpty) location,
-                    if (date != null) '${date.day}/${date.month}/${date.year}',
-                  ].join('  •  '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: ongoing ? Colors.white60 : AppColors.muted,
-                    fontSize: 11,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        (campaign['title'] ?? 'Untitled trip').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: ongoing ? Colors.white : AppColors.navy,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        [
+                          if (location.isNotEmpty) location,
+                          if (date != null)
+                            '${date.day}/${date.month}/${date.year}',
+                        ].join('  •  '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: ongoing ? Colors.white60 : AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (privateCode.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Private invite code: $privateCode',
+                          style: TextStyle(
+                            color: ongoing ? AppColors.gold : AppColors.navy,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (privateCode.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Private invite code: $privateCode',
-                    style: TextStyle(
-                      color: ongoing ? AppColors.gold : AppColors.navy,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: ongoing ? AppColors.gold : const Color(0xFFEBF2EE),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    ongoing
+                        ? 'ONGOING'
+                        : awaitingVerification
+                            ? 'VERIFY NOW'
+                            : approval == 'submitted'
+                                ? 'REVIEW'
+                                : _tripLabel(phase).toUpperCase(),
+                    style: const TextStyle(
+                      color: AppColors.navy,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(width: 3),
+                PopupMenuButton<String>(
+                  tooltip: 'Manage trip',
+                  color: Colors.white,
+                  onSelected: (action) {
+                    if (action == 'verify') onVerify();
+                    if (action == 'edit') onEdit();
+                    if (action == 'delete') onDelete();
+                  },
+                  itemBuilder: (_) => [
+                    if (awaitingVerification)
+                      const PopupMenuItem(
+                        value: 'verify',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.verified_outlined),
+                          title: Text('Upload trip evidence'),
+                        ),
+                      ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.edit_outlined),
+                        title: Text('Edit trip'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.delete_outline_rounded,
+                            color: AppColors.danger),
+                        title: Text('Delete trip'),
+                      ),
+                    ),
+                  ],
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    color: ongoing ? Colors.white70 : AppColors.muted,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-            decoration: BoxDecoration(
-              color: ongoing ? AppColors.gold : const Color(0xFFEBF2EE),
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: Text(
-              ongoing
-                  ? 'ONGOING'
-                  : awaitingVerification
-                      ? 'VERIFY NOW'
-                      : approval == 'submitted'
-                          ? 'REVIEW'
-                          : _tripLabel(phase).toUpperCase(),
-              style: const TextStyle(
-                color: AppColors.navy,
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ),
-          const SizedBox(width: 3),
-          PopupMenuButton<String>(
-            tooltip: 'Manage trip',
-            color: Colors.white,
-            onSelected: (action) {
-              if (action == 'verify') onVerify();
-              if (action == 'edit') onEdit();
-              if (action == 'delete') onDelete();
-            },
-            itemBuilder: (_) => [
-              if (awaitingVerification)
-                const PopupMenuItem(
-                  value: 'verify',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.verified_outlined),
-                    title: Text('Upload trip evidence'),
-                  ),
-                ),
-              const PopupMenuItem(
-                value: 'edit',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.edit_outlined),
-                  title: Text('Edit trip'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.delete_outline_rounded,
-                      color: AppColors.danger),
-                  title: Text('Delete trip'),
-                ),
-              ),
-            ],
-            icon: Icon(
-              Icons.more_vert_rounded,
-              color: ongoing ? Colors.white70 : AppColors.muted,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

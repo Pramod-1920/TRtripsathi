@@ -14,7 +14,27 @@ class CampaignsListScreen extends StatefulWidget {
 
 class _CampaignsListScreenState extends State<CampaignsListScreen> {
   late CampaignsProvider _campaignsProvider;
+  final TextEditingController _searchController = TextEditingController();
   String _currentUserId = '';
+  String _searchQuery = '';
+  String _difficultyFilter = 'all';
+  String _categoryFilter = 'all';
+
+  int get _activeFilterCount => [
+        _difficultyFilter,
+        _categoryFilter,
+      ].where((value) => value != 'all').length;
+
+  List<String> get _availableCategories {
+    final categories = _campaignsProvider.campaigns
+        .whereType<Map>()
+        .map((campaign) => (campaign['category'] ?? '').toString().trim())
+        .where((category) => category.isNotEmpty)
+        .toSet()
+        .toList();
+    categories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return categories;
+  }
 
   @override
   void initState() {
@@ -30,6 +50,12 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
       if (!mounted) return;
       setState(() => _currentUserId = _idOf(profile));
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -76,33 +102,180 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
               );
             }
             if (provider.campaigns.isEmpty) return const _CampaignEmpty();
+            final campaigns = provider.campaigns
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where(_matchesFilters)
+                .toList(growable: false);
             return RefreshIndicator(
               color: AppColors.navy,
               onRefresh: provider.loadCampaigns,
-              child: ListView.builder(
+              child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-                itemCount: provider.campaigns.length,
-                itemBuilder: (context, index) {
-                  final raw = provider.campaigns[index];
-                  final campaign = raw is Map
-                      ? Map<String, dynamic>.from(raw)
-                      : <String, dynamic>{};
-                  final owned = _isOwned(campaign, _currentUserId);
-                  return CampaignCard(
-                    campaign: campaign,
-                    owned: owned,
-                    onJoin: () => _joinCampaign(_idOf(campaign)),
-                  );
-                },
+                children: [
+                  _CampaignSearchBar(
+                    controller: _searchController,
+                    activeFilterCount: _activeFilterCount,
+                    onChanged: (value) =>
+                        setState(() => _searchQuery = value.trim()),
+                    onSubmitted: (value) {
+                      if (value.trim().startsWith('#')) {
+                        _findPrivateCampaign(initialCode: value);
+                      }
+                    },
+                    onFilterTap: _showFilters,
+                  ),
+                  if (_activeFilterCount > 0) ...[
+                    const SizedBox(height: 10),
+                    _ActiveCampaignFilters(
+                      difficulty: _difficultyFilter,
+                      category: _categoryFilter,
+                      onClearDifficulty: () =>
+                          setState(() => _difficultyFilter = 'all'),
+                      onClearCategory: () =>
+                          setState(() => _categoryFilter = 'all'),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  if (campaigns.isEmpty)
+                    _NoCampaignMatches(onClear: _clearSearchAndFilters)
+                  else ...[
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, bottom: 10),
+                      child: Text(
+                        '${campaigns.length} campaign${campaigns.length == 1 ? '' : 's'} found',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    ...campaigns.map((campaign) {
+                      final owned = _isOwned(campaign, _currentUserId);
+                      return CampaignCard(
+                        campaign: campaign,
+                        owned: owned,
+                        onJoin: () => _joinCampaign(_idOf(campaign)),
+                      );
+                    }),
+                  ],
+                ],
               ),
             );
           },
         ),
       );
 
-  Future<void> _findPrivateCampaign() async {
-    final controller = TextEditingController();
+  bool _matchesFilters(Map<String, dynamic> campaign) {
+    final query = _searchQuery.toLowerCase();
+    final searchable = [
+      campaign['title'],
+      campaign['description'],
+      campaign['placeName'],
+      campaign['district'],
+      campaign['province'],
+      campaign['category'],
+      campaign['campaignCode'],
+    ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+    if (query.isNotEmpty && !searchable.contains(query)) return false;
+    if (_difficultyFilter != 'all' &&
+        (campaign['difficulty'] ?? '').toString().toLowerCase() !=
+            _difficultyFilter) {
+      return false;
+    }
+    if (_categoryFilter != 'all' &&
+        (campaign['category'] ?? '').toString().toLowerCase() !=
+            _categoryFilter) {
+      return false;
+    }
+    return true;
+  }
+
+  void _clearSearchAndFilters() => setState(() {
+        _searchController.clear();
+        _searchQuery = '';
+        _difficultyFilter = 'all';
+        _categoryFilter = 'all';
+      });
+
+  Future<void> _showFilters() async {
+    var difficulty = _difficultyFilter;
+    var category = _categoryFilter;
+    final categoryChoices = <String, String>{
+      'all': 'Any',
+      for (final item in _availableCategories) item.toLowerCase(): item,
+    };
+    final apply = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Filter campaigns',
+                    style:
+                        TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 20),
+                _FilterChoices(
+                  label: 'Difficulty',
+                  value: difficulty,
+                  choices: const {
+                    'all': 'Any',
+                    'easy': 'Easy',
+                    'moderate': 'Moderate',
+                    'difficult': 'Difficult',
+                    'expert': 'Expert',
+                  },
+                  onChanged: (value) => updateSheet(() => difficulty = value),
+                ),
+                const SizedBox(height: 18),
+                _FilterChoices(
+                  label: 'Category',
+                  value: category,
+                  choices: categoryChoices,
+                  onChanged: (value) => updateSheet(() => category = value),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => updateSheet(() {
+                        difficulty = 'all';
+                        category = 'all';
+                      }),
+                      child: const Text('Reset'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        child: const Text('Show campaigns'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (apply != true || !mounted) return;
+    setState(() {
+      _difficultyFilter = difficulty;
+      _categoryFilter = category;
+    });
+  }
+
+  Future<void> _findPrivateCampaign({String initialCode = ''}) async {
+    final controller = TextEditingController(text: initialCode);
     final code = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -196,6 +369,184 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
       );
     }
   }
+}
+
+class _CampaignSearchBar extends StatelessWidget {
+  const _CampaignSearchBar({
+    required this.controller,
+    required this.activeFilterCount,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onFilterTap,
+  });
+
+  final TextEditingController controller;
+  final int activeFilterCount;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onFilterTap;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              onSubmitted: onSubmitted,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: 'Search destination or campaign',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: controller.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          controller.clear();
+                          onChanged('');
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppColors.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppColors.line),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Badge(
+            isLabelVisible: activeFilterCount > 0,
+            label: Text('$activeFilterCount'),
+            child: IconButton.filledTonal(
+              tooltip: 'Filter campaigns',
+              onPressed: onFilterTap,
+              icon: const Icon(Icons.tune_rounded),
+              style: IconButton.styleFrom(
+                minimumSize: const Size(52, 52),
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.navy,
+                side: const BorderSide(color: AppColors.line),
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+class _ActiveCampaignFilters extends StatelessWidget {
+  const _ActiveCampaignFilters({
+    required this.difficulty,
+    required this.category,
+    required this.onClearDifficulty,
+    required this.onClearCategory,
+  });
+
+  final String difficulty;
+  final String category;
+  final VoidCallback onClearDifficulty;
+  final VoidCallback onClearCategory;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 7,
+        runSpacing: 7,
+        children: [
+          if (difficulty != 'all')
+            InputChip(
+              label: Text(_campaignLabel(difficulty)),
+              onDeleted: onClearDifficulty,
+            ),
+          if (category != 'all')
+            InputChip(
+              label: Text(_campaignLabel(category)),
+              onDeleted: onClearCategory,
+            ),
+        ],
+      );
+}
+
+class _FilterChoices extends StatelessWidget {
+  const _FilterChoices({
+    required this.label,
+    required this.value,
+    required this.choices,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final Map<String, String> choices;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  color: AppColors.navy, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: choices.entries
+                .map(
+                  (choice) => ChoiceChip(
+                    label: Text(choice.value),
+                    selected: value == choice.key,
+                    onSelected: (_) => onChanged(choice.key),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+      );
+}
+
+class _NoCampaignMatches extends StatelessWidget {
+  const _NoCampaignMatches({required this.onClear});
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
+        child: Column(
+          children: [
+            const Icon(Icons.search_off_rounded,
+                size: 48, color: AppColors.muted),
+            const SizedBox(height: 14),
+            const Text(
+              'No matching campaigns',
+              style: TextStyle(
+                color: AppColors.navy,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Try a different destination or remove some filters.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.muted),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: onClear,
+              child: const Text('Clear search and filters'),
+            ),
+          ],
+        ),
+      );
 }
 
 class CampaignCard extends StatelessWidget {
