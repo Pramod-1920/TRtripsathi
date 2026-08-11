@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
+import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
-import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
+import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/chat/presentation/pages/chat_page.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/profile_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/trips_page.dart';
+import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
+import 'package:provider/provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -39,9 +40,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       selectedIcon: Icons.chat_bubble_rounded,
     ),
     _NavigationDestination(
-      label: 'Profile',
-      icon: Icons.person_outline_rounded,
-      selectedIcon: Icons.person_rounded,
+      label: 'Map',
+      icon: Icons.map_outlined,
+      selectedIcon: Icons.map_rounded,
     ),
   ];
 
@@ -58,6 +59,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       duration: const Duration(milliseconds: 260),
       value: 1,
     );
+    // Start trip data in the background while the user is on Home so the
+    // Trips tab is usually ready by the time it is opened.
+    context.read<TripsProvider>().loadTrips();
+    context.read<CampaignsProvider>().loadCampaigns();
   }
 
   void _resetPageSlots() {
@@ -89,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       1 => const TripsListScreen(),
       2 => const CampaignsListScreen(),
       3 => const ChatInboxScreen(),
-      4 => const ProfileScreen(),
+      4 => const _MapPlaceholderScreen(),
       _ => _HomeTab(onSelectPage: _selectPage),
     };
 
@@ -130,27 +135,118 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
-class _HomeTab extends StatelessWidget {
+class _HomeTab extends StatefulWidget {
   const _HomeTab({required this.onSelectPage});
 
   final ValueChanged<int> onSelectPage;
 
   @override
+  State<_HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<_HomeTab> {
+  Map<String, dynamic>? _profile = ApiService.cachedProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefetchProfile();
+  }
+
+  Future<void> _prefetchProfile() async {
+    try {
+      final profile = await ApiService.getProfile(
+        forceRefresh: _profile != null,
+      );
+      if (mounted) setState(() => _profile = profile);
+    } catch (_) {}
+  }
+
+  void _openProfile() {
+    Navigator.of(context)
+        .push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileScreen(initialProfile: _profile),
+      ),
+    )
+        .then((_) {
+      if (!mounted) return;
+      final cached = ApiService.cachedProfile;
+      if (cached != null) setState(() => _profile = cached);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
+    final photoUrl = (_profile?['profilePhoto'] ?? '').toString().trim();
+    final rankCode =
+        (_profile?['experienceLevel'] ?? 'F').toString().trim().toUpperCase();
+    final rankProgress = _rankProgressValue(_profile);
+    final rankColor = _rankGaugeColor(rankCode);
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 68,
         title: const Text('Trip Sathi'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final navigator = Navigator.of(context);
-              await auth.signOut();
-              if (!context.mounted) return;
-              navigator.pushReplacementNamed(RouteNames.login);
-            },
+          Semantics(
+            button: true,
+            label: 'Open profile, rank $rankCode',
+            child: InkWell(
+              onTap: _openProfile,
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(9, 5, 13, 5),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox.square(
+                      dimension: 40,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CircularProgressIndicator(
+                            value: rankProgress,
+                            strokeWidth: 3,
+                            strokeCap: StrokeCap.round,
+                            backgroundColor: AppColors.line,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(rankColor),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: CircleAvatar(
+                              backgroundColor:
+                                  AppColors.gold.withValues(alpha: .2),
+                              backgroundImage: photoUrl.isEmpty
+                                  ? null
+                                  : NetworkImage(photoUrl),
+                              child: photoUrl.isEmpty
+                                  ? const Icon(
+                                      Icons.person_rounded,
+                                      size: 20,
+                                      color: AppColors.navy,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Rank $rankCode',
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontSize: 9,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -160,7 +256,7 @@ class _HomeTab extends StatelessWidget {
           _HeroCard(
             title: 'Plan your next adventure',
             subtitle: 'Trips, campaigns, and community—right here.',
-            onTap: () => onSelectPage(1),
+            onTap: () => widget.onSelectPage(1),
           ),
           const SizedBox(height: 16),
           Text(
@@ -174,7 +270,7 @@ class _HomeTab extends StatelessWidget {
                 child: _QuickAction(
                   icon: Icons.person,
                   label: 'Profile',
-                  onTap: () => onSelectPage(4),
+                  onTap: _openProfile,
                 ),
               ),
               const SizedBox(width: 12),
@@ -182,7 +278,7 @@ class _HomeTab extends StatelessWidget {
                 child: _QuickAction(
                   icon: Icons.travel_explore,
                   label: 'Trips',
-                  onTap: () => onSelectPage(1),
+                  onTap: () => widget.onSelectPage(1),
                 ),
               ),
             ],
@@ -194,7 +290,7 @@ class _HomeTab extends StatelessWidget {
                 child: _QuickAction(
                   icon: Icons.campaign,
                   label: 'Campaigns',
-                  onTap: () => onSelectPage(2),
+                  onTap: () => widget.onSelectPage(2),
                 ),
               ),
               const SizedBox(width: 12),
@@ -242,6 +338,69 @@ class _HomeTab extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MapPlaceholderScreen extends StatelessWidget {
+  const _MapPlaceholderScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Map'),
+              Text(
+                'Explore trips by location',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: .2),
+                    borderRadius: BorderRadius.circular(26),
+                  ),
+                  child: const Icon(
+                    Icons.map_rounded,
+                    color: AppColors.navy,
+                    size: 42,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Interactive map coming soon',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: AppColors.navy,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'This tab will show nearby trips, campaign destinations, and places you have visited.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _HomeBottomNavigationBar extends StatelessWidget {
@@ -528,3 +687,28 @@ class _QuickAction extends StatelessWidget {
     );
   }
 }
+
+double _rankProgressValue(Map<String, dynamic>? profile) {
+  final progress = profile?['nextRankProgress'];
+  if (progress is! Map) return 0;
+  if (progress['nextRankHidden'] == true) return 1;
+
+  final percentage = progress['progressPercentage'];
+  if (percentage is! num) return 0;
+  return (percentage / 100).clamp(0.0, 1.0).toDouble();
+}
+
+Color _rankGaugeColor(String rankCode) => switch (rankCode.toUpperCase()) {
+      'F' => const Color(0xFF78909C),
+      'E' => const Color(0xFF43A047),
+      'D' => const Color(0xFF00897B),
+      'C' => const Color(0xFF1E88E5),
+      'B' => const Color(0xFF7E57C2),
+      'A' => const Color(0xFFFFB300),
+      'S' => const Color(0xFFEF5350),
+      'SS' => const Color(0xFFEC407A),
+      'SSS' => const Color(0xFF26C6DA),
+      'MYTHIC' => const Color(0xFFAB47BC),
+      'HEROIC' => const Color(0xFFFF6D00),
+      _ => AppColors.gold,
+    };

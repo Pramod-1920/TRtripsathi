@@ -25,9 +25,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>TripSathi uses your selected photo to create your traveler profile.</string>
+	<string>TripSathi uses selected photos and videos for your profile and trip-completion evidence.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>TripSathi uses the camera when you choose to take a new profile photo.</string>
+	<string>TripSathi uses the camera when you take a profile photo or trip-completion evidence.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

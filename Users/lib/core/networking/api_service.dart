@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -16,6 +17,11 @@ class ApiRateLimitException implements Exception {
 
 class ApiService {
   static late String baseUrl;
+  static Map<String, dynamic>? _cachedProfile;
+
+  static Map<String, dynamic>? get cachedProfile => _cachedProfile == null
+      ? null
+      : Map<String, dynamic>.from(_cachedProfile!);
 
   static void configure({String? overrideUrl}) {
     const definedUrl = String.fromEnvironment('BACKEND_URL');
@@ -231,6 +237,7 @@ class ApiService {
   static Future<Map<String, dynamic>> _uploadProfileImageToCloudinary(
     File image, {
     String folder = 'profile_images',
+    String resourceType = 'image',
   }) async {
     final sig = await _getCloudinarySignature(folder: folder);
     final cloudName = (sig['cloudName'] ?? '').toString();
@@ -246,8 +253,9 @@ class ApiService {
       throw Exception('Invalid upload signature response');
     }
 
-    final uploadUri =
-        Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload');
+    final uploadUri = Uri.parse(
+      'https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload',
+    );
     final req = http.MultipartRequest('POST', uploadUri);
     req.fields['api_key'] = apiKey;
     req.fields['timestamp'] = timestamp;
@@ -289,6 +297,27 @@ class ApiService {
       throw Exception('Campaign image upload did not return a secure URL');
     }
     return {'url': secureUrl, 'publicId': publicId};
+  }
+
+  static Future<Map<String, String>> uploadCampaignEvidence(
+    File file, {
+    required String mediaType,
+  }) async {
+    if (mediaType != 'image' && mediaType != 'video') {
+      throw ArgumentError.value(
+          mediaType, 'mediaType', 'Must be image or video');
+    }
+    final upload = await _uploadProfileImageToCloudinary(
+      file,
+      folder: 'campaign_verification',
+      resourceType: mediaType,
+    );
+    final secureUrl = (upload['secure_url'] ?? '').toString();
+    final publicId = (upload['public_id'] ?? '').toString();
+    if (secureUrl.isEmpty) {
+      throw Exception('Evidence upload did not return a secure URL');
+    }
+    return {'url': secureUrl, 'publicId': publicId, 'mediaType': mediaType};
   }
 
   /// POST /auth/login - Login with email/phone and password
@@ -346,7 +375,12 @@ class ApiService {
   // ============ User Endpoints ============
 
   /// GET /user/profile - Get own profile
-  static Future<Map<String, dynamic>> getProfile() async {
+  static Future<Map<String, dynamic>> getProfile({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _cachedProfile != null) {
+      return Map<String, dynamic>.from(_cachedProfile!);
+    }
     final uri = Uri.parse('$baseUrl/user/profile');
     final res = await _getWithAuth(uri);
     if (res.statusCode == 200) {
@@ -354,24 +388,32 @@ class ApiService {
         jsonDecode(res.body) as Map<String, dynamic>,
       );
 
-      // Some deployed versions keep contact details only on the auth record.
-      // Merge them for display without making profile loading depend on this
-      // secondary compatibility endpoint.
-      try {
-        final authResponse = await _getWithAuth(Uri.parse('$baseUrl/auth/me'));
-        if (authResponse.statusCode == 200) {
-          final authData = _normalizeProfileResponse(
-            jsonDecode(authResponse.body) as Map<String, dynamic>,
-          );
-          _fillMissingIdentity(profile, authData);
-        }
-      } catch (_) {}
-
       _fillMissingIdentity(profile, await _readCachedAccountIdentity());
+      _cachedProfile = Map<String, dynamic>.from(profile);
       await _cacheAccountIdentity(profile);
-      return profile;
+
+      // Older servers may keep contact identity only under /auth/me. That
+      // compatibility request must not delay rendering the profile screen.
+      unawaited(_mergeAuthIdentityIntoProfileCache(profile));
+      return Map<String, dynamic>.from(profile);
     }
     throw Exception(_errorMessage(res, 'Unable to load profile'));
+  }
+
+  static Future<void> _mergeAuthIdentityIntoProfileCache(
+    Map<String, dynamic> profile,
+  ) async {
+    try {
+      final authResponse = await _getWithAuth(Uri.parse('$baseUrl/auth/me'));
+      if (authResponse.statusCode != 200) return;
+      final merged = Map<String, dynamic>.from(profile);
+      final authData = _normalizeProfileResponse(
+        jsonDecode(authResponse.body) as Map<String, dynamic>,
+      );
+      _fillMissingIdentity(merged, authData);
+      _cachedProfile = merged;
+      await _cacheAccountIdentity(merged);
+    } catch (_) {}
   }
 
   /// Update profile - PATCH /user/profile
@@ -381,7 +423,11 @@ class ApiService {
     final normalizedUpdates = _normalizeProfileUpdate(updates);
     var res = await _patchWithAuth(uri, body: jsonEncode(normalizedUpdates));
 
-    if (res.statusCode == 200) return _readUpdatedProfile(res);
+    if (res.statusCode == 200) {
+      final updated = await _readUpdatedProfile(res);
+      _cachedProfile = Map<String, dynamic>.from(updated);
+      return updated;
+    }
 
     // Compatibility for older deployed APIs that validate PATCH requests like
     // full profile replacements. Preserve every existing field, normalize all
@@ -467,6 +513,7 @@ class ApiService {
     final updated = _normalizeProfileResponse(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
+    _cachedProfile = Map<String, dynamic>.from(updated);
     await _cacheAccountIdentity(updated);
     return updated;
   }
@@ -999,10 +1046,52 @@ class ApiService {
     throw Exception('Failed to load campaign: HTTP ${res.statusCode}');
   }
 
+  static Future<Map<String, dynamic>> getPrivateCampaignByCode(
+    String code,
+  ) async {
+    final normalized = code.trim().toUpperCase();
+    final encoded = Uri.encodeComponent(
+      normalized.startsWith('#') ? normalized : '#$normalized',
+    );
+    final res = await _getWithAuth(
+      Uri.parse('$baseUrl/campaigns/code/$encoded'),
+    );
+    if (res.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Private campaign not found'));
+  }
+
+  /// Uploading evidence within the 24-hour window automatically verifies the
+  /// completed campaign and lets the backend award XP.
+  static Future<Map<String, dynamic>> verifyCampaignCompletion(
+    String campaignId,
+    Map<String, String> evidence,
+  ) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/campaigns/$campaignId/verify'),
+      body: jsonEncode({
+        'url': evidence['url'],
+        'publicId': evidence['publicId'],
+        'mediaType': evidence['mediaType'],
+      }),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Unable to verify trip completion'));
+  }
+
   /// POST /campaigns/{id}/join - Join a campaign
-  static Future<Map<String, dynamic>> joinCampaign(String campaignId) async {
+  static Future<Map<String, dynamic>> joinCampaign(
+    String campaignId, {
+    String? code,
+  }) async {
     final uri = Uri.parse('$baseUrl/campaigns/$campaignId/join');
-    final res = await _postWithAuth(uri, body: jsonEncode({}));
+    final res = await _postWithAuth(
+      uri,
+      body: jsonEncode({if (code != null) 'code': code}),
+    );
 
     if (res.statusCode == 200 || res.statusCode == 201) {
       return jsonDecode(res.body) as Map<String, dynamic>;
@@ -1044,11 +1133,10 @@ class ApiService {
         res.statusCode == 401 ||
         res.statusCode == 403 ||
         res.statusCode == 404) {
-      final campaignResponse = await http.get(
+      final campaignResponse = await _getWithAuth(
         Uri.parse('$baseUrl/campaigns').replace(
           queryParameters: {'page': '1', 'limit': '100'},
         ),
-        headers: {'Content-Type': 'application/json'},
       );
       if (campaignResponse.statusCode == 200) {
         final body = jsonDecode(campaignResponse.body) as Map<String, dynamic>;
@@ -1197,6 +1285,7 @@ class ApiService {
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
     await _storage.delete(key: _identityKey);
+    _cachedProfile = null;
     onAuthStateChanged?.call(false);
     return false;
   }
@@ -1213,6 +1302,7 @@ class ApiService {
     await _storage.delete(key: _accessKey);
     await _storage.delete(key: _refreshKey);
     await _storage.delete(key: _identityKey);
+    _cachedProfile = null;
     onAuthStateChanged?.call(false);
   }
 }

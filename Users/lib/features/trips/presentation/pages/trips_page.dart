@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
@@ -24,8 +27,8 @@ class _TripsListScreenState extends State<TripsListScreen> {
     super.initState();
     _tripsProvider = context.read<TripsProvider>();
     _campaignsProvider = context.read<CampaignsProvider>();
-    _tripsProvider.loadTrips();
-    _campaignsProvider.loadCampaigns();
+    if (!_tripsProvider.hasLoaded) _tripsProvider.loadTrips();
+    if (!_campaignsProvider.hasLoaded) _campaignsProvider.loadCampaigns();
   }
 
   Future<void> _openCreateTrip() async {
@@ -34,9 +37,15 @@ class _TripsListScreenState extends State<TripsListScreen> {
     );
     if (created == null || !mounted) return;
     final title = (created['title'] ?? 'Your trip').toString();
+    final isPrivate = created['visibility'] == 'private';
+    final code = (created['campaignCode'] ?? '').toString();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$title was published to Campaigns.'),
+        content: Text(
+          isPrivate
+              ? '$title is private. Share code $code to invite travelers.'
+              : '$title was published to Campaigns.',
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -99,6 +108,115 @@ class _TripsListScreenState extends State<TripsListScreen> {
     }
   }
 
+  Future<void> _submitCompletionEvidence(
+    Map<String, dynamic> campaign,
+  ) async {
+    final choice = await showModalBottomSheet<_EvidenceChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Verify your trip',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Upload one photo or video before the 24-hour deadline. Valid evidence completes the trip and awards XP automatically.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              const SizedBox(height: 14),
+              ListTile(
+                leading: const Icon(Icons.add_a_photo_outlined),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  const _EvidenceChoice('image', ImageSource.camera),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose a photo'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  const _EvidenceChoice('image', ImageSource.gallery),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.video_library_outlined),
+                title: const Text('Choose a video'),
+                onTap: () => Navigator.pop(
+                  sheetContext,
+                  const _EvidenceChoice('video', ImageSource.gallery),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    var progressDialogShown = false;
+    try {
+      final picker = ImagePicker();
+      final picked = choice.mediaType == 'video'
+          ? await picker.pickVideo(
+              source: choice.source,
+              maxDuration: const Duration(minutes: 2),
+            )
+          : await picker.pickImage(
+              source: choice.source,
+              imageQuality: 85,
+              maxWidth: 2048,
+            );
+      if (picked == null || !mounted) return;
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 18),
+              Expanded(child: Text('Uploading and verifying evidence...')),
+            ],
+          ),
+        ),
+      );
+      progressDialogShown = true;
+
+      final evidence = await ApiService.uploadCampaignEvidence(
+        File(picked.path),
+        mediaType: choice.mediaType,
+      );
+      final campaignId = (campaign['_id'] ?? campaign['id'] ?? '').toString();
+      await _campaignsProvider.verifyOwnedCampaign(campaignId, evidence);
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Trip verified. Your XP was awarded automatically.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      if (progressDialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ApiService.readableError(error))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: const Color(0xFFF6F7F3),
@@ -120,11 +238,12 @@ class _TripsListScreenState extends State<TripsListScreen> {
         ),
         body: Consumer2<TripsProvider, CampaignsProvider>(
           builder: (context, tripsProvider, campaignsProvider, _) {
-            final myTrips = _myTripsFilter == 0
-                ? campaignsProvider.openCreatedCampaigns
-                : campaignsProvider.ongoingCreatedCampaigns;
-            if (tripsProvider.loading &&
-                campaignsProvider.loading &&
+            final myTrips = switch (_myTripsFilter) {
+              0 => campaignsProvider.openCreatedCampaigns,
+              1 => campaignsProvider.ongoingCreatedCampaigns,
+              _ => campaignsProvider.expiredCreatedCampaigns,
+            };
+            if ((tripsProvider.loading || campaignsProvider.loading) &&
                 tripsProvider.trips.isEmpty &&
                 myTrips.isEmpty) {
               return const _TripsLoading();
@@ -155,12 +274,16 @@ class _TripsListScreenState extends State<TripsListScreen> {
                     openCount: campaignsProvider.openCreatedCampaigns.length,
                     ongoingCount:
                         campaignsProvider.ongoingCreatedCampaigns.length,
+                    finishedCount:
+                        campaignsProvider.expiredCreatedCampaigns.length,
                     trips: myTrips,
                     onFilterChanged: (value) =>
                         setState(() => _myTripsFilter = value),
                     onCreate: _openCreateTrip,
                     onEdit: _editTrip,
                     onDelete: _deleteTrip,
+                    onVerify: _submitCompletionEvidence,
+                    loading: campaignsProvider.loading,
                   ),
                   if (tripsProvider.trips.isNotEmpty) ...[
                     const SizedBox(height: 24),
@@ -270,20 +393,26 @@ class _MyTripsPanel extends StatelessWidget {
     required this.selectedFilter,
     required this.openCount,
     required this.ongoingCount,
+    required this.finishedCount,
     required this.trips,
     required this.onFilterChanged,
     required this.onCreate,
     required this.onEdit,
     required this.onDelete,
+    required this.onVerify,
+    required this.loading,
   });
   final int selectedFilter;
   final int openCount;
   final int ongoingCount;
+  final int finishedCount;
   final List<Map<String, dynamic>> trips;
   final ValueChanged<int> onFilterChanged;
   final VoidCallback onCreate;
   final ValueChanged<Map<String, dynamic>> onEdit;
   final ValueChanged<Map<String, dynamic>> onDelete;
+  final ValueChanged<Map<String, dynamic>> onVerify;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -318,11 +447,21 @@ class _MyTripsPanel extends StatelessWidget {
                     onTap: () => onFilterChanged(1),
                   ),
                 ),
+                Expanded(
+                  child: _TripFilter(
+                    label: 'Finished',
+                    count: finishedCount,
+                    selected: selectedFilter == 2,
+                    onTap: () => onFilterChanged(2),
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 11),
-          if (trips.isEmpty)
+          if (loading && trips.isEmpty)
+            const _MyTripsLoadingCard()
+          else if (trips.isEmpty)
             _MyTripsEmpty(
               ongoing: selectedFilter == 1,
               onCreate: onCreate,
@@ -334,6 +473,7 @@ class _MyTripsPanel extends StatelessWidget {
                 ongoing: selectedFilter == 1,
                 onEdit: () => onEdit(trip),
                 onDelete: () => onDelete(trip),
+                onVerify: () => onVerify(trip),
               ),
             ),
         ],
@@ -411,11 +551,13 @@ class _MyTripCard extends StatelessWidget {
     required this.ongoing,
     required this.onEdit,
     required this.onDelete,
+    required this.onVerify,
   });
   final Map<String, dynamic> campaign;
   final bool ongoing;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onVerify;
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +567,10 @@ class _MyTripCard extends StatelessWidget {
         .join(', ');
     final approval = (campaign['approvalStatus'] ?? '').toString();
     final phase = (campaign['lifecyclePhase'] ?? 'draft').toString();
+    final awaitingVerification = campaign['awaitingVerification'] == true;
+    final privateCode = campaign['visibility'] == 'private'
+        ? (campaign['campaignCode'] ?? '').toString()
+        : '';
     final date =
         DateTime.tryParse((campaign['startDate'] ?? '').toString())?.toLocal();
     return Container(
@@ -480,6 +626,17 @@ class _MyTripCard extends StatelessWidget {
                     fontSize: 11,
                   ),
                 ),
+                if (privateCode.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Private invite code: $privateCode',
+                    style: TextStyle(
+                      color: ongoing ? AppColors.gold : AppColors.navy,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -493,9 +650,11 @@ class _MyTripCard extends StatelessWidget {
             child: Text(
               ongoing
                   ? 'ONGOING'
-                  : approval == 'submitted'
-                      ? 'REVIEW'
-                      : _tripLabel(phase).toUpperCase(),
+                  : awaitingVerification
+                      ? 'VERIFY NOW'
+                      : approval == 'submitted'
+                          ? 'REVIEW'
+                          : _tripLabel(phase).toUpperCase(),
               style: const TextStyle(
                 color: AppColors.navy,
                 fontSize: 9,
@@ -508,11 +667,21 @@ class _MyTripCard extends StatelessWidget {
             tooltip: 'Manage trip',
             color: Colors.white,
             onSelected: (action) {
+              if (action == 'verify') onVerify();
               if (action == 'edit') onEdit();
               if (action == 'delete') onDelete();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              if (awaitingVerification)
+                const PopupMenuItem(
+                  value: 'verify',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.verified_outlined),
+                    title: Text('Upload trip evidence'),
+                  ),
+                ),
+              const PopupMenuItem(
                 value: 'edit',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -539,6 +708,13 @@ class _MyTripCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EvidenceChoice {
+  const _EvidenceChoice(this.mediaType, this.source);
+
+  final String mediaType;
+  final ImageSource source;
 }
 
 class _MyTripsEmpty extends StatelessWidget {
@@ -683,23 +859,125 @@ class _TripsError extends StatelessWidget {
       );
 }
 
-class _TripsLoading extends StatelessWidget {
+class _TripsLoading extends StatefulWidget {
   const _TripsLoading();
 
   @override
-  Widget build(BuildContext context) => ListView.builder(
-        padding: const EdgeInsets.all(14),
-        itemCount: 5,
-        itemBuilder: (_, __) => Container(
-          height: 82,
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.line),
+  State<_TripsLoading> createState() => _TripsLoadingState();
+}
+
+class _TripsLoadingState extends State<_TripsLoading>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1250),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: 'Loading trips',
+        child: ExcludeSemantics(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) => ListView(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+              children: [
+                _SkeletonLine(animation: _controller.value, width: 92),
+                const SizedBox(height: 7),
+                _SkeletonLine(animation: _controller.value, width: 210),
+                const SizedBox(height: 14),
+                _SkeletonBox(animation: _controller.value, height: 48),
+                const SizedBox(height: 11),
+                _MyTripsLoadingCard(animation: _controller.value),
+                const SizedBox(height: 24),
+                _SkeletonLine(animation: _controller.value, width: 128),
+                const SizedBox(height: 7),
+                _SkeletonLine(animation: _controller.value, width: 230),
+                const SizedBox(height: 14),
+                for (var index = 0; index < 3; index++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _SkeletonBox(
+                      animation: _controller.value,
+                      height: 82,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       );
+}
+
+class _MyTripsLoadingCard extends StatelessWidget {
+  const _MyTripsLoadingCard({this.animation = .35});
+  final double animation;
+
+  @override
+  Widget build(BuildContext context) => _SkeletonBox(
+        animation: animation,
+        height: 82,
+      );
+}
+
+class _SkeletonLine extends StatelessWidget {
+  const _SkeletonLine({required this.animation, required this.width});
+  final double animation;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: _SkeletonBox(
+          animation: animation,
+          width: width,
+          height: 12,
+          radius: 7,
+        ),
+      );
+}
+
+class _SkeletonBox extends StatelessWidget {
+  const _SkeletonBox({
+    required this.animation,
+    this.width = double.infinity,
+    required this.height,
+    this.radius = 22,
+  });
+  final double animation;
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final highlight = -1.5 + (animation * 3);
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.line.withValues(alpha: .7)),
+        gradient: LinearGradient(
+          begin: Alignment(highlight - 1, 0),
+          end: Alignment(highlight + 1, 0),
+          colors: const [
+            Color(0xFFE9ECE7),
+            Color(0xFFF7F8F5),
+            Color(0xFFE9ECE7),
+          ],
+          stops: const [0, .5, 1],
+        ),
+      ),
+    );
+  }
 }
 
 String _tripLabel(dynamic value) => (value ?? 'Unknown')

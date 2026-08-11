@@ -32,10 +32,18 @@ export class CampaignPhoto {
   url!: string;
   publicId?: string | null;
   caption?: string | null;
+  mediaType?: 'image' | 'video';
 }
 
-export type CampaignApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
-export type CampaignAdminVerificationStatus = 'pending' | 'approved' | 'rejected';
+export type CampaignApprovalStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'rejected';
+export type CampaignAdminVerificationStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected';
 
 @Schema({ timestamps: true })
 export class Campaign {
@@ -72,7 +80,12 @@ export class Campaign {
   @Prop({ type: String, default: null })
   subcategory?: string | null;
 
-  @Prop({ type: String, enum: ['solo', 'group'], required: true, default: 'group' })
+  @Prop({
+    type: String,
+    enum: ['solo', 'group'],
+    required: true,
+    default: 'group',
+  })
   hikeType!: 'solo' | 'group';
 
   @Prop({ type: Number, default: 1 })
@@ -104,7 +117,32 @@ export class Campaign {
 
   @Prop({
     type: String,
-    enum: ['draft', 'open', 'planning', 'verification', 'ready', 'started', 'completed', 'cancelled'],
+    enum: ['all', 'male', 'female'],
+    default: 'all',
+    index: true,
+  })
+  genderVisibility!: 'all' | 'male' | 'female';
+
+  @Prop({
+    type: String,
+    enum: ['public', 'private'],
+    default: 'public',
+    index: true,
+  })
+  visibility!: 'public' | 'private';
+
+  @Prop({
+    type: String,
+    enum: [
+      'draft',
+      'open',
+      'planning',
+      'verification',
+      'ready',
+      'started',
+      'completed',
+      'cancelled',
+    ],
     default: 'draft',
     index: true,
   })
@@ -232,7 +270,11 @@ export class Campaign {
 
   @Prop({
     type: {
-      status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+      },
       reviewedBy: Types.ObjectId,
       reviewedAt: Date,
       rejectionReason: String,
@@ -261,6 +303,7 @@ export class Campaign {
         url: String,
         publicId: String,
         caption: String,
+        mediaType: { type: String, enum: ['image', 'video'], default: 'image' },
       },
     ],
     default: [],
@@ -282,6 +325,7 @@ export class Campaign {
         url: String,
         publicId: String,
         caption: String,
+        mediaType: { type: String, enum: ['image', 'video'], default: 'image' },
       },
     ],
     default: [],
@@ -303,7 +347,12 @@ export class Campaign {
   @Prop({ type: Date, default: null })
   failedAt?: Date | null;
 
-  @Prop({ type: String, enum: ['draft', 'submitted', 'approved', 'rejected'], default: 'draft', index: true })
+  @Prop({
+    type: String,
+    enum: ['draft', 'submitted', 'approved', 'rejected'],
+    default: 'draft',
+    index: true,
+  })
   approvalStatus!: CampaignApprovalStatus;
 
   @Prop({ type: Date, default: null })

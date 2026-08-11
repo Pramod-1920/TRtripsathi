@@ -19,7 +19,9 @@ const _profileMuted = Color(0xFF68746F);
 const _profileLine = Color(0xFFE4E5DF);
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.initialProfile});
+
+  final Map<String, dynamic>? initialProfile;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -35,7 +37,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final initial = widget.initialProfile ?? ApiService.cachedProfile;
+    if (initial != null && initial.isNotEmpty) {
+      _data = Map<String, dynamic>.from(initial);
+      _loading = false;
+      _load(showLoader: false, forceRefresh: true);
+    } else {
+      _load(forceRefresh: true);
+    }
     _loadPreferences();
   }
 
@@ -48,7 +57,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _load({bool showLoader = true}) async {
+  Future<void> _load({
+    bool showLoader = true,
+    bool forceRefresh = true,
+  }) async {
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -57,7 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     try {
-      final profile = await ApiService.getProfile();
+      final profile = await ApiService.getProfile(forceRefresh: forceRefresh);
       if (!mounted) return;
       setState(() {
         _data = profile;
@@ -590,6 +602,8 @@ class _ProfileHeader extends StatelessWidget {
     final level = _asInt(profile['level'], fallback: 1);
     final totalXp = _asInt(profile['totalXp']);
     final badgeCount = _asInt(profile['badgeCount']);
+    final rankProgress = _profileRankProgress(profile);
+    final rankColor = _profileRankGaugeColor(rankCode);
 
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -630,29 +644,39 @@ class _ProfileHeader extends StatelessWidget {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            Container(
-                              width: 86,
-                              height: 86,
-                              padding: const EdgeInsets.all(3),
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                              ),
-                              child: CircleAvatar(
-                                backgroundColor: const Color(0xFFE5EFEA),
-                                backgroundImage: photoUrl.isEmpty
-                                    ? null
-                                    : NetworkImage(photoUrl),
-                                child: photoUrl.isEmpty
-                                    ? Text(
-                                        initials,
-                                        style: const TextStyle(
-                                          color: _profileForest,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      )
-                                    : null,
+                            SizedBox.square(
+                              dimension: 90,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CircularProgressIndicator(
+                                    value: rankProgress,
+                                    strokeWidth: 5,
+                                    strokeCap: StrokeCap.round,
+                                    backgroundColor:
+                                        Colors.white.withValues(alpha: .22),
+                                    color: rankColor,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(7),
+                                    child: CircleAvatar(
+                                      backgroundColor: const Color(0xFFE5EFEA),
+                                      backgroundImage: photoUrl.isEmpty
+                                          ? null
+                                          : NetworkImage(photoUrl),
+                                      child: photoUrl.isEmpty
+                                          ? Text(
+                                              initials,
+                                              style: const TextStyle(
+                                                color: _profileForest,
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             Positioned(
@@ -2298,6 +2322,32 @@ int _asInt(dynamic value, {int fallback = 0}) {
   if (value is num) return value.round();
   return int.tryParse((value ?? '').toString()) ?? fallback;
 }
+
+double _profileRankProgress(Map<String, dynamic> profile) {
+  final progress = profile['nextRankProgress'];
+  if (progress is! Map) return 0;
+  if (progress['nextRankHidden'] == true) return 1;
+
+  final percentage = progress['progressPercentage'];
+  if (percentage is! num) return 0;
+  return (percentage / 100).clamp(0.0, 1.0).toDouble();
+}
+
+Color _profileRankGaugeColor(String rankCode) =>
+    switch (rankCode.trim().toUpperCase()) {
+      'F' => const Color(0xFF78909C),
+      'E' => const Color(0xFF43A047),
+      'D' => const Color(0xFF00897B),
+      'C' => const Color(0xFF1E88E5),
+      'B' => const Color(0xFF7E57C2),
+      'A' => const Color(0xFFFFB300),
+      'S' => const Color(0xFFEF5350),
+      'SS' => const Color(0xFFEC407A),
+      'SSS' => const Color(0xFF26C6DA),
+      'MYTHIC' => const Color(0xFFAB47BC),
+      'HEROIC' => const Color(0xFFFF6D00),
+      _ => _profileAmber,
+    };
 
 String _displayValue(dynamic value) {
   final text = (value ?? '').toString().trim();

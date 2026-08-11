@@ -52,6 +52,11 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'Find private campaign',
+              onPressed: _findPrivateCampaign,
+              icon: const Icon(Icons.key_rounded),
+            ),
+            IconButton(
               tooltip: 'Refresh campaigns',
               onPressed: () => _campaignsProvider.loadCampaigns(),
               icon: const Icon(Icons.refresh_rounded),
@@ -96,11 +101,87 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
         ),
       );
 
-  Future<void> _joinCampaign(String campaignId) async {
+  Future<void> _findPrivateCampaign() async {
+    final controller = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Find private campaign'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 7,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+            labelText: 'Invite code',
+            hintText: '#A1B2C3',
+            prefixIcon: Icon(Icons.tag_rounded),
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (code == null || code.trim().isEmpty || !mounted) return;
+
+    try {
+      final campaign = await ApiService.getPrivateCampaignByCode(code);
+      if (!mounted) return;
+      final title = (campaign['title'] ?? 'Private campaign').toString();
+      final location = [campaign['placeName'], campaign['district']]
+          .map((value) => (value ?? '').toString().trim())
+          .where((value) => value.isNotEmpty)
+          .join(', ');
+      final shouldJoin = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: Text(
+            '${location.isEmpty ? 'Location to be confirmed' : location}\n\n'
+            '${_genderAudienceLabel((campaign['genderVisibility'] ?? 'all').toString())} • Private campaign',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Join'),
+            ),
+          ],
+        ),
+      );
+      if (shouldJoin == true && mounted) {
+        await _joinCampaign(
+          _idOf(campaign),
+          code: (campaign['campaignCode'] ?? code).toString(),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ApiService.readableError(error))),
+      );
+    }
+  }
+
+  Future<void> _joinCampaign(String campaignId, {String? code}) async {
     if (campaignId.isEmpty) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await _campaignsProvider.joinCampaign(campaignId);
+      await _campaignsProvider.joinCampaign(campaignId, code: code);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(
@@ -269,6 +350,20 @@ class CampaignCard extends StatelessWidget {
                     _CampaignTag(
                       icon: Icons.timelapse_rounded,
                       label: '${campaign['durationDays'] ?? 1} day',
+                    ),
+                    _CampaignTag(
+                      icon: Icons.people_outline_rounded,
+                      label: _genderAudienceLabel(
+                        (campaign['genderVisibility'] ?? 'all').toString(),
+                      ),
+                    ),
+                    _CampaignTag(
+                      icon: campaign['visibility'] == 'private'
+                          ? Icons.lock_outline_rounded
+                          : Icons.public_rounded,
+                      label: campaign['visibility'] == 'private'
+                          ? 'Private'
+                          : 'Public',
                     ),
                   ],
                 ),
@@ -470,6 +565,12 @@ bool _isOwned(Map<String, dynamic> campaign, String currentUserId) {
   return _idOf(campaign['hostId']) == currentUserId ||
       _idOf(campaign['creator']) == currentUserId;
 }
+
+String _genderAudienceLabel(String value) => switch (value) {
+      'male' => 'Men only',
+      'female' => 'Women only',
+      _ => 'All genders',
+    };
 
 String _campaignLabel(String value) => value
     .trim()

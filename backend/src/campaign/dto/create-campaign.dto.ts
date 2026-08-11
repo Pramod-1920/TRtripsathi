@@ -172,6 +172,14 @@ export class CreateCampaignDto {
   @IsOptional()
   joinMode?: 'open' | 'request';
 
+  @IsIn(['all', 'male', 'female'])
+  @IsOptional()
+  genderVisibility?: 'all' | 'male' | 'female';
+
+  @IsIn(['public', 'private'])
+  @IsOptional()
+  visibility?: 'public' | 'private';
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CampaignPhotoDto)

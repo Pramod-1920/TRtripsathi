@@ -8,6 +8,8 @@ class TripsProvider extends ChangeNotifier {
   int _currentPage = 1;
   final int _pageSize = 20;
   int _totalTrips = 0;
+  Future<void>? _loadInFlight;
+  bool _hasLoaded = false;
 
   List<dynamic> get trips => _trips;
   bool get loading => _loading;
@@ -16,9 +18,44 @@ class TripsProvider extends ChangeNotifier {
   int get pageSize => _pageSize;
   int get totalTrips => _totalTrips;
   int get totalPages => (_totalTrips / _pageSize).ceil();
+  bool get hasLoaded => _hasLoaded;
 
   Future<void> loadTrips({
     int page = 1,
+    String? status,
+    String? activityType,
+    String? difficulty,
+    String? province,
+    String? district,
+    double? lat,
+    double? lng,
+    int? maxDistance,
+  }) async {
+    final activeLoad = _loadInFlight;
+    if (activeLoad != null) return activeLoad;
+
+    final load = _performLoadTrips(
+      page: page,
+      status: status,
+      activityType: activityType,
+      difficulty: difficulty,
+      province: province,
+      district: district,
+      lat: lat,
+      lng: lng,
+      maxDistance: maxDistance,
+    );
+    _loadInFlight = load;
+    try {
+      await load;
+    } finally {
+      _hasLoaded = true;
+      if (identical(_loadInFlight, load)) _loadInFlight = null;
+    }
+  }
+
+  Future<void> _performLoadTrips({
+    required int page,
     String? status,
     String? activityType,
     String? difficulty,

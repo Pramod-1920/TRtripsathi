@@ -12,6 +12,8 @@ class CampaignsProvider extends ChangeNotifier {
   int _currentPage = 1;
   final int _pageSize = 20;
   int _totalCampaigns = 0;
+  Future<void>? _loadInFlight;
+  bool _hasLoaded = false;
 
   List<dynamic> get campaigns => _campaigns;
   List<Map<String, dynamic>> get createdCampaigns =>
@@ -33,9 +35,30 @@ class CampaignsProvider extends ChangeNotifier {
   int get pageSize => _pageSize;
   int get totalCampaigns => _totalCampaigns;
   int get totalPages => (_totalCampaigns / _pageSize).ceil();
+  bool get hasLoaded => _hasLoaded;
 
   Future<void> loadCampaigns({
     int page = 1,
+    String? status,
+  }) async {
+    // The Trips and Campaigns tabs share this provider and can be opened in
+    // quick succession. Reuse an active request instead of sending the same
+    // campaign requests twice.
+    final activeLoad = _loadInFlight;
+    if (activeLoad != null) return activeLoad;
+
+    final load = _performLoadCampaigns(page: page, status: status);
+    _loadInFlight = load;
+    try {
+      await load;
+    } finally {
+      _hasLoaded = true;
+      if (identical(_loadInFlight, load)) _loadInFlight = null;
+    }
+  }
+
+  Future<void> _performLoadCampaigns({
+    required int page,
     String? status,
   }) async {
     _loading = true;
@@ -49,16 +72,20 @@ class CampaignsProvider extends ChangeNotifier {
           limit: _pageSize,
           status: status,
         ),
-        _loadCreatedCampaigns(),
         _loadMyCampaignsSafely(),
       ]);
-      final result = results[0] as Map<String, dynamic>;
-      final savedCampaigns = results[1] as List<Map<String, dynamic>>;
-      final mineResponse = results[2] as Map<String, dynamic>;
+      final result = results[0];
+      final mineResponse = results[1];
       final mine =
           (mineResponse['items'] ?? mineResponse['data']) as List? ?? const [];
       final mineEndpointUnavailable =
           mineResponse['_legacyUnavailable'] == true;
+      // Saved campaign IDs are only a compatibility fallback for older
+      // servers. Avoid fetching every saved campaign when /campaigns/mine is
+      // available, which removes up to 20 unnecessary network round trips.
+      final savedCampaigns = mineEndpointUnavailable
+          ? await _loadCreatedCampaigns()
+          : const <Map<String, dynamic>>[];
       final ownedCampaigns = mineEndpointUnavailable
           ? savedCampaigns
           : mine
@@ -196,6 +223,27 @@ class CampaignsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<Map<String, dynamic>> verifyOwnedCampaign(
+    String campaignId,
+    Map<String, String> evidence,
+  ) async {
+    final response =
+        await ApiService.verifyCampaignCompletion(campaignId, evidence);
+    final verified = <String, dynamic>{
+      ...response,
+      '_createdByCurrentUser': true,
+    };
+    _replaceCampaign(_createdCampaigns, campaignId, verified);
+    final publicIndex = _campaigns.indexWhere(
+      (item) =>
+          item is Map && (item['_id'] ?? item['id']).toString() == campaignId,
+    );
+    if (publicIndex >= 0) _campaigns[publicIndex] = verified;
+    await _rememberCreatedCampaign(verified);
+    notifyListeners();
+    return verified;
+  }
+
   void _replaceCampaign(
     List<Map<String, dynamic>> campaigns,
     String campaignId,
@@ -214,14 +262,20 @@ class CampaignsProvider extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> _loadCreatedCampaigns() async {
     final preferences = await SharedPreferences.getInstance();
     final ids = preferences.getStringList(_createdCampaignIdsKey) ?? const [];
-    final campaigns = <Map<String, dynamic>>[];
-    for (final id in ids.take(20)) {
-      try {
-        final campaign = await ApiService.getCampaignDetails(id);
-        campaigns.add({...campaign, '_createdByCurrentUser': true});
-      } catch (_) {}
-    }
-    return campaigns;
+    final campaigns = await Future.wait(
+      ids.take(20).map((id) async {
+        try {
+          final campaign = await ApiService.getCampaignDetails(id);
+          return <String, dynamic>{
+            ...campaign,
+            '_createdByCurrentUser': true,
+          };
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    return campaigns.whereType<Map<String, dynamic>>().toList(growable: false);
   }
 
   Future<void> _rememberCreatedCampaign(Map<String, dynamic> campaign) async {
@@ -245,13 +299,13 @@ class CampaignsProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> joinCampaign(String campaignId) async {
+  Future<void> joinCampaign(String campaignId, {String? code}) async {
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
-      await ApiService.joinCampaign(campaignId);
+      await ApiService.joinCampaign(campaignId, code: code);
       // Reload campaigns to update participant count
       await loadCampaigns(page: _currentPage);
     } catch (e) {

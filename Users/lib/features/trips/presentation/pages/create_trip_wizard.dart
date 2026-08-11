@@ -42,8 +42,11 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
   bool _submitting = false;
   String? _error;
   String _hikeType = 'group';
+  String _scheduleType = 'scheduled';
   String _difficulty = 'moderate';
   String _joinMode = 'open';
+  String _genderVisibility = 'all';
+  String _campaignVisibility = 'public';
   String? _subcategory;
   String? _province;
   String? _district;
@@ -71,6 +74,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     _subcategory = (campaign['subcategory'] ?? '').toString().trim();
     if (_subcategory!.isEmpty) _subcategory = null;
     _hikeType = (campaign['hikeType'] ?? 'group').toString();
+    _scheduleType = (campaign['scheduleType'] ?? 'scheduled').toString();
     _province = (campaign['province'] ?? '').toString().trim();
     if (_province!.isEmpty) _province = null;
     _district = (campaign['district'] ?? '').toString().trim();
@@ -79,6 +83,8 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     _placeName.text = (campaign['placeName'] ?? '').toString();
     _difficulty = (campaign['difficulty'] ?? 'moderate').toString();
     _joinMode = (campaign['joinMode'] ?? 'open').toString();
+    _genderVisibility = (campaign['genderVisibility'] ?? 'all').toString();
+    _campaignVisibility = (campaign['visibility'] ?? 'public').toString();
     _duration.text = (campaign['durationDays'] ?? 1).toString();
     _estimatedCost.text = (campaign['estimatedNPR'] ?? 0).toString();
     _minParticipants.text = (campaign['minParticipants'] ?? 2).toString();
@@ -185,11 +191,12 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     return const [];
   }
 
-  int get _leadDays => _hikeType == 'group' ? 7 : 2;
+  int get _leadDays => _hikeType == 'group' ? 9 : 2;
 
   Future<void> _pickStartDate() async {
     final now = DateTime.now();
-    final firstAllowed = DateTime(now.year, now.month, now.day + _leadDays + 1);
+    final minimum = now.add(Duration(days: _leadDays));
+    final firstAllowed = DateTime(minimum.year, minimum.month, minimum.day);
     final date = await showDatePicker(
       context: context,
       initialDate: _startDate ?? firstAllowed,
@@ -201,14 +208,20 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     final time = await showTimePicker(
       context: context,
       initialTime: _startDate == null
-          ? const TimeOfDay(hour: 7, minute: 0)
+          ? TimeOfDay.fromDateTime(minimum.add(const Duration(minutes: 5)))
           : TimeOfDay.fromDateTime(_startDate!),
       helpText: 'CHOOSE START TIME',
     );
     if (time == null || !mounted) return;
+    final selected =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    if (selected.isBefore(minimum)) {
+      setState(
+          () => _error = 'Choose a time at least $_leadDays days from now.');
+      return;
+    }
     setState(() {
-      _startDate =
-          DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _startDate = selected;
       _error = null;
     });
   }
@@ -352,7 +365,8 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
           File(_coverPhoto!.path),
         );
       }
-      final duration = int.parse(_duration.text.trim());
+      final duration =
+          _scheduleType == 'instant' ? 1 : int.parse(_duration.text.trim());
       final start = _startDate!;
       final end = start.add(Duration(days: duration));
       final payload = <String, dynamic>{
@@ -369,11 +383,14 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
         'difficulty': _difficulty,
         'durationDays': duration,
         'estimatedNPR': num.parse(_estimatedCost.text.trim()),
-        'scheduleType': 'scheduled',
+        'scheduleType': _scheduleType,
         'startDate': start.toUtc().toIso8601String(),
-        'endDate': end.toUtc().toIso8601String(),
+        if (_scheduleType == 'scheduled')
+          'endDate': end.toUtc().toIso8601String(),
         if (_hikeType == 'group') ...{
           'joinMode': _joinMode,
+          'genderVisibility': _genderVisibility,
+          'visibility': _campaignVisibility,
           'minParticipants': int.parse(_minParticipants.text.trim()),
           'maxParticipants': int.parse(_maxParticipants.text.trim()),
         } else
@@ -511,6 +528,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                         setState(() => _subcategory = value),
                     onHikeTypeChanged: (value) => setState(() {
                       _hikeType = value;
+                      if (value == 'group') _scheduleType = 'scheduled';
                       _startDate = null;
                     }),
                   ),
@@ -537,8 +555,11 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                   ),
                   _PlanStep(
                     hikeType: _hikeType,
+                    scheduleType: _scheduleType,
                     difficulty: _difficulty,
                     joinMode: _joinMode,
+                    genderVisibility: _genderVisibility,
+                    campaignVisibility: _campaignVisibility,
                     startDate: _startDate,
                     leadDays: _leadDays,
                     duration: _duration,
@@ -546,16 +567,28 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                     minParticipants: _minParticipants,
                     maxParticipants: _maxParticipants,
                     onPickDate: _pickStartDate,
+                    onScheduleTypeChanged: (value) => setState(() {
+                      _scheduleType = value;
+                      _startDate = value == 'instant' ? DateTime.now() : null;
+                      _error = null;
+                    }),
                     onDifficultyChanged: (value) =>
                         setState(() => _difficulty = value),
                     onJoinModeChanged: (value) =>
                         setState(() => _joinMode = value),
+                    onGenderVisibilityChanged: (value) =>
+                        setState(() => _genderVisibility = value),
+                    onCampaignVisibilityChanged: (value) =>
+                        setState(() => _campaignVisibility = value),
                   ),
                   _ReviewStep(
                     title: _title.text.trim(),
                     description: _description.text.trim(),
                     category: _category.text.trim(),
                     hikeType: _hikeType,
+                    scheduleType: _scheduleType,
+                    genderVisibility: _genderVisibility,
+                    campaignVisibility: _campaignVisibility,
                     province: _province ?? '',
                     district: _district ?? '',
                     placeName: _placeName.text.trim(),
@@ -821,8 +854,11 @@ class _PlaceStep extends StatelessWidget {
 class _PlanStep extends StatelessWidget {
   const _PlanStep({
     required this.hikeType,
+    required this.scheduleType,
     required this.difficulty,
     required this.joinMode,
+    required this.genderVisibility,
+    required this.campaignVisibility,
     required this.startDate,
     required this.leadDays,
     required this.duration,
@@ -830,12 +866,18 @@ class _PlanStep extends StatelessWidget {
     required this.minParticipants,
     required this.maxParticipants,
     required this.onPickDate,
+    required this.onScheduleTypeChanged,
     required this.onDifficultyChanged,
     required this.onJoinModeChanged,
+    required this.onGenderVisibilityChanged,
+    required this.onCampaignVisibilityChanged,
   });
   final String hikeType;
+  final String scheduleType;
   final String difficulty;
   final String joinMode;
+  final String genderVisibility;
+  final String campaignVisibility;
   final DateTime? startDate;
   final int leadDays;
   final TextEditingController duration;
@@ -843,43 +885,81 @@ class _PlanStep extends StatelessWidget {
   final TextEditingController minParticipants;
   final TextEditingController maxParticipants;
   final VoidCallback onPickDate;
+  final ValueChanged<String> onScheduleTypeChanged;
   final ValueChanged<String> onDifficultyChanged;
   final ValueChanged<String> onJoinModeChanged;
+  final ValueChanged<String> onGenderVisibilityChanged;
+  final ValueChanged<String> onCampaignVisibilityChanged;
 
   @override
   Widget build(BuildContext context) => _StepScroll(
         children: [
           _WizardNote(
             icon: Icons.schedule_rounded,
-            title: hikeType == 'group'
-                ? 'Give the group time to prepare'
-                : 'Leave room to prepare safely',
-            message: 'This trip must begin at least $leadDays days from today.',
+            title: scheduleType == 'instant'
+                ? 'Travel today'
+                : hikeType == 'group'
+                    ? 'Give the group time to prepare'
+                    : 'Schedule your solo trip',
+            message: scheduleType == 'instant'
+                ? 'Your trip starts when published and remains active for 12 hours.'
+                : 'This trip must begin at least $leadDays days from now.',
           ),
           const SizedBox(height: 14),
           _WizardCard(
             children: [
-              InkWell(
-                onTap: onPickDate,
-                borderRadius: BorderRadius.circular(18),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Start date and time',
-                    prefixIcon: Icon(Icons.event_rounded),
-                    suffixIcon: Icon(Icons.chevron_right_rounded),
-                  ),
-                  child: Text(
-                    startDate == null
-                        ? 'Choose schedule'
-                        : _formatDateTime(startDate!),
-                    style: TextStyle(
-                      color:
-                          startDate == null ? AppColors.muted : AppColors.navy,
-                      fontWeight: FontWeight.w700,
+              if (hikeType == 'solo') ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Travel today'),
+                        selected: scheduleType == 'instant',
+                        onSelected: (_) => onScheduleTypeChanged('instant'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Schedule later'),
+                        selected: scheduleType == 'scheduled',
+                        onSelected: (_) => onScheduleTypeChanged('scheduled'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (scheduleType == 'scheduled')
+                InkWell(
+                  onTap: onPickDate,
+                  borderRadius: BorderRadius.circular(18),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Start date and time',
+                      prefixIcon: Icon(Icons.event_rounded),
+                      suffixIcon: Icon(Icons.chevron_right_rounded),
+                    ),
+                    child: Text(
+                      startDate == null
+                          ? 'Choose schedule'
+                          : _formatDateTime(startDate!),
+                      style: TextStyle(
+                        color: startDate == null
+                            ? AppColors.muted
+                            : AppColors.navy,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
+                )
+              else
+                const ListTile(
+                  contentPadding: EdgeInsets.symmetric(horizontal: 4),
+                  leading: Icon(Icons.bolt_rounded, color: AppColors.gold),
+                  title: Text('Starts immediately'),
+                  subtitle: Text('12-hour solo trip'),
                 ),
-              ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: difficulty,
@@ -901,17 +981,19 @@ class _PlanStep extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: duration,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Days',
-                        prefixIcon: Icon(Icons.timelapse_rounded),
+                  if (scheduleType == 'scheduled') ...[
+                    Expanded(
+                      child: TextField(
+                        controller: duration,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Days',
+                          prefixIcon: Icon(Icons.timelapse_rounded),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
                     child: TextField(
                       controller: estimatedCost,
@@ -925,6 +1007,27 @@ class _PlanStep extends StatelessWidget {
                 ],
               ),
               if (hikeType == 'group') ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: campaignVisibility,
+                  decoration: const InputDecoration(
+                    labelText: 'Campaign visibility',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'public',
+                      child: Text('Public — shown in discovery'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'private',
+                      child: Text('Private — join with code'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onCampaignVisibilityChanged(value);
+                  },
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: joinMode,
@@ -941,6 +1044,31 @@ class _PlanStep extends StatelessWidget {
                   ],
                   onChanged: (value) {
                     if (value != null) onJoinModeChanged(value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: genderVisibility,
+                  decoration: const InputDecoration(
+                    labelText: 'Who can discover and join',
+                    prefixIcon: Icon(Icons.visibility_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'all',
+                      child: Text('All genders'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'male',
+                      child: Text('Men only'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'female',
+                      child: Text('Women only'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onGenderVisibilityChanged(value);
                   },
                 ),
                 const SizedBox(height: 12),
@@ -978,6 +1106,9 @@ class _ReviewStep extends StatelessWidget {
     required this.description,
     required this.category,
     required this.hikeType,
+    required this.scheduleType,
+    required this.genderVisibility,
+    required this.campaignVisibility,
     required this.province,
     required this.district,
     required this.placeName,
@@ -992,6 +1123,9 @@ class _ReviewStep extends StatelessWidget {
   final String description;
   final String category;
   final String hikeType;
+  final String scheduleType;
+  final String genderVisibility;
+  final String campaignVisibility;
   final String province;
   final String district;
   final String placeName;
@@ -1084,7 +1218,11 @@ class _ReviewStep extends StatelessWidget {
                         children: [
                           _ReviewPill(label: category),
                           _ReviewPill(label: _label(difficulty)),
-                          _ReviewPill(label: '$duration day trip'),
+                          _ReviewPill(
+                            label: scheduleType == 'instant'
+                                ? '12 hour trip'
+                                : '$duration day trip',
+                          ),
                         ],
                       ),
                     ],
@@ -1107,14 +1245,26 @@ class _ReviewStep extends StatelessWidget {
               _ReviewRow(
                 icon: Icons.event_outlined,
                 label: 'Starts',
-                value: startDate == null
-                    ? 'Not selected'
-                    : _formatDateTime(startDate!),
+                value: scheduleType == 'instant'
+                    ? 'Immediately after publishing'
+                    : startDate == null
+                        ? 'Not selected'
+                        : _formatDateTime(startDate!),
               ),
+              if (hikeType == 'group')
+                _ReviewRow(
+                  icon: Icons.lock_outline_rounded,
+                  label: 'Visibility',
+                  value: campaignVisibility == 'private'
+                      ? 'Private - join with code'
+                      : 'Public discovery',
+                ),
               _ReviewRow(
                 icon: Icons.groups_2_outlined,
                 label: 'Travelers',
-                value: participants,
+                value: hikeType == 'group'
+                    ? '${_genderVisibilityLabel(genderVisibility)} • $participants'
+                    : participants,
               ),
               _ReviewRow(
                 icon: Icons.payments_outlined,
@@ -1688,6 +1838,12 @@ class _TripProvince {
     );
   }
 }
+
+String _genderVisibilityLabel(String value) => switch (value) {
+      'male' => 'Men only',
+      'female' => 'Women only',
+      _ => 'All genders',
+    };
 
 String _label(String value) => value
     .trim()
