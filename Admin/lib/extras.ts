@@ -1,13 +1,13 @@
-import { apiClient } from '@/lib/api';
+import { apiClient } from "@/lib/api";
 
 export type ExtraCategory =
-  | 'places'
-  | 'difficulty'
-  | 'activities'
-  | 'xp'
-  | 'badge'
-  | 'level-up'
-  | 'achievement';
+  | "places"
+  | "difficulty"
+  | "activities"
+  | "xp"
+  | "badge"
+  | "level-up"
+  | "achievement";
 
 export type ExtraItem = {
   _id: string;
@@ -55,11 +55,16 @@ export type PlaceCatalogItem = {
 export type PlaceCatalogDistrictItem = {
   district: string;
   places: string[];
-  placeItems?: Array<{ place: string; municipality: string }>;
+  placeItems?: Array<{
+    place: string;
+    municipality: string;
+    category?: string;
+    subcategory?: string | null;
+  }>;
 };
 
 export type PlaceCatalogResponse = {
-  source: 'extras' | 'json';
+  source: "extras" | "json";
   items: PlaceCatalogItem[];
   totals?: {
     provinces: number;
@@ -71,6 +76,8 @@ export type PlaceCatalogResponse = {
 export type PlaceTitleNode = {
   id: string;
   name: string;
+  category?: string;
+  subcategory?: string | null;
   deleted?: boolean;
 };
 
@@ -122,12 +129,26 @@ function normalizePlacesHierarchy(data: unknown): PlacesHierarchyResponse {
 }
 
 export type PlacePatchOperation = {
-  op: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
-  type?: 'province' | 'district' | 'municipality' | 'place';
+  op: "add" | "rename" | "delete" | "restore" | "hard_delete";
+  type?: "province" | "district" | "municipality" | "place";
   parentId?: string;
   id?: string;
   name?: string;
+  category?: string;
+  subcategory?: string | null;
 };
+
+export type ActivityCategoryOption = {
+  id: string;
+  name: string;
+  subcategories: Array<{ id: string; name: string }>;
+};
+
+export async function fetchActivityCatalog() {
+  const response = await apiClient.get("/extra/activities");
+  const data = response.data as { items?: ActivityCategoryOption[] } | null;
+  return Array.isArray(data?.items) ? data.items : [];
+}
 
 export type DifficultyTier = {
   id: string;
@@ -140,46 +161,46 @@ export type DifficultyTier = {
 
 export type DifficultyValidationError = {
   index: number;
-  field: keyof DifficultyTier | 'root';
+  field: keyof DifficultyTier | "root";
   message: string;
 };
 
 export const DEFAULT_DIFFICULTY_TIERS: DifficultyTier[] = [
   {
-    id: 'easy',
-    label: 'Easy',
+    id: "easy",
+    label: "Easy",
     adminApprovalRequired: false,
     xpMultiplier: 1,
     order: 1,
     enabled: true,
   },
   {
-    id: 'moderate',
-    label: 'Moderate',
+    id: "moderate",
+    label: "Moderate",
     adminApprovalRequired: false,
     xpMultiplier: 1.2,
     order: 2,
     enabled: true,
   },
   {
-    id: 'hard',
-    label: 'Hard',
+    id: "hard",
+    label: "Hard",
     adminApprovalRequired: true,
     xpMultiplier: 1.5,
     order: 3,
     enabled: true,
   },
   {
-    id: 'extreme',
-    label: 'Extreme',
+    id: "extreme",
+    label: "Extreme",
     adminApprovalRequired: true,
     xpMultiplier: 2,
     order: 4,
     enabled: true,
   },
   {
-    id: 'challenging',
-    label: 'Challenging',
+    id: "challenging",
+    label: "Challenging",
     adminApprovalRequired: true,
     xpMultiplier: 3,
     order: 5,
@@ -188,7 +209,7 @@ export const DEFAULT_DIFFICULTY_TIERS: DifficultyTier[] = [
 ];
 
 export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
-  if (typeof data === 'object' && data !== null) {
+  if (typeof data === "object" && data !== null) {
     const asRecord = data as {
       items?: unknown;
       pagination?: Partial<ExtraListPagination>;
@@ -197,10 +218,12 @@ export function normalizeExtraListResponse(data: unknown): ExtraListResponse {
     if (Array.isArray(asRecord.items)) {
       const total = Number(asRecord.pagination?.total ?? asRecord.items.length);
       const page = Number(asRecord.pagination?.page ?? 1);
-      const limit = Number((asRecord.pagination?.limit ?? asRecord.items.length) || 1);
+      const limit = Number(
+        (asRecord.pagination?.limit ?? asRecord.items.length) || 1,
+      );
       const totalPages = Number(
-        asRecord.pagination?.totalPages
-          ?? (limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1)
+        asRecord.pagination?.totalPages ??
+          (limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1),
       );
 
       return {
@@ -233,13 +256,13 @@ function normalizeDifficultySettings(data: unknown): DifficultyTier[] {
 
   return data
     .map((item, index) => {
-      if (typeof item !== 'object' || item === null) {
+      if (typeof item !== "object" || item === null) {
         return null;
       }
 
       const row = item as Partial<DifficultyTier>;
-      const id = typeof row.id === 'string' ? row.id.trim() : '';
-      const label = typeof row.label === 'string' ? row.label.trim() : '';
+      const id = typeof row.id === "string" ? row.id.trim() : "";
+      const label = typeof row.label === "string" ? row.label.trim() : "";
       const xpMultiplier = Number(row.xpMultiplier);
 
       if (!id || !label || !Number.isFinite(xpMultiplier)) {
@@ -251,7 +274,9 @@ function normalizeDifficultySettings(data: unknown): DifficultyTier[] {
         label,
         adminApprovalRequired: row.adminApprovalRequired === true,
         xpMultiplier,
-        order: Number.isFinite(Number(row.order)) ? Number(row.order) : index + 1,
+        order: Number.isFinite(Number(row.order))
+          ? Number(row.order)
+          : index + 1,
         enabled: row.enabled !== false,
       };
     })
@@ -260,8 +285,11 @@ function normalizeDifficultySettings(data: unknown): DifficultyTier[] {
     .map((item, index) => ({ ...item, order: index + 1 }));
 }
 
-export async function fetchExtras(category: ExtraCategory, params?: { page?: number; limit?: number }) {
-  const response = await apiClient.get('/extra', {
+export async function fetchExtras(
+  category: ExtraCategory,
+  params?: { page?: number; limit?: number },
+) {
+  const response = await apiClient.get("/extra", {
     params: {
       category,
       page: params?.page ?? 1,
@@ -278,7 +306,7 @@ export async function fetchExtraById(id: string) {
 }
 
 export async function createExtra(payload: ExtraPayload) {
-  const response = await apiClient.post('/extra', payload);
+  const response = await apiClient.post("/extra", payload);
   return response.data as ExtraItem;
 }
 
@@ -293,12 +321,14 @@ export async function deleteExtra(id: string) {
 }
 
 export async function fetchPlaceCatalog() {
-  const response = await apiClient.get('/places/catalog');
+  const response = await apiClient.get("/places/catalog");
   return response.data as PlaceCatalogResponse;
 }
 
-export async function fetchAdminPlaceHierarchy(params?: { includeDeleted?: boolean }) {
-  const response = await apiClient.get('/extra/places/hierarchy', {
+export async function fetchAdminPlaceHierarchy(params?: {
+  includeDeleted?: boolean;
+}) {
+  const response = await apiClient.get("/extra/places/hierarchy", {
     params: {
       includeDeleted: params?.includeDeleted ?? false,
     },
@@ -307,8 +337,10 @@ export async function fetchAdminPlaceHierarchy(params?: { includeDeleted?: boole
   return normalizePlacesHierarchy(response.data);
 }
 
-export async function fetchPlacesHierarchy(params?: { includeDeleted?: boolean }) {
-  const response = await apiClient.get('/extra/places/hierarchy', {
+export async function fetchPlacesHierarchy(params?: {
+  includeDeleted?: boolean;
+}) {
+  const response = await apiClient.get("/extra/places/hierarchy", {
     params: {
       includeDeleted: params?.includeDeleted ?? false,
     },
@@ -318,21 +350,21 @@ export async function fetchPlacesHierarchy(params?: { includeDeleted?: boolean }
 }
 
 export async function bulkSeedPlaces(payload: PlacesHierarchyResponse) {
-  const response = await apiClient.post('/extra/places/bulk-seed', payload);
+  const response = await apiClient.post("/extra/places/bulk-seed", payload);
   return normalizePlacesHierarchy(response.data);
 }
 
 export async function patchPlaces(operations: PlacePatchOperation[]) {
-  const response = await apiClient.patch('/extra/places', { operations });
+  const response = await apiClient.patch("/extra/places", { operations });
   return normalizePlacesHierarchy(response.data);
 }
 
 export async function fetchDifficultySettings() {
-  const response = await apiClient.get('/extra/difficulty');
+  const response = await apiClient.get("/extra/difficulty");
   return normalizeDifficultySettings(response.data);
 }
 
 export async function saveDifficultySettings(payload: DifficultyTier[]) {
-  const response = await apiClient.put('/extra/difficulty', payload);
+  const response = await apiClient.put("/extra/difficulty", payload);
   return normalizeDifficultySettings(response.data);
 }

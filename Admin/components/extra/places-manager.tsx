@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
 import {
   FiChevronDown,
   FiChevronRight,
@@ -11,22 +11,24 @@ import {
   FiPlus,
   FiRefreshCw,
   FiSearch,
-} from 'react-icons/fi';
-import { ConfirmModal } from '@/components/ui/confirm-modal';
-import { apiClient } from '@/lib/api';
-import { useRouter } from 'next/navigation';
+} from "react-icons/fi";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { apiClient } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import {
   bulkSeedPlaces,
+  fetchActivityCatalog,
   fetchPlacesHierarchy,
   patchPlaces,
+  ActivityCategoryOption,
   PlaceDistrictNode,
   PlaceMunicipalityNode,
   PlacePatchOperation,
   PlaceProvinceNode,
   PlacesHierarchyResponse,
-} from '@/lib/extras';
+} from "@/lib/extras";
 
-type NodeType = 'province' | 'district' | 'municipality' | 'place';
+type NodeType = "province" | "district" | "municipality" | "place";
 
 type TreeNodeRef = {
   id: string;
@@ -36,11 +38,13 @@ type TreeNodeRef = {
   parentId?: string;
   provinceId?: string;
   districtId?: string;
+  category?: string;
+  subcategory?: string | null;
 };
 
 type ToastItem = {
   id: string;
-  type: 'success' | 'error';
+  type: "success" | "error";
   message: string;
 };
 
@@ -51,7 +55,7 @@ type ContextMenuState = {
 };
 
 type AddDialogState = {
-  type: 'district' | 'municipality' | 'place';
+  type: "district" | "municipality" | "place";
   parentId: string;
   title: string;
 };
@@ -80,14 +84,18 @@ function slugifyId(name: string) {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/[\s-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
-function buildUniqueId(prefix: 'prov' | 'dist' | 'mun' | 'place', name: string, used: Set<string>) {
-  const base = `${prefix}_${slugifyId(name) || 'node'}`;
+function buildUniqueId(
+  prefix: "prov" | "dist" | "mun" | "place",
+  name: string,
+  used: Set<string>,
+) {
+  const base = `${prefix}_${slugifyId(name) || "node"}`;
   let candidate = base;
   let suffix = 2;
 
@@ -104,27 +112,27 @@ function normalizeLookupKey(value: string) {
   return value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[^a-z0-9]+/g, " ")
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, " ");
 }
 
 function resolveDistrictKey(value: string) {
   const key = normalizeLookupKey(value);
 
   // Common spelling variants
-  if (key === 'dhanusa') return 'dhanusha';
-  if (key === 'kavrepalanchok') return 'kavrepalanchowk';
-  if (key === 'tanahu') return 'tanahun';
-  if (key === 'achham') return 'aachham';
+  if (key === "dhanusa") return "dhanusha";
+  if (key === "kavrepalanchok") return "kavrepalanchowk";
+  if (key === "tanahu") return "tanahun";
+  if (key === "achham") return "aachham";
 
   // Nawalparasi split naming variants
-  if (key.includes('bardaghat')) return 'nawalparasi west';
-  if (key.includes('susta east')) return 'nawalparasi state 4';
+  if (key.includes("bardaghat")) return "nawalparasi west";
+  if (key.includes("susta east")) return "nawalparasi state 4";
 
   // Rukum split naming variants
-  if (key === 'rukum east') return 'rukum state 5';
-  if (key === 'rukum west') return 'western rukum';
+  if (key === "rukum east") return "rukum state 5";
+  if (key === "rukum west") return "western rukum";
 
   return key;
 }
@@ -138,7 +146,7 @@ function toSeedHierarchy(raw: NepalSeedFile): PlacesHierarchyResponse {
     Object.entries(record).forEach(([districtName, municipalities]) => {
       const key = resolveDistrictKey(districtName);
       const list = (municipalities ?? [])
-        .map((item) => String(item ?? '').trim())
+        .map((item) => String(item ?? "").trim())
         .filter(Boolean);
       if (key && list.length > 0) {
         lookup.set(key, list);
@@ -148,15 +156,18 @@ function toSeedHierarchy(raw: NepalSeedFile): PlacesHierarchyResponse {
 
   return {
     provinces: (raw.provinces ?? []).map((province) => {
-      const provinceName = String(province.province ?? '').trim();
-      const provinceId = buildUniqueId('prov', provinceName, usedIds);
+      const provinceName = String(province.province ?? "").trim();
+      const provinceId = buildUniqueId("prov", provinceName, usedIds);
       const districts = (province.districts ?? []).map((districtNameRaw) => {
-        const districtName = String(districtNameRaw ?? '').trim();
-        const districtId = buildUniqueId('dist', districtName, usedIds);
-        const municipalitySource = lookup.get(resolveDistrictKey(districtName)) ?? [];
+        const districtName = String(districtNameRaw ?? "").trim();
+        const districtId = buildUniqueId("dist", districtName, usedIds);
+        const municipalitySource =
+          lookup.get(resolveDistrictKey(districtName)) ?? [];
         const seen = new Set<string>();
         const municipalities = municipalitySource
-          .map((municipalityNameRaw) => String(municipalityNameRaw ?? '').trim())
+          .map((municipalityNameRaw) =>
+            String(municipalityNameRaw ?? "").trim(),
+          )
           .filter(Boolean)
           .filter((name) => {
             const key = name.toLowerCase();
@@ -167,7 +178,7 @@ function toSeedHierarchy(raw: NepalSeedFile): PlacesHierarchyResponse {
             return true;
           })
           .map((municipalityName) => ({
-            id: buildUniqueId('mun', municipalityName, usedIds),
+            id: buildUniqueId("mun", municipalityName, usedIds),
             name: municipalityName,
             places: [],
           }));
@@ -192,22 +203,38 @@ function hasActiveChildren(
   hierarchy: PlacesHierarchyResponse,
   node: TreeNodeRef,
 ) {
-  if (node.type === 'province') {
+  if (node.type === "province") {
     const province = hierarchy.provinces.find((item) => item.id === node.id);
-    return Boolean(province?.districts.some((district) => district.deleted !== true));
+    return Boolean(
+      province?.districts.some((district) => district.deleted !== true),
+    );
   }
 
-  if (node.type === 'district') {
-    const province = hierarchy.provinces.find((item) => item.id === node.provinceId);
+  if (node.type === "district") {
+    const province = hierarchy.provinces.find(
+      (item) => item.id === node.provinceId,
+    );
     const district = province?.districts.find((item) => item.id === node.id);
-    return Boolean(district?.municipalities.some((municipality) => municipality.deleted !== true));
+    return Boolean(
+      district?.municipalities.some(
+        (municipality) => municipality.deleted !== true,
+      ),
+    );
   }
 
-  if (node.type === 'municipality') {
-    const province = hierarchy.provinces.find((item) => item.id === node.provinceId);
-    const district = province?.districts.find((item) => item.id === node.districtId);
-    const municipality = district?.municipalities.find((item) => item.id === node.id);
-    return Boolean(municipality?.places.some((place) => place.deleted !== true));
+  if (node.type === "municipality") {
+    const province = hierarchy.provinces.find(
+      (item) => item.id === node.provinceId,
+    );
+    const district = province?.districts.find(
+      (item) => item.id === node.districtId,
+    );
+    const municipality = district?.municipalities.find(
+      (item) => item.id === node.id,
+    );
+    return Boolean(
+      municipality?.places.some((place) => place.deleted !== true),
+    );
   }
 
   return false;
@@ -222,30 +249,48 @@ function nodeMatchesSearch(name: string, query: string) {
 }
 
 export function PlacesManager() {
-  const [hierarchy, setHierarchy] = useState<PlacesHierarchyResponse>({ provinces: [] });
+  const [hierarchy, setHierarchy] = useState<PlacesHierarchyResponse>({
+    provinces: [],
+  });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [showDeleted, setShowDeleted] = useState(true);
-  const [expandedProvinceIds, setExpandedProvinceIds] = useState<Set<string>>(new Set());
-  const [expandedDistrictIds, setExpandedDistrictIds] = useState<Set<string>>(new Set());
+  const [expandedProvinceIds, setExpandedProvinceIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [expandedDistrictIds, setExpandedDistrictIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [addDialog, setAddDialog] = useState<AddDialogState | null>(null);
-  const [addName, setAddName] = useState('');
+  const [addName, setAddName] = useState("");
+  const [addCategory, setAddCategory] = useState("");
+  const [addSubcategory, setAddSubcategory] = useState("");
+  const [activityCategories, setActivityCategories] = useState<
+    ActivityCategoryOption[]
+  >([]);
   const [selectedNode, setSelectedNode] = useState<TreeNodeRef | null>(null);
-  const [editName, setEditName] = useState('');
-  const [inlineError, setInlineError] = useState('');
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editSubcategory, setEditSubcategory] = useState("");
+  const [inlineError, setInlineError] = useState("");
   const [weatherLoading, setWeatherLoading] = useState(false);
-  const [weatherError, setWeatherError] = useState('');
-  const [weatherData, setWeatherData] = useState<OpenMeteoResponse | null>(null);
+  const [weatherError, setWeatherError] = useState("");
+  const [weatherData, setWeatherData] = useState<OpenMeteoResponse | null>(
+    null,
+  );
   const router = useRouter();
   const [seedModalOpen, setSeedModalOpen] = useState(false);
-  const [disableModalNode, setDisableModalNode] = useState<TreeNodeRef | null>(null);
-  const [cascadeDisableNode, setCascadeDisableNode] = useState<TreeNodeRef | null>(null);
+  const [disableModalNode, setDisableModalNode] = useState<TreeNodeRef | null>(
+    null,
+  );
+  const [cascadeDisableNode, setCascadeDisableNode] =
+    useState<TreeNodeRef | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [showAllExpanded, setShowAllExpanded] = useState(false);
 
-  const addToast = (type: ToastItem['type'], message: string) => {
+  const addToast = (type: ToastItem["type"], message: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts((current) => [...current, { id, type, message }]);
     setTimeout(() => {
@@ -261,7 +306,7 @@ export function PlacesManager() {
       const response = await fetchPlacesHierarchy({ includeDeleted });
       setHierarchy(response);
     } catch {
-      addToast('error', 'Failed to load places hierarchy.');
+      addToast("error", "Failed to load places hierarchy.");
       setHierarchy({ provinces: [] });
     } finally {
       setLoading(false);
@@ -273,9 +318,15 @@ export function PlacesManager() {
   }, [showDeleted]);
 
   useEffect(() => {
+    fetchActivityCatalog()
+      .then(setActivityCategories)
+      .catch(() => addToast("error", "Failed to load activity categories."));
+  }, []);
+
+  useEffect(() => {
     const closeMenu = () => setContextMenu(null);
-    window.addEventListener('click', closeMenu);
-    return () => window.removeEventListener('click', closeMenu);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
   }, []);
 
   const selectedResolved = useMemo(() => {
@@ -285,7 +336,11 @@ export function PlacesManager() {
 
     for (const province of hierarchy.provinces) {
       if (province.id === selectedNode.id) {
-        return { ...selectedNode, name: province.name, deleted: province.deleted };
+        return {
+          ...selectedNode,
+          name: province.name,
+          deleted: province.deleted,
+        };
       }
       for (const district of province.districts) {
         if (district.id === selectedNode.id) {
@@ -311,6 +366,8 @@ export function PlacesManager() {
               return {
                 ...selectedNode,
                 name: place.name,
+                category: place.category,
+                subcategory: place.subcategory,
                 deleted: place.deleted,
                 provinceId: province.id,
                 districtId: district.id,
@@ -332,19 +389,43 @@ export function PlacesManager() {
 
     setSelectedNode(selectedResolved);
     setEditName(selectedResolved.name);
-  }, [selectedResolved?.id, selectedResolved?.name, selectedResolved?.deleted]);
+    setEditCategory(selectedResolved.category ?? "");
+    setEditSubcategory(selectedResolved.subcategory ?? "");
+  }, [
+    selectedResolved?.id,
+    selectedResolved?.name,
+    selectedResolved?.category,
+    selectedResolved?.subcategory,
+    selectedResolved?.deleted,
+  ]);
+
+  const addSubcategoryOptions = useMemo(
+    () =>
+      activityCategories.find((item) => item.name === addCategory)
+        ?.subcategories ?? [],
+    [activityCategories, addCategory],
+  );
+
+  const editSubcategoryOptions = useMemo(
+    () =>
+      activityCategories.find((item) => item.name === editCategory)
+        ?.subcategories ?? [],
+    [activityCategories, editCategory],
+  );
 
   // Fetch weather for selected place (municipality or district) using backend proxy
   useEffect(() => {
     let cancelled = false;
 
     async function loadWeather() {
-      setWeatherError('');
+      setWeatherError("");
       setWeatherData(null);
       if (!selectedResolved) return;
 
       // We only fetch weather for municipalities or districts (places)
-      if (!['place', 'municipality', 'district'].includes(selectedResolved.type)) {
+      if (
+        !["place", "municipality", "district"].includes(selectedResolved.type)
+      ) {
         return;
       }
 
@@ -352,35 +433,61 @@ export function PlacesManager() {
 
       try {
         // Build a helpful geocode query using province/district context
-        const province = hierarchy.provinces.find((p) => p.id === selectedResolved.provinceId);
-        const district = province?.districts.find((d) => d.id === selectedResolved.districtId);
-        const municipality = district?.municipalities.find(
-          (item) => item.id === selectedResolved.parentId || item.id === selectedResolved.id,
+        const province = hierarchy.provinces.find(
+          (p) => p.id === selectedResolved.provinceId,
         );
-        const parts = [selectedResolved.name, municipality?.name, district?.name, province?.name, 'Nepal'].filter(Boolean).join(', ');
+        const district = province?.districts.find(
+          (d) => d.id === selectedResolved.districtId,
+        );
+        const municipality = district?.municipalities.find(
+          (item) =>
+            item.id === selectedResolved.parentId ||
+            item.id === selectedResolved.id,
+        );
+        const parts = [
+          selectedResolved.name,
+          municipality?.name,
+          district?.name,
+          province?.name,
+          "Nepal",
+        ]
+          .filter(Boolean)
+          .join(", ");
 
-        const geoResp = await apiClient.get('/admin/geocode', { params: { q: parts } });
-        const geo = Array.isArray(geoResp.data) && geoResp.data.length > 0 ? geoResp.data[0] : null;
+        const geoResp = await apiClient.get("/admin/geocode", {
+          params: { q: parts },
+        });
+        const geo =
+          Array.isArray(geoResp.data) && geoResp.data.length > 0
+            ? geoResp.data[0]
+            : null;
         if (!geo) {
-          setWeatherError('Geocoding failed (no results).');
+          setWeatherError("Geocoding failed (no results).");
           return;
         }
 
         const lat = geo.lat ?? geo.latitude ?? geo.latitude;
         const lon = geo.lon ?? geo.longitude ?? geo.long;
         if (!lat || !lon) {
-          setWeatherError('Geocoding returned no coordinates.');
+          setWeatherError("Geocoding returned no coordinates.");
           return;
         }
 
-        const weatherResp = await apiClient.get('/admin/weather', { params: { lat: String(lat), lon: String(lon) } });
+        const weatherResp = await apiClient.get("/admin/weather", {
+          params: { lat: String(lat), lon: String(lon) },
+        });
         if (cancelled) return;
         setWeatherData(weatherResp.data ?? null);
       } catch (err) {
-        let message = 'Failed to load weather.';
-        if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') {
+        let message = "Failed to load weather.";
+        if (
+          err &&
+          typeof err === "object" &&
+          "message" in err &&
+          typeof err.message === "string"
+        ) {
           message = err.message;
-        } else if (typeof err === 'string') {
+        } else if (typeof err === "string") {
           message = err;
         }
         setWeatherError(message);
@@ -415,10 +522,13 @@ export function PlacesManager() {
                   return municipality;
                 }
                 const places = (municipality.places ?? []).filter((place) =>
-                  place.name.toLowerCase().includes(query));
+                  place.name.toLowerCase().includes(query),
+                );
                 return places.length > 0 ? { ...municipality, places } : null;
               })
-              .filter((municipality): municipality is PlaceMunicipalityNode => Boolean(municipality));
+              .filter((municipality): municipality is PlaceMunicipalityNode =>
+                Boolean(municipality),
+              );
 
             if (districtMatch) {
               return district;
@@ -433,7 +543,9 @@ export function PlacesManager() {
 
             return null;
           })
-          .filter((district): district is PlaceDistrictNode => Boolean(district));
+          .filter((district): district is PlaceDistrictNode =>
+            Boolean(district),
+          );
 
         if (provinceMatch) {
           return province;
@@ -453,19 +565,32 @@ export function PlacesManager() {
 
   const summary = useMemo(() => {
     const provinces = hierarchy.provinces.length;
-    const districts = hierarchy.provinces.reduce((count, province) => count + province.districts.length, 0);
+    const districts = hierarchy.provinces.reduce(
+      (count, province) => count + province.districts.length,
+      0,
+    );
     const municipalities = hierarchy.provinces.reduce(
-      (count, province) => count + province.districts.reduce((dCount, district) => dCount + district.municipalities.length, 0),
+      (count, province) =>
+        count +
+        province.districts.reduce(
+          (dCount, district) => dCount + district.municipalities.length,
+          0,
+        ),
       0,
     );
     const places = hierarchy.provinces.reduce(
-      (count, province) => count + province.districts.reduce(
-        (districtCount, district) => districtCount + district.municipalities.reduce(
-          (municipalityCount, municipality) => municipalityCount + (municipality.places ?? []).length,
+      (count, province) =>
+        count +
+        province.districts.reduce(
+          (districtCount, district) =>
+            districtCount +
+            district.municipalities.reduce(
+              (municipalityCount, municipality) =>
+                municipalityCount + (municipality.places ?? []).length,
+              0,
+            ),
           0,
         ),
-        0,
-      ),
       0,
     );
 
@@ -474,32 +599,34 @@ export function PlacesManager() {
 
   const openAddDistrict = (province: TreeNodeRef) => {
     setAddDialog({
-      type: 'district',
+      type: "district",
       parentId: province.id,
       title: `Add District in ${province.name}`,
     });
-    setAddName('');
-    setInlineError('');
+    setAddName("");
+    setInlineError("");
   };
 
   const openAddMunicipality = (district: TreeNodeRef) => {
     setAddDialog({
-      type: 'municipality',
+      type: "municipality",
       parentId: district.id,
       title: `Add Municipality in ${district.name}`,
     });
-    setAddName('');
-    setInlineError('');
+    setAddName("");
+    setInlineError("");
   };
 
   const openAddPlace = (municipality: TreeNodeRef) => {
     setAddDialog({
-      type: 'place',
+      type: "place",
       parentId: municipality.id,
       title: `Add Place in ${municipality.name}`,
     });
-    setAddName('');
-    setInlineError('');
+    setAddName("");
+    setAddCategory("");
+    setAddSubcategory("");
+    setInlineError("");
   };
   useEffect(() => {
     if (!search.trim()) {
@@ -518,68 +645,83 @@ export function PlacesManager() {
     setExpandedDistrictIds(districtIds);
   }, [filteredTree, search]);
 
-  const runOperation = async (operation: PlacePatchOperation, successMessage: string) => {
+  const runOperation = async (
+    operation: PlacePatchOperation,
+    successMessage: string,
+  ) => {
     setBusy(true);
-    setInlineError('');
+    setInlineError("");
     setContextMenu(null);
 
     try {
       const response = await patchPlaces([operation]);
       setHierarchy(response);
-      addToast('success', successMessage);
+      addToast("success", successMessage);
     } catch (error) {
-      const message = (
-        error as {
-          response?: {
-            data?: {
-              message?: string;
+      const message =
+        (
+          error as {
+            response?: {
+              data?: {
+                message?: string;
+              };
             };
-          };
-        }
-      ).response?.data?.message ?? 'Operation failed.';
+          }
+        ).response?.data?.message ?? "Operation failed.";
 
-      addToast('error', message);
+      addToast("error", message);
       setInlineError(message);
     } finally {
       setBusy(false);
     }
   };
 
-  const buildCascadeDisableOperations = (node: TreeNodeRef): PlacePatchOperation[] => {
+  const buildCascadeDisableOperations = (
+    node: TreeNodeRef,
+  ): PlacePatchOperation[] => {
     const ops: PlacePatchOperation[] = [];
 
-    if (node.type === 'place') {
+    if (node.type === "place") {
       if (node.deleted !== true) {
-        ops.push({ op: 'delete', id: node.id });
+        ops.push({ op: "delete", id: node.id });
       }
       return ops;
     }
 
-    if (node.type === 'municipality') {
-      const province = hierarchy.provinces.find((item) => item.id === node.provinceId);
-      const district = province?.districts.find((item) => item.id === node.districtId);
-      const municipality = district?.municipalities.find((item) => item.id === node.id);
+    if (node.type === "municipality") {
+      const province = hierarchy.provinces.find(
+        (item) => item.id === node.provinceId,
+      );
+      const district = province?.districts.find(
+        (item) => item.id === node.districtId,
+      );
+      const municipality = district?.municipalities.find(
+        (item) => item.id === node.id,
+      );
       (municipality?.places ?? []).forEach((place) => {
-        if (place.deleted !== true) ops.push({ op: 'delete', id: place.id });
+        if (place.deleted !== true) ops.push({ op: "delete", id: place.id });
       });
-      if (municipality?.deleted !== true) ops.push({ op: 'delete', id: node.id });
+      if (municipality?.deleted !== true)
+        ops.push({ op: "delete", id: node.id });
       return ops;
     }
 
-    if (node.type === 'district') {
-      const province = hierarchy.provinces.find((item) => item.id === node.provinceId);
+    if (node.type === "district") {
+      const province = hierarchy.provinces.find(
+        (item) => item.id === node.provinceId,
+      );
       const district = province?.districts.find((item) => item.id === node.id);
       const municipalities = district?.municipalities ?? [];
       municipalities.forEach((municipality) => {
         (municipality.places ?? []).forEach((place) => {
-          if (place.deleted !== true) ops.push({ op: 'delete', id: place.id });
+          if (place.deleted !== true) ops.push({ op: "delete", id: place.id });
         });
         if (municipality.deleted !== true) {
-          ops.push({ op: 'delete', id: municipality.id });
+          ops.push({ op: "delete", id: municipality.id });
         }
       });
       if (district?.deleted !== true) {
-        ops.push({ op: 'delete', id: node.id });
+        ops.push({ op: "delete", id: node.id });
       }
       return ops;
     }
@@ -589,18 +731,18 @@ export function PlacesManager() {
     districts.forEach((district) => {
       (district.municipalities ?? []).forEach((municipality) => {
         (municipality.places ?? []).forEach((place) => {
-          if (place.deleted !== true) ops.push({ op: 'delete', id: place.id });
+          if (place.deleted !== true) ops.push({ op: "delete", id: place.id });
         });
         if (municipality.deleted !== true) {
-          ops.push({ op: 'delete', id: municipality.id });
+          ops.push({ op: "delete", id: municipality.id });
         }
       });
       if (district.deleted !== true) {
-        ops.push({ op: 'delete', id: district.id });
+        ops.push({ op: "delete", id: district.id });
       }
     });
     if (province?.deleted !== true) {
-      ops.push({ op: 'delete', id: node.id });
+      ops.push({ op: "delete", id: node.id });
     }
     return ops;
   };
@@ -608,25 +750,26 @@ export function PlacesManager() {
   const handleCascadeDisable = async (node: TreeNodeRef) => {
     const operations = buildCascadeDisableOperations(node);
     if (operations.length === 0) {
-      addToast('success', 'Already disabled.');
+      addToast("success", "Already disabled.");
       return;
     }
 
     setBusy(true);
-    setInlineError('');
+    setInlineError("");
     setContextMenu(null);
 
     try {
       const response = await patchPlaces(operations);
       setHierarchy(response);
-      addToast('success', 'Disabled with children.');
+      addToast("success", "Disabled with children.");
     } catch (error) {
-      const message = (
-        error as {
-          response?: { data?: { message?: string } };
-        }
-      ).response?.data?.message ?? 'Operation failed.';
-      addToast('error', message);
+      const message =
+        (
+          error as {
+            response?: { data?: { message?: string } };
+          }
+        ).response?.data?.message ?? "Operation failed.";
+      addToast("error", message);
       setInlineError(message);
     } finally {
       setBusy(false);
@@ -640,86 +783,128 @@ export function PlacesManager() {
 
     const name = editName.trim();
     if (!name) {
-      setInlineError('Name is required.');
+      setInlineError("Name is required.");
+      return;
+    }
+    if (selectedNode.type === "place" && !editCategory) {
+      setInlineError("Choose an activity category for this place.");
       return;
     }
 
     const lower = name.toLowerCase();
     let duplicate = false;
 
-    if (selectedNode.type === 'province') {
+    if (selectedNode.type === "province") {
       duplicate = hierarchy.provinces.some(
-        (province) => province.id !== selectedNode.id && province.name.trim().toLowerCase() === lower,
+        (province) =>
+          province.id !== selectedNode.id &&
+          province.name.trim().toLowerCase() === lower,
       );
-    } else if (selectedNode.type === 'district') {
-      const province = hierarchy.provinces.find((item) => item.id === selectedNode.provinceId);
-      duplicate = Boolean(province?.districts.some(
-        (district) => district.id !== selectedNode.id && district.name.trim().toLowerCase() === lower,
-      ));
-    } else if (selectedNode.type === 'municipality') {
-      const province = hierarchy.provinces.find((item) => item.id === selectedNode.provinceId);
-      const district = province?.districts.find((item) => item.id === selectedNode.districtId);
-      duplicate = Boolean(district?.municipalities.some(
-        (municipality) => municipality.id !== selectedNode.id && municipality.name.trim().toLowerCase() === lower,
-      ));
+    } else if (selectedNode.type === "district") {
+      const province = hierarchy.provinces.find(
+        (item) => item.id === selectedNode.provinceId,
+      );
+      duplicate = Boolean(
+        province?.districts.some(
+          (district) =>
+            district.id !== selectedNode.id &&
+            district.name.trim().toLowerCase() === lower,
+        ),
+      );
+    } else if (selectedNode.type === "municipality") {
+      const province = hierarchy.provinces.find(
+        (item) => item.id === selectedNode.provinceId,
+      );
+      const district = province?.districts.find(
+        (item) => item.id === selectedNode.districtId,
+      );
+      duplicate = Boolean(
+        district?.municipalities.some(
+          (municipality) =>
+            municipality.id !== selectedNode.id &&
+            municipality.name.trim().toLowerCase() === lower,
+        ),
+      );
     } else {
-      const province = hierarchy.provinces.find((item) => item.id === selectedNode.provinceId);
-      const district = province?.districts.find((item) => item.id === selectedNode.districtId);
-      const municipality = district?.municipalities.find((item) => item.id === selectedNode.parentId);
-      duplicate = Boolean(municipality?.places?.some(
-        (place) => place.id !== selectedNode.id && place.name.trim().toLowerCase() === lower,
-      ));
+      const province = hierarchy.provinces.find(
+        (item) => item.id === selectedNode.provinceId,
+      );
+      const district = province?.districts.find(
+        (item) => item.id === selectedNode.districtId,
+      );
+      const municipality = district?.municipalities.find(
+        (item) => item.id === selectedNode.parentId,
+      );
+      duplicate = Boolean(
+        municipality?.places?.some(
+          (place) =>
+            place.id !== selectedNode.id &&
+            place.name.trim().toLowerCase() === lower,
+        ),
+      );
     }
 
     if (duplicate) {
-      setInlineError('Name already exists under the same parent.');
+      setInlineError("Name already exists under the same parent.");
       return;
     }
 
     await runOperation(
-      { op: 'rename', id: selectedNode.id, name },
-      'Name updated.',
+      {
+        op: "rename",
+        id: selectedNode.id,
+        name,
+        ...(selectedNode.type === "place"
+          ? {
+              category: editCategory,
+              subcategory: editSubcategory || null,
+            }
+          : {}),
+      },
+      selectedNode.type === "place"
+        ? "Place details updated."
+        : "Name updated.",
     );
   };
 
   const handleDelete = async (node: TreeNodeRef) => {
     if (hasActiveChildren(hierarchy, node)) {
-      const warning = 'You must delete all children first.';
-      addToast('error', warning);
+      const warning = "You must delete all children first.";
+      addToast("error", warning);
       setInlineError(warning);
       return;
     }
 
     await runOperation(
       {
-        op: 'delete',
+        op: "delete",
         id: node.id,
       },
-      'Disabled.',
+      "Disabled.",
     );
   };
 
   const handleRestore = async (node: TreeNodeRef) => {
     await runOperation(
       {
-        op: 'restore',
+        op: "restore",
         id: node.id,
       },
-      'Enabled.',
+      "Enabled.",
     );
   };
 
   const handleHardDelete = async (node: TreeNodeRef) => {
     await runOperation(
       {
-        op: 'hard_delete',
+        op: "hard_delete",
         id: node.id,
       },
-      'Deleted permanently.',
+      "Deleted permanently.",
     );
 
     setSelectedNode((current) => (current?.id === node.id ? null : current));
-    setEditName('');
+    setEditName("");
   };
 
   const submitAdd = async () => {
@@ -729,78 +914,100 @@ export function PlacesManager() {
 
     const name = addName.trim();
     if (!name) {
-      setInlineError('Name is required.');
+      setInlineError("Name is required.");
+      return;
+    }
+    if (addDialog.type === "place" && !addCategory) {
+      setInlineError("Choose an activity category for this place.");
       return;
     }
 
     const isDuplicate = hierarchy.provinces.some((province) => {
-      if (addDialog.type === 'district' && province.id === addDialog.parentId) {
+      if (addDialog.type === "district" && province.id === addDialog.parentId) {
         return province.districts.some(
-          (district) => district.name.trim().toLowerCase() === name.toLowerCase(),
+          (district) =>
+            district.name.trim().toLowerCase() === name.toLowerCase(),
         );
       }
 
-      if (addDialog.type === 'municipality') {
-        const district = province.districts.find((item) => item.id === addDialog.parentId);
+      if (addDialog.type === "municipality") {
+        const district = province.districts.find(
+          (item) => item.id === addDialog.parentId,
+        );
         if (!district) {
           return false;
         }
 
         return district.municipalities.some(
-          (municipality) => municipality.name.trim().toLowerCase() === name.toLowerCase(),
+          (municipality) =>
+            municipality.name.trim().toLowerCase() === name.toLowerCase(),
         );
       }
 
-      if (addDialog.type === 'place') {
+      if (addDialog.type === "place") {
         const municipality = province.districts
           .flatMap((district) => district.municipalities)
           .find((item) => item.id === addDialog.parentId);
-        return Boolean(municipality?.places?.some(
-          (place) => place.name.trim().toLowerCase() === name.toLowerCase(),
-        ));
+        return Boolean(
+          municipality?.places?.some(
+            (place) => place.name.trim().toLowerCase() === name.toLowerCase(),
+          ),
+        );
       }
 
       return false;
     });
 
     if (isDuplicate) {
-      setInlineError('Name already exists under this parent.');
+      setInlineError("Name already exists under this parent.");
       return;
     }
 
     setBusy(true);
-    setInlineError('');
+    setInlineError("");
 
     try {
-      const response = await patchPlaces([{
-        op: 'add',
-        type: addDialog.type,
-        parentId: addDialog.parentId,
-        name,
-      }]);
+      const response = await patchPlaces([
+        {
+          op: "add",
+          type: addDialog.type,
+          parentId: addDialog.parentId,
+          name,
+          ...(addDialog.type === "place"
+            ? {
+                category: addCategory,
+                subcategory: addSubcategory || null,
+              }
+            : {}),
+        },
+      ]);
 
       setHierarchy(response);
       setAddDialog(null);
-      setAddName('');
-      const label = addDialog.type === 'district'
-        ? 'District'
-        : addDialog.type === 'municipality'
-          ? 'Municipality'
-          : 'Place';
-      addToast('success', `${label} added.`);
+      setAddName("");
+      setAddCategory("");
+      setAddSubcategory("");
+      const label =
+        addDialog.type === "district"
+          ? "District"
+          : addDialog.type === "municipality"
+            ? "Municipality"
+            : "Place";
+      addToast("success", `${label} added.`);
     } catch (error) {
-      const message = (
-        error as {
-          response?: {
-            data?: {
-              message?: string;
+      const message =
+        (
+          error as {
+            response?: {
+              data?: {
+                message?: string;
+              };
             };
-          };
-        }
-      ).response?.data?.message ?? 'Add operation failed.';
+          }
+        ).response?.data?.message ?? "Add operation failed.";
 
       setInlineError(message);
-      addToast('error', message);
+      addToast("error", message);
     } finally {
       setBusy(false);
     }
@@ -814,12 +1021,13 @@ export function PlacesManager() {
 
     try {
       const [hierarchyResponse, districtsResponse] = await Promise.all([
-        fetch('/data/nepal-hierarchy.json'),
-        fetch('/data/district_municipalites.json'),
+        fetch("/data/nepal-hierarchy.json"),
+        fetch("/data/district_municipalites.json"),
       ]);
 
-      const base = await hierarchyResponse.json() as NepalSeedFile;
-      const districtMunicipalities = await districtsResponse.json() as DistrictMunicipalitiesSeed;
+      const base = (await hierarchyResponse.json()) as NepalSeedFile;
+      const districtMunicipalities =
+        (await districtsResponse.json()) as DistrictMunicipalitiesSeed;
 
       const merged: NepalSeedFile = {
         provinces: (base.provinces ?? []).map((province) => ({
@@ -832,7 +1040,9 @@ export function PlacesManager() {
       (districtMunicipalities ?? []).forEach((item) => {
         Object.entries(item).forEach(([district, municipalities]) => {
           const key = resolveDistrictKey(district);
-          const list = (municipalities ?? []).map((name) => String(name ?? '').trim()).filter(Boolean);
+          const list = (municipalities ?? [])
+            .map((name) => String(name ?? "").trim())
+            .filter(Boolean);
           if (key && list.length > 0) {
             districtMap.set(key, list);
           }
@@ -840,9 +1050,11 @@ export function PlacesManager() {
       });
 
       merged.provinces.forEach((province) => {
-        const nextPlaces: Record<string, string[]> = { ...(province.places ?? {}) };
+        const nextPlaces: Record<string, string[]> = {
+          ...(province.places ?? {}),
+        };
         (province.districts ?? []).forEach((districtNameRaw) => {
-          const districtName = String(districtNameRaw ?? '').trim();
+          const districtName = String(districtNameRaw ?? "").trim();
           if (!districtName) {
             return;
           }
@@ -856,23 +1068,36 @@ export function PlacesManager() {
 
       const payload = toSeedHierarchy(merged);
       const seeded = await bulkSeedPlaces(payload);
-      setHierarchy(showDeleted ? seeded : {
-        provinces: seeded.provinces.filter((province) => province.deleted !== true).map((province) => ({
-          ...province,
-          districts: province.districts.filter((district) => district.deleted !== true).map((district) => ({
-            ...district,
-            municipalities: district.municipalities
-              .filter((municipality) => municipality.deleted !== true)
-              .map((municipality) => ({
-                ...municipality,
-                places: (municipality.places ?? []).filter((place) => place.deleted !== true),
-              })),
-          })),
-        })),
-      });
-      addToast('success', 'Nepal hierarchy seeded successfully (district municipalities imported).');
+      setHierarchy(
+        showDeleted
+          ? seeded
+          : {
+              provinces: seeded.provinces
+                .filter((province) => province.deleted !== true)
+                .map((province) => ({
+                  ...province,
+                  districts: province.districts
+                    .filter((district) => district.deleted !== true)
+                    .map((district) => ({
+                      ...district,
+                      municipalities: district.municipalities
+                        .filter((municipality) => municipality.deleted !== true)
+                        .map((municipality) => ({
+                          ...municipality,
+                          places: (municipality.places ?? []).filter(
+                            (place) => place.deleted !== true,
+                          ),
+                        })),
+                    })),
+                })),
+            },
+      );
+      addToast(
+        "success",
+        "Nepal hierarchy seeded successfully (district municipalities imported).",
+      );
     } catch {
-      addToast('error', 'Failed to seed Nepal hierarchy.');
+      addToast("error", "Failed to seed Nepal hierarchy.");
     } finally {
       setBusy(false);
     }
@@ -880,14 +1105,14 @@ export function PlacesManager() {
 
   const exportHierarchy = () => {
     const content = JSON.stringify({ provinces: hierarchy.provinces }, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
+    const blob = new Blob([content], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
+    const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = 'places-hierarchy-export.json';
+    anchor.download = "places-hierarchy-export.json";
     anchor.click();
     URL.revokeObjectURL(url);
-    addToast('success', 'Hierarchy exported.');
+    addToast("success", "Hierarchy exported.");
   };
 
   const toggleExpandAll = () => {
@@ -896,7 +1121,9 @@ export function PlacesManager() {
       const nextDistrictIds = new Set<string>();
       hierarchy.provinces.forEach((province) => {
         nextProvinceIds.add(province.id);
-        province.districts.forEach((district) => nextDistrictIds.add(district.id));
+        province.districts.forEach((district) =>
+          nextDistrictIds.add(district.id),
+        );
       });
       setExpandedProvinceIds(nextProvinceIds);
       setExpandedDistrictIds(nextDistrictIds);
@@ -937,17 +1164,20 @@ export function PlacesManager() {
     const isDeleted = node.deleted === true;
     const matched = nodeMatchesSearch(node.name, search);
     const isSelected = selectedNode?.id === node.id;
-    const baseClass = `${isDeleted ? 'text-slate-400 line-through' : 'text-slate-800'} ${matched ? 'bg-yellow-100 rounded px-1' : ''}`;
+    const baseClass = `${isDeleted ? "text-slate-400 line-through" : "text-slate-800"} ${matched ? "bg-yellow-100 rounded px-1" : ""}`;
 
-    const icon = node.type === 'province'
-      ? <FiFlag className="text-blue-600" size={14} />
-      : node.type === 'district'
-        ? <FiMapPin className="text-indigo-600" size={14} />
-        : <FiNavigation className="text-cyan-600" size={14} />;
+    const icon =
+      node.type === "province" ? (
+        <FiFlag className="text-blue-600" size={14} />
+      ) : node.type === "district" ? (
+        <FiMapPin className="text-indigo-600" size={14} />
+      ) : (
+        <FiNavigation className="text-cyan-600" size={14} />
+      );
 
     return (
       <div
-        className={`group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-50 ${isSelected ? 'bg-blue-50 ring-1 ring-blue-200' : ''}`}
+        className={`group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-50 ${isSelected ? "bg-blue-50 ring-1 ring-blue-200" : ""}`}
         style={{ marginLeft: `${depth * 16}px` }}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -960,11 +1190,17 @@ export function PlacesManager() {
         onClick={() => {
           setSelectedNode(node);
           setEditName(node.name);
-          setInlineError('');
+          setInlineError("");
         }}
       >
         {icon}
         <span className={`text-sm ${baseClass}`}>{node.name}</span>
+        {node.type === "place" && node.category && (
+          <span className="truncate rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+            {node.category}
+            {node.subcategory ? ` · ${node.subcategory}` : ""}
+          </span>
+        )}
       </div>
     );
   };
@@ -975,7 +1211,8 @@ export function PlacesManager() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Places</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Manage Province → District → Municipality → Place. Add a place using its title only.
+            Manage Province → District → Municipality → Place, with activity
+            categories for each destination.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
@@ -999,7 +1236,7 @@ export function PlacesManager() {
             disabled={busy || loading}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
           >
-            {showAllExpanded ? 'Collapse All' : 'Expand All'}
+            {showAllExpanded ? "Collapse All" : "Expand All"}
           </button>
           <button
             type="button"
@@ -1032,7 +1269,10 @@ export function PlacesManager() {
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="relative block w-full max-w-md">
-          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <FiSearch
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            size={14}
+          />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
@@ -1059,18 +1299,28 @@ export function PlacesManager() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[420px_1fr]">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3">
-            <h2 className="text-base font-semibold text-slate-900">Hierarchy</h2>
-            <p className="text-xs text-slate-500">Click a node to edit. Right click for quick actions.</p>
+            <h2 className="text-base font-semibold text-slate-900">
+              Hierarchy
+            </h2>
+            <p className="text-xs text-slate-500">
+              Click a node to edit. Right click for quick actions.
+            </p>
           </div>
 
           {loading ? (
-            <p className="py-8 text-center text-sm text-slate-500">Loading places tree...</p>
+            <p className="py-8 text-center text-sm text-slate-500">
+              Loading places tree...
+            </p>
           ) : filteredTree.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">No nodes found.</p>
+            <p className="py-8 text-center text-sm text-slate-500">
+              No nodes found.
+            </p>
           ) : (
             <div className="space-y-1">
               {filteredTree.map((province) => {
-                const provinceExpanded = expandedProvinceIds.has(province.id) || search.trim().length > 0;
+                const provinceExpanded =
+                  expandedProvinceIds.has(province.id) ||
+                  search.trim().length > 0;
 
                 return (
                   <div key={province.id}>
@@ -1079,67 +1329,104 @@ export function PlacesManager() {
                         type="button"
                         onClick={() => toggleProvince(province.id)}
                         className="rounded p-1 text-slate-500 hover:bg-slate-100"
-                        aria-label={provinceExpanded ? 'Collapse province' : 'Expand province'}
+                        aria-label={
+                          provinceExpanded
+                            ? "Collapse province"
+                            : "Expand province"
+                        }
                       >
-                        {provinceExpanded ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />}
+                        {provinceExpanded ? (
+                          <FiChevronDown size={14} />
+                        ) : (
+                          <FiChevronRight size={14} />
+                        )}
                       </button>
-                      {renderNodeLabel({
-                        id: province.id,
-                        type: 'province',
-                        name: province.name,
-                        deleted: province.deleted,
-                      }, 0)}
+                      {renderNodeLabel(
+                        {
+                          id: province.id,
+                          type: "province",
+                          name: province.name,
+                          deleted: province.deleted,
+                        },
+                        0,
+                      )}
                     </div>
-                    {provinceExpanded && province.districts.map((district) => {
-                      const districtExpanded = expandedDistrictIds.has(district.id) || search.trim().length > 0;
+                    {provinceExpanded &&
+                      province.districts.map((district) => {
+                        const districtExpanded =
+                          expandedDistrictIds.has(district.id) ||
+                          search.trim().length > 0;
 
-                      return (
-                        <div key={district.id}>
-                          <div className="flex items-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleDistrict(district.id)}
-                              className="ml-4 rounded p-1 text-slate-500 hover:bg-slate-100"
-                              aria-label={districtExpanded ? 'Collapse district' : 'Expand district'}
-                            >
-                              {districtExpanded ? <FiChevronDown size={14} /> : <FiChevronRight size={14} />}
-                            </button>
-                            {renderNodeLabel({
-                              id: district.id,
-                              type: 'district',
-                              name: district.name,
-                              deleted: district.deleted,
-                              provinceId: province.id,
-                            }, 1)}
-                          </div>
-                          {districtExpanded && district.municipalities.map((municipality) => (
-                            <div key={municipality.id} className="ml-10">
-                              {renderNodeLabel({
-                                id: municipality.id,
-                                type: 'municipality',
-                                name: municipality.name,
-                                deleted: municipality.deleted,
-                                provinceId: province.id,
-                                districtId: district.id,
-                              }, 2)}
-                              {(municipality.places ?? []).map((place) => (
-                                <div key={place.id} className="ml-7 border-l border-slate-200 pl-2">
-                                  {renderNodeLabel({
-                                    id: place.id,
-                                    type: 'place',
-                                    name: place.name,
-                                    deleted: place.deleted,
-                                    parentId: municipality.id,
-                                    provinceId: province.id,
-                                    districtId: district.id,
-                                  }, 3)}
+                        return (
+                          <div key={district.id}>
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleDistrict(district.id)}
+                                className="ml-4 rounded p-1 text-slate-500 hover:bg-slate-100"
+                                aria-label={
+                                  districtExpanded
+                                    ? "Collapse district"
+                                    : "Expand district"
+                                }
+                              >
+                                {districtExpanded ? (
+                                  <FiChevronDown size={14} />
+                                ) : (
+                                  <FiChevronRight size={14} />
+                                )}
+                              </button>
+                              {renderNodeLabel(
+                                {
+                                  id: district.id,
+                                  type: "district",
+                                  name: district.name,
+                                  deleted: district.deleted,
+                                  provinceId: province.id,
+                                },
+                                1,
+                              )}
+                            </div>
+                            {districtExpanded &&
+                              district.municipalities.map((municipality) => (
+                                <div key={municipality.id} className="ml-10">
+                                  {renderNodeLabel(
+                                    {
+                                      id: municipality.id,
+                                      type: "municipality",
+                                      name: municipality.name,
+                                      deleted: municipality.deleted,
+                                      provinceId: province.id,
+                                      districtId: district.id,
+                                    },
+                                    2,
+                                  )}
+                                  {(municipality.places ?? []).map((place) => (
+                                    <div
+                                      key={place.id}
+                                      className="ml-7 border-l border-slate-200 pl-2"
+                                    >
+                                      {renderNodeLabel(
+                                        {
+                                          id: place.id,
+                                          type: "place",
+                                          name: place.name,
+                                          category: place.category,
+                                          subcategory: place.subcategory,
+                                          deleted: place.deleted,
+                                          parentId: municipality.id,
+                                          provinceId: province.id,
+                                          districtId: district.id,
+                                        },
+                                        3,
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               ))}
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
+                          </div>
+                        );
+                      })}
                   </div>
                 );
               })}
@@ -1150,28 +1437,53 @@ export function PlacesManager() {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div>
             <h2 className="text-base font-semibold text-slate-900">Editor</h2>
-            <p className="text-xs text-slate-500">Rename, add children, and enable/disable.</p>
+            <p className="text-xs text-slate-500">
+              Edit names, place categories, children, and availability.
+            </p>
           </div>
 
           {!selectedNode ? (
             <div className="mt-6 rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-              Select a province, district, municipality, or place from the left to edit.
+              Select a province, district, municipality, or place from the left
+              to edit.
             </div>
           ) : (
             <div className="mt-4 space-y-4">
               <div className="rounded-xl border border-slate-200 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected</p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900">{selectedNode.name}</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Selected
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900">
+                      {selectedNode.name}
+                    </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Type: <span className="font-medium text-slate-700">{selectedNode.type}</span>
+                      Type:{" "}
+                      <span className="font-medium text-slate-700">
+                        {selectedNode.type}
+                      </span>
                       {selectedNode.deleted ? (
-                        <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Disabled</span>
+                        <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                          Disabled
+                        </span>
                       ) : (
-                        <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Enabled</span>
+                        <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                          Enabled
+                        </span>
                       )}
                     </p>
+                    {selectedNode.type === "place" &&
+                      selectedNode.category && (
+                        <p className="mt-2 text-xs text-slate-600">
+                          <span className="font-medium text-slate-800">
+                            {selectedNode.category}
+                          </span>
+                          {selectedNode.subcategory
+                            ? ` / ${selectedNode.subcategory}`
+                            : ""}
+                        </p>
+                      )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedNode.deleted ? (
@@ -1218,8 +1530,10 @@ export function PlacesManager() {
               </div>
 
               <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-sm font-semibold text-slate-900">Rename</p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <p className="text-sm font-semibold text-slate-900">
+                  {selectedNode.type === "place" ? "Place details" : "Rename"}
+                </p>
+                <div className="mt-2 grid gap-3">
                   <input
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
@@ -1227,30 +1541,89 @@ export function PlacesManager() {
                     className="flex-1 min-w-[240px] rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter new name"
                   />
+                  {selectedNode.type === "place" && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Activity category
+                        <select
+                          value={editCategory}
+                          onChange={(event) => {
+                            setEditCategory(event.target.value);
+                            setEditSubcategory("");
+                          }}
+                          disabled={busy}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
+                        >
+                          <option value="">Choose category</option>
+                          {activityCategories.map((category) => (
+                            <option key={category.id} value={category.name}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Subcategory{" "}
+                        <span className="font-normal text-slate-400">
+                          (optional)
+                        </span>
+                        <select
+                          value={editSubcategory}
+                          onChange={(event) =>
+                            setEditSubcategory(event.target.value)
+                          }
+                          disabled={
+                            busy ||
+                            !editCategory ||
+                            editSubcategoryOptions.length === 0
+                          }
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                        >
+                          <option value="">No subcategory</option>
+                          {editSubcategoryOptions.map((subcategory) => (
+                            <option
+                              key={subcategory.id}
+                              value={subcategory.name}
+                            >
+                              {subcategory.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
                   <button
                     type="button"
-                    disabled={busy || !editName.trim() || editName.trim() === selectedNode.name.trim()}
+                    disabled={
+                      busy ||
+                      !editName.trim() ||
+                      (selectedNode.type === "place" && !editCategory)
+                    }
                     onClick={() => void submitRenameSelected()}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                    className="w-fit rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                   >
-                    Save
+                    {selectedNode.type === "place"
+                      ? "Save place details"
+                      : "Save name"}
                   </button>
                 </div>
               </div>
 
               <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-sm font-semibold text-slate-900">Add child</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  Add child
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {selectedNode.type === 'province'
-                    ? 'Add a district under this province.'
-                    : selectedNode.type === 'district'
-                      ? 'Add a municipality under this district.'
-                      : selectedNode.type === 'municipality'
-                        ? 'Add a place under this municipality. Only its title is required.'
-                        : 'Places cannot contain children.'}
+                  {selectedNode.type === "province"
+                    ? "Add a district under this province."
+                    : selectedNode.type === "district"
+                      ? "Add a municipality under this district."
+                      : selectedNode.type === "municipality"
+                        ? "Add a place under this municipality with its activity category."
+                        : "Places cannot contain children."}
                 </p>
                 <div className="mt-3">
-                  {selectedNode.type === 'province' && (
+                  {selectedNode.type === "province" && (
                     <button
                       type="button"
                       disabled={busy}
@@ -1261,7 +1634,7 @@ export function PlacesManager() {
                       Add District
                     </button>
                   )}
-                  {selectedNode.type === 'district' && (
+                  {selectedNode.type === "district" && (
                     <button
                       type="button"
                       disabled={busy}
@@ -1272,7 +1645,7 @@ export function PlacesManager() {
                       Add Municipality
                     </button>
                   )}
-                  {selectedNode.type === 'municipality' && (
+                  {selectedNode.type === "municipality" && (
                     <button
                       type="button"
                       disabled={busy}
@@ -1287,30 +1660,49 @@ export function PlacesManager() {
               </div>
               {/* Weather preview panel */}
               <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-sm font-semibold text-slate-900">Weather preview</p>
-                <p className="mt-1 text-xs text-slate-500">Preview approximate weather for the selected place (provided by Open-Meteo via server proxy).</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  Weather preview
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Preview approximate weather for the selected place (provided
+                  by Open-Meteo via server proxy).
+                </p>
                 <div className="mt-3">
                   {weatherLoading ? (
-                    <div className="text-sm text-slate-500">Loading weather...</div>
+                    <div className="text-sm text-slate-500">
+                      Loading weather...
+                    </div>
                   ) : weatherError ? (
                     <div className="text-sm text-red-600">{weatherError}</div>
                   ) : weatherData ? (
                     <div className="text-sm text-slate-700 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-slate-500">Timezone</div>
-                        <div className="font-medium">{weatherData?.timezone ?? 'UTC'}</div>
+                        <div className="font-medium">
+                          {weatherData?.timezone ?? "UTC"}
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-slate-500">Daily max</div>
-                        <div className="font-medium">{weatherData?.daily?.temperature_2m_max?.[0] ?? '—'} °C</div>
+                        <div className="font-medium">
+                          {weatherData?.daily?.temperature_2m_max?.[0] ?? "—"}{" "}
+                          °C
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="text-xs text-slate-500">Daily min</div>
-                        <div className="font-medium">{weatherData?.daily?.temperature_2m_min?.[0] ?? '—'} °C</div>
+                        <div className="font-medium">
+                          {weatherData?.daily?.temperature_2m_min?.[0] ?? "—"}{" "}
+                          °C
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-slate-500">Precipitation</div>
-                        <div className="font-medium">{weatherData?.daily?.precipitation_sum?.[0] ?? '—'} mm</div>
+                        <div className="text-xs text-slate-500">
+                          Precipitation
+                        </div>
+                        <div className="font-medium">
+                          {weatherData?.daily?.precipitation_sum?.[0] ?? "—"} mm
+                        </div>
                       </div>
                       <div className="mt-2 flex items-center gap-2">
                         <button
@@ -1320,12 +1712,19 @@ export function PlacesManager() {
                             if (!selectedResolved) return;
                             // Pass selection and weather via query string and navigate to campaign add (no sessionStorage)
                             try {
-                              const payload = { place: selectedResolved, weather: weatherData };
-                              const encoded = encodeURIComponent(JSON.stringify(payload));
+                              const payload = {
+                                place: selectedResolved,
+                                weather: weatherData,
+                              };
+                              const encoded = encodeURIComponent(
+                                JSON.stringify(payload),
+                              );
                               // Navigate to campaign add page, passing the selection in the query string
-                              router.push(`/campaigns/add?selectedPlace=${encoded}`);
+                              router.push(
+                                `/campaigns/add?selectedPlace=${encoded}`,
+                              );
                             } catch {
-                              addToast('error', 'Failed to select place.');
+                              addToast("error", "Failed to select place.");
                             }
                           }}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
@@ -1337,7 +1736,7 @@ export function PlacesManager() {
                           disabled={busy}
                           onClick={() => {
                             setWeatherData(null);
-                            setWeatherError('');
+                            setWeatherError("");
                           }}
                           className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                         >
@@ -1346,7 +1745,9 @@ export function PlacesManager() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-sm text-slate-500">Select a municipality or district to preview weather.</div>
+                    <div className="text-sm text-slate-500">
+                      Select a municipality or district to preview weather.
+                    </div>
                   )}
                 </div>
               </div>
@@ -1360,18 +1761,18 @@ export function PlacesManager() {
           className="fixed z-50 min-w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {contextMenu.node.type === 'province' && (
+          {contextMenu.node.type === "province" && (
             <button
               type="button"
               disabled={busy}
               onClick={() => {
                 setAddDialog({
-                  type: 'district',
+                  type: "district",
                   parentId: contextMenu.node.id,
-                  title: 'Add District',
+                  title: "Add District",
                 });
-                setAddName('');
-                setInlineError('');
+                setAddName("");
+                setInlineError("");
                 setContextMenu(null);
               }}
               className="w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60"
@@ -1379,18 +1780,18 @@ export function PlacesManager() {
               Add District
             </button>
           )}
-          {contextMenu.node.type === 'district' && (
+          {contextMenu.node.type === "district" && (
             <button
               type="button"
               disabled={busy}
               onClick={() => {
                 setAddDialog({
-                  type: 'municipality',
+                  type: "municipality",
                   parentId: contextMenu.node.id,
-                  title: 'Add Municipality',
+                  title: "Add Municipality",
                 });
-                setAddName('');
-                setInlineError('');
+                setAddName("");
+                setInlineError("");
                 setContextMenu(null);
               }}
               className="w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60"
@@ -1398,18 +1799,20 @@ export function PlacesManager() {
               Add Municipality
             </button>
           )}
-          {contextMenu.node.type === 'municipality' && (
+          {contextMenu.node.type === "municipality" && (
             <button
               type="button"
               disabled={busy}
               onClick={() => {
                 setAddDialog({
-                  type: 'place',
+                  type: "place",
                   parentId: contextMenu.node.id,
-                  title: 'Add Place Title',
+                  title: "Add Place Title",
                 });
-                setAddName('');
-                setInlineError('');
+                setAddName("");
+                setAddCategory("");
+                setAddSubcategory("");
+                setInlineError("");
                 setContextMenu(null);
               }}
               className="w-full rounded px-3 py-2 text-left text-sm text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
@@ -1423,7 +1826,7 @@ export function PlacesManager() {
             onClick={() => {
               setSelectedNode(contextMenu.node);
               setEditName(contextMenu.node.name);
-              setInlineError('');
+              setInlineError("");
               setContextMenu(null);
             }}
             className="w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-60"
@@ -1465,34 +1868,86 @@ export function PlacesManager() {
       {addDialog && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/30 p-4">
           <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
-            <h3 className="text-lg font-semibold text-slate-900">{addDialog.title}</h3>
-            <p className="mt-1 text-sm text-slate-600">Enter the node name only. ID will be generated automatically.</p>
+            <h3 className="text-lg font-semibold text-slate-900">
+              {addDialog.title}
+            </h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {addDialog.type === "place"
+                ? "Enter the place title and choose the activity it is best known for."
+                : "Enter the node name. ID will be generated automatically."}
+            </p>
             <input
               autoFocus
               value={addName}
               onChange={(event) => setAddName(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') {
+                if (event.key === "Enter") {
                   event.preventDefault();
                   void submitAdd();
                 }
-                if (event.key === 'Escape') {
+                if (event.key === "Escape") {
                   setAddDialog(null);
-                  setAddName('');
-                  setInlineError('');
+                  setAddName("");
+                  setAddCategory("");
+                  setAddSubcategory("");
+                  setInlineError("");
                 }
               }}
               className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Type name"
               disabled={busy}
             />
+            {addDialog.type === "place" && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                  Activity category
+                  <select
+                    value={addCategory}
+                    onChange={(event) => {
+                      setAddCategory(event.target.value);
+                      setAddSubcategory("");
+                    }}
+                    disabled={busy}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Choose category</option>
+                    {activityCategories.map((category) => (
+                      <option key={category.id} value={category.name}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                  Subcategory{" "}
+                  <span className="font-normal text-slate-400">(optional)</span>
+                  <select
+                    value={addSubcategory}
+                    onChange={(event) => setAddSubcategory(event.target.value)}
+                    disabled={
+                      busy || !addCategory || addSubcategoryOptions.length === 0
+                    }
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">No subcategory</option>
+                    {addSubcategoryOptions.map((subcategory) => (
+                      <option key={subcategory.id} value={subcategory.name}>
+                        {subcategory.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             <div className="mt-4 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setAddDialog(null);
-                  setAddName('');
-                  setInlineError('');
+                  setAddName("");
+                  setAddCategory("");
+                  setAddSubcategory("");
+                  setInlineError("");
                 }}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
               >
@@ -1501,7 +1956,11 @@ export function PlacesManager() {
               <button
                 type="button"
                 onClick={() => void submitAdd()}
-                disabled={busy}
+                disabled={
+                  busy ||
+                  !addName.trim() ||
+                  (addDialog.type === "place" && !addCategory)
+                }
                 className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
               >
                 <FiPlus size={14} />
@@ -1524,11 +1983,19 @@ export function PlacesManager() {
 
       <ConfirmModal
         open={Boolean(disableModalNode)}
-        title={disableModalNode?.deleted ? 'Delete permanently?' : 'Disable this place?'}
-        description={disableModalNode?.deleted
-          ? 'This will permanently remove it from the system. This cannot be undone.'
-          : 'This will hide it from users (you can re-enable later). You must disable all children first.'}
-        confirmLabel={disableModalNode?.deleted ? 'Delete permanently' : 'Disable'}
+        title={
+          disableModalNode?.deleted
+            ? "Delete permanently?"
+            : "Disable this place?"
+        }
+        description={
+          disableModalNode?.deleted
+            ? "This will permanently remove it from the system. This cannot be undone."
+            : "This will hide it from users (you can re-enable later). You must disable all children first."
+        }
+        confirmLabel={
+          disableModalNode?.deleted ? "Delete permanently" : "Disable"
+        }
         cancelLabel="Cancel"
         onConfirm={() => {
           if (!disableModalNode) {
@@ -1565,9 +2032,9 @@ export function PlacesManager() {
           <div
             key={toast.id}
             className={`min-w-64 rounded-lg border px-3 py-2 text-sm shadow-lg ${
-              toast.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-red-200 bg-red-50 text-red-800'
+              toast.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-800"
             }`}
           >
             {toast.message}

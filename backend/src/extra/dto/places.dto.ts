@@ -18,6 +18,14 @@ export class PlaceTitleDto {
   @IsNotEmpty()
   name!: string;
 
+  @IsString()
+  @IsOptional()
+  category?: string;
+
+  @IsString()
+  @IsOptional()
+  subcategory?: string | null;
+
   @IsBoolean()
   @IsOptional()
   deleted?: boolean;
@@ -109,6 +117,14 @@ export class PlaceOperationDto {
   @IsString()
   @IsOptional()
   name?: string;
+
+  @IsString()
+  @IsOptional()
+  category?: string;
+
+  @IsString()
+  @IsOptional()
+  subcategory?: string | null;
 }
 
 export class PatchPlacesDto {

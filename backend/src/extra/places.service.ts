@@ -13,6 +13,8 @@ import { ExtraItem } from './schemas/extra.schema';
 export type PlaceTitleNode = {
   id: string;
   name: string;
+  category?: string;
+  subcategory?: string | null;
   deleted?: boolean;
 };
 
@@ -44,7 +46,12 @@ export type PlacesHierarchy = {
 type CatalogDistrictItem = {
   district: string;
   places: string[];
-  placeItems: Array<{ place: string; municipality: string }>;
+  placeItems: Array<{
+    place: string;
+    municipality: string;
+    category?: string;
+    subcategory?: string | null;
+  }>;
 };
 
 type CatalogItem = {
@@ -143,6 +150,16 @@ export class PlacesService {
                         ? municipality.places.map((place) => ({
                             id: String(place.id ?? '').trim(),
                             name: String(place.name ?? '').trim(),
+                            category:
+                              typeof place.category === 'string' &&
+                              place.category.trim()
+                                ? place.category.trim()
+                                : undefined,
+                            subcategory:
+                              typeof place.subcategory === 'string' &&
+                              place.subcategory.trim()
+                                ? place.subcategory.trim()
+                                : undefined,
                             deleted: place.deleted === true ? true : undefined,
                           }))
                         : [],
@@ -178,7 +195,12 @@ export class PlacesService {
                   name: municipality.name,
                   places: municipality.places
                     .filter((place) => place.deleted !== true)
-                    .map((place) => ({ id: place.id, name: place.name })),
+                    .map((place) => ({
+                      id: place.id,
+                      name: place.name,
+                      category: place.category,
+                      subcategory: place.subcategory,
+                    })),
                 })),
             })),
         })),
@@ -275,6 +297,16 @@ export class PlacesService {
               throw new BadRequestException(`Duplicate ID found: ${place.id}`);
             }
             allIds.add(place.id);
+            if (place.category !== undefined && !place.category.trim()) {
+              throw new BadRequestException(
+                `Place category cannot be empty in ${municipality.name}`,
+              );
+            }
+            if (place.subcategory?.trim() && !place.category?.trim()) {
+              throw new BadRequestException(
+                `Place ${place.name} cannot have a subcategory without a category`,
+              );
+            }
             const placeNameKey = normalizeName(place.name);
             if (placeNames.has(placeNameKey)) {
               throw new BadRequestException(
@@ -447,9 +479,18 @@ export class PlacesService {
             'Place can only be added under a municipality',
           );
         }
+        const category = operation.category?.trim();
+        const subcategory = operation.subcategory?.trim() || null;
+        if (!category) {
+          throw new BadRequestException(
+            'Place add operation requires an activity category',
+          );
+        }
         parent.municipality.places.push({
           id: this.generateUniqueNodeId(hierarchy, 'place', name),
           name,
+          category,
+          subcategory,
         });
         return;
       }
@@ -566,6 +607,16 @@ export class PlacesService {
         return;
       }
       node.place.name = nextName;
+      if (operation.category !== undefined) {
+        const category = operation.category.trim();
+        if (!category) {
+          throw new BadRequestException('Place category cannot be empty');
+        }
+        node.place.category = category;
+      }
+      if (operation.subcategory !== undefined) {
+        node.place.subcategory = operation.subcategory?.trim() || null;
+      }
       return;
     }
 
@@ -774,6 +825,8 @@ export class PlacesService {
           municipality.places.map((place) => ({
             place: place.name,
             municipality: municipality.name,
+            category: place.category,
+            subcategory: place.subcategory,
           })),
         );
         return {
