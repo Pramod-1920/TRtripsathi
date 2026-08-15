@@ -15,6 +15,25 @@ export type CampaignLifecyclePhase =
 
 export type CampaignParticipantRole = 'host' | 'co-host' | 'member';
 
+@Schema({ _id: false })
+export class CampaignLocationGps {
+  @Prop({ type: String, enum: ['Point'], required: true, default: 'Point' })
+  type!: 'Point';
+
+  @Prop({
+    type: [Number],
+    required: true,
+    validate: {
+      validator: (value: number[]) => value.length === 2,
+      message: 'locationGps coordinates must contain longitude and latitude',
+    },
+  })
+  coordinates!: [number, number];
+}
+
+export const CampaignLocationGpsSchema =
+  SchemaFactory.createForClass(CampaignLocationGps);
+
 export class CampaignParticipant {
   userId!: Types.ObjectId;
   status!: 'pending' | 'accepted' | 'rejected' | 'left' | 'removed';
@@ -72,24 +91,10 @@ export class Campaign {
   placeName?: string | null;
 
   @Prop({
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point',
-    },
-    coordinates: {
-      type: [Number],
-      validate: {
-        validator: (value: number[]) => value.length === 2,
-        message: 'locationGps coordinates must contain longitude and latitude',
-      },
-    },
+    type: CampaignLocationGpsSchema,
     default: null,
   })
-  locationGps?: {
-    type: 'Point';
-    coordinates: [number, number];
-  } | null;
+  locationGps?: CampaignLocationGps | null;
 
   @Prop({ type: String, default: null })
   difficulty?: string | null;
