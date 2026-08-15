@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
@@ -53,6 +55,28 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     }
   }
 
+  Future<void> _openConversation(Map<String, dynamic> conversation) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatConversationScreen(
+          conversation: conversation,
+          currentUserId: _currentUserId,
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _startConversation() async {
+    final conversation = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => TravelerPickerScreen(currentUserId: _currentUserId),
+      ),
+    );
+    if (!mounted || conversation == null) return;
+    await _openConversation(conversation);
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: const Color(0xFFF6F7F3),
@@ -73,6 +97,11 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'New conversation',
+              onPressed: _loading ? null : _startConversation,
+              icon: const Icon(Icons.edit_square),
+            ),
+            IconButton(
               tooltip: 'Refresh conversations',
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh_rounded),
@@ -85,7 +114,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
             : _error != null
                 ? _ChatError(message: _error!, onRetry: _load)
                 : _conversations.isEmpty
-                    ? const _EmptyInbox()
+                    ? _EmptyInbox(onStart: _startConversation)
                     : RefreshIndicator(
                         color: AppColors.navy,
                         onRefresh: _load,
@@ -100,18 +129,183 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
                             return _ConversationTile(
                               conversation: conversation,
                               currentUserId: _currentUserId,
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => ChatConversationScreen(
-                                    conversation: conversation,
-                                    currentUserId: _currentUserId,
-                                  ),
-                                ),
-                              ),
+                              onTap: () => _openConversation(conversation),
                             );
                           },
                         ),
                       ),
+      );
+}
+
+class TravelerPickerScreen extends StatefulWidget {
+  const TravelerPickerScreen({super.key, required this.currentUserId});
+  final String currentUserId;
+
+  @override
+  State<TravelerPickerScreen> createState() => _TravelerPickerScreenState();
+}
+
+class _TravelerPickerScreenState extends State<TravelerPickerScreen> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _travelers = const [];
+  Timer? _debounce;
+  int _searchRequest = 0;
+  bool _loading = true;
+  String? _startingId;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _search();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _search);
+  }
+
+  Future<void> _search() async {
+    final request = ++_searchRequest;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final response = await ApiService.searchChatTravelers(
+        _searchController.text,
+      );
+      final raw = response['items'];
+      if (!mounted || request != _searchRequest) return;
+      setState(() {
+        _travelers = raw is List
+            ? raw
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .where((item) => _idOf(item) != widget.currentUserId)
+                .toList()
+            : const [];
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted || request != _searchRequest) return;
+      setState(() {
+        _loading = false;
+        _error = ApiService.readableError(error);
+      });
+    }
+  }
+
+  Future<void> _start(Map<String, dynamic> traveler) async {
+    final id = _idOf(traveler);
+    if (id.isEmpty || _startingId != null) return;
+    setState(() => _startingId = id);
+    try {
+      final conversation = await ApiService.startPrivateChat(id);
+      if (mounted) Navigator.of(context).pop(conversation);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _startingId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ApiService.readableError(error))),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFFF6F7F3),
+        appBar: AppBar(title: const Text('New conversation')),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                onChanged: _onQueryChanged,
+                onSubmitted: (_) => _search(),
+                decoration: const InputDecoration(
+                  hintText: 'Search travelers by name or location',
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppColors.navy),
+                    )
+                  : _error != null
+                      ? _ChatError(message: _error!, onRetry: _search)
+                      : _travelers.isEmpty
+                          ? const _ChatEmptyState(
+                              icon: Icons.person_search_outlined,
+                              title: 'No travelers found',
+                              message: 'Try another name or location.',
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                              itemCount: _travelers.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final traveler = _travelers[index];
+                                final id = _idOf(traveler);
+                                final name = _personName(traveler);
+                                final location = [
+                                  traveler['location'],
+                                  traveler['district'],
+                                ]
+                                    .map((value) =>
+                                        (value ?? '').toString().trim())
+                                    .where((value) => value.isNotEmpty)
+                                    .toSet()
+                                    .join(', ');
+                                return Card(
+                                  elevation: 0,
+                                  color: Colors.white,
+                                  child: ListTile(
+                                    onTap: () => _start(traveler),
+                                    leading: _ChatAvatar(
+                                      name: name,
+                                      imageUrl: (traveler['profilePhoto'] ?? '')
+                                          .toString(),
+                                      size: 46,
+                                    ),
+                                    title: Text(
+                                      name.isEmpty ? 'Traveler' : name,
+                                      style: const TextStyle(
+                                        color: AppColors.navy,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    subtitle: location.isEmpty
+                                        ? const Text('TripSathi traveler')
+                                        : Text(location),
+                                    trailing: _startingId == id
+                                        ? const SizedBox.square(
+                                            dimension: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.chat_outlined),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
       );
 }
 
@@ -134,8 +328,10 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   final _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = const [];
   bool _loading = true;
+  bool _refreshing = false;
   bool _sending = false;
   String? _error;
+  Timer? _refreshTimer;
 
   String get _chatId => _idOf(widget.conversation);
 
@@ -143,16 +339,21 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   void initState() {
     super.initState();
     _loadMessages();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_loading && !_sending) _loadMessages(showLoader: false);
+    });
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _loadMessages({bool showLoader = true}) async {
+    if (_refreshing) return;
     if (_chatId.isEmpty) {
       setState(() {
         _loading = false;
@@ -160,6 +361,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       });
       return;
     }
+    _refreshing = true;
     if (showLoader) setState(() => _loading = true);
     try {
       final response = await ApiService.getChatMessages(_chatId);
@@ -189,6 +391,8 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         _loading = false;
         _error = ApiService.readableError(error);
       });
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -316,6 +520,14 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = _conversationName(conversation, currentUserId);
     final type = (conversation['type'] ?? '').toString();
+    final lastMessage = conversation['lastMessage'];
+    final preview = lastMessage is Map
+        ? (lastMessage['content'] ?? '').toString().trim()
+        : '';
+    final unreadCount = int.tryParse(
+          (conversation['unreadCount'] ?? 0).toString(),
+        ) ??
+        0;
     final date = _chatTime(conversation['lastMessageAt'] ??
         conversation['updatedAt'] ??
         conversation['createdAt']);
@@ -351,14 +563,22 @@ class _ConversationTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      type == 'person_to_person'
-                          ? 'Private conversation'
-                          : type == 'campaign_group'
-                              ? 'Campaign group'
-                              : 'Group conversation',
+                      preview.isNotEmpty
+                          ? preview
+                          : type == 'person_to_person'
+                              ? 'Private conversation'
+                              : type == 'campaign_group'
+                                  ? 'Campaign group'
+                                  : 'Group conversation',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.muted),
+                      style: TextStyle(
+                        color:
+                            unreadCount > 0 ? AppColors.navy : AppColors.muted,
+                        fontWeight: unreadCount > 0
+                            ? FontWeight.w700
+                            : FontWeight.normal,
+                      ),
                     ),
                   ],
                 ),
@@ -376,11 +596,33 @@ class _ConversationTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 9),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.muted,
-                    size: 20,
-                  ),
+                  if (unreadCount > 0)
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 22),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: AppColors.navy,
+                        borderRadius: BorderRadius.all(Radius.circular(99)),
+                      ),
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    )
+                  else
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.muted,
+                      size: 20,
+                    ),
                 ],
               ),
             ],
@@ -532,14 +774,27 @@ class _ChatAvatar extends StatelessWidget {
 }
 
 class _EmptyInbox extends StatelessWidget {
-  const _EmptyInbox();
+  const _EmptyInbox({required this.onStart});
+  final VoidCallback onStart;
 
   @override
-  Widget build(BuildContext context) => const _ChatEmptyState(
-        icon: Icons.forum_outlined,
-        title: 'No conversations yet',
-        message:
-            'Your private and group travel conversations will appear here.',
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _ChatEmptyState(
+              icon: Icons.forum_outlined,
+              title: 'No conversations yet',
+              message:
+                  'Find a traveler and start planning your next adventure.',
+            ),
+            FilledButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.add_comment_outlined),
+              label: const Text('Start a chat'),
+            ),
+          ],
+        ),
       );
 }
 

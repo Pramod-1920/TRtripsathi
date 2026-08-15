@@ -9,6 +9,7 @@ import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/my_journeys_page.dart';
+import 'package:trtripsathi_mobile/features/profile/presentation/pages/report_issue_page.dart';
 
 const _profileForest = Color(0xFF173F38);
 const _profileForestLight = Color(0xFF28685A);
@@ -314,9 +315,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  _SectionLabel(title: 'Safety & policies'),
+                  _SectionLabel(title: 'Safety & support'),
                   _SettingsCard(
                     children: [
+                      _SettingsTile(
+                        icon: Icons.flag_outlined,
+                        title: 'Report an issue',
+                        subtitle: 'Tell us what went wrong and track updates',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ReportIssuePage(),
+                          ),
+                        ),
+                      ),
                       _SettingsTile(
                         icon: Icons.privacy_tip_outlined,
                         title: 'Privacy policy',

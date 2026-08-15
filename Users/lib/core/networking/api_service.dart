@@ -449,6 +449,42 @@ class ApiService {
     throw Exception(_errorMessage(res, 'Unable to update profile'));
   }
 
+  // ============ Reports & feedback endpoints ============
+
+  /// POST /reports/feedback - Send a product issue or suggestion to moderation.
+  static Future<Map<String, dynamic>> submitFeedback({
+    required String reason,
+    required String description,
+  }) async {
+    final response = await _postWithAuth(
+      Uri.parse('$baseUrl/reports/feedback'),
+      body: jsonEncode({
+        'reason': reason,
+        'description': description.trim(),
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    if (response.statusCode == 429) throw _rateLimitException(response);
+    throw Exception(_errorMessage(response, 'Unable to send your report'));
+  }
+
+  /// GET /reports/mine - Load the signed-in traveler's submission history.
+  static Future<Map<String, dynamic>> getMyReports({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = Uri.parse('$baseUrl/reports/mine').replace(
+      queryParameters: {'page': '$page', 'limit': '$limit'},
+    );
+    final response = await _getWithAuth(uri);
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to load your reports'));
+  }
+
   static Future<Map<String, dynamic>> getChatConversations({
     int page = 1,
     int limit = 50,
@@ -461,6 +497,38 @@ class ApiService {
       return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
     }
     throw Exception(_errorMessage(response, 'Unable to load conversations'));
+  }
+
+  static Future<Map<String, dynamic>> searchChatTravelers(
+    String query, {
+    int page = 1,
+    int limit = 30,
+  }) async {
+    final uri = Uri.parse('$baseUrl/user/search').replace(
+      queryParameters: {
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    final response = await _getWithAuth(uri);
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to find travelers'));
+  }
+
+  static Future<Map<String, dynamic>> startPrivateChat(
+    String recipientId,
+  ) async {
+    final response = await _postWithAuth(
+      Uri.parse('$baseUrl/chat/conversations/person-to-person'),
+      body: jsonEncode({'recipientId': recipientId}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+    }
+    throw Exception(_errorMessage(response, 'Unable to start conversation'));
   }
 
   static Future<Map<String, dynamic>> getChatMessages(

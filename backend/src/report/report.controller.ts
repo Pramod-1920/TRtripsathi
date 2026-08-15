@@ -28,7 +28,8 @@ export class ReportController {
   constructor(private reportService: ReportService) {}
 
   @Post('feedback')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.User)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create system feedback' })
   async createFeedback(
@@ -38,11 +39,31 @@ export class ReportController {
     return this.reportService.createFeedback(userId, createDto);
   }
 
+  @Get('mine')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.User)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get reports and feedback submitted by the current user',
+  })
+  async getMyReports(
+    @CurrentUser('userId') userId: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.reportService.getMyReports(
+      userId,
+      parseInt(page, 10),
+      parseInt(limit, 10),
+    );
+  }
+
   /**
    * Create a new report (user or trip)
    */
   @Post(':targetId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.User)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a report for a user or trip' })
   async createReport(
@@ -50,11 +71,7 @@ export class ReportController {
     @Body() createDto: CreateReportDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.reportService.createReport(
-      targetId,
-      userId,
-      createDto,
-    );
+    return this.reportService.createReport(targetId, userId, createDto);
   }
 
   /**
@@ -176,4 +193,3 @@ export class ReportController {
     return this.reportService.updateReportStatus(reportId, updateDto);
   }
 }
-

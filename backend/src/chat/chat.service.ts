@@ -1,8 +1,14 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ChatGroup } from './schemas/chat-group.schema';
 import { ChatMessage } from './schemas/chat-message.schema';
+import { User } from '../user/schemas/user.schema';
 
 @Injectable()
 export class ChatService {
@@ -11,7 +17,40 @@ export class ChatService {
     private chatGroupModel: Model<ChatGroup>,
     @InjectModel(ChatMessage.name)
     private chatMessageModel: Model<ChatMessage>,
+    @InjectModel(User.name)
+    private userModel: Model<User>,
   ) {}
+
+  private objectId(value: string, label: string): Types.ObjectId {
+    if (!Types.ObjectId.isValid(value)) {
+      throw new BadRequestException(`Invalid ${label}`);
+    }
+    return new Types.ObjectId(value);
+  }
+
+  private async profileIdForAuth(authId: string): Promise<Types.ObjectId> {
+    const profile = await this.userModel
+      .findOne({ authId: this.objectId(authId, 'account ID') })
+      .select('_id')
+      .lean();
+    if (!profile) throw new NotFoundException('User profile not found');
+    return profile._id as Types.ObjectId;
+  }
+
+  private async requireMember(chatGroupId: string, authId: string) {
+    const [chat, profileId] = await Promise.all([
+      this.chatGroupModel.findById(this.objectId(chatGroupId, 'chat ID')),
+      this.profileIdForAuth(authId),
+    ]);
+    if (!chat || !chat.isActive)
+      throw new NotFoundException('Chat group not found');
+    if (
+      !chat.members.some((member) => member.toString() === profileId.toString())
+    ) {
+      throw new ForbiddenException('You are not a member of this chat');
+    }
+    return { chat, profileId };
+  }
 
   // ==================== CHAT GROUP OPERATIONS ====================
 
@@ -22,12 +61,19 @@ export class ChatService {
     userId: string,
     recipientId: string,
   ): Promise<ChatGroup> {
-    const userIdObj = new Types.ObjectId(userId);
-    const recipientIdObj = new Types.ObjectId(recipientId);
+    const userIdObj = await this.profileIdForAuth(userId);
+    const recipientIdObj = this.objectId(recipientId, 'recipient ID');
 
-    if (userId === recipientId) {
+    if (userIdObj.equals(recipientIdObj)) {
       throw new BadRequestException('Cannot chat with yourself');
     }
+
+    const recipient = await this.userModel.exists({
+      _id: recipientIdObj,
+      profileCompleted: true,
+      isActive: { $ne: false },
+    });
+    if (!recipient) throw new NotFoundException('Recipient not found');
 
     // Check if chat already exists
     let chat = await this.chatGroupModel.findOne({
@@ -36,7 +82,7 @@ export class ChatService {
     });
 
     if (chat) {
-      return chat;
+      return chat.populate('members', 'firstName lastName profilePhoto');
     }
 
     // Create new chat
@@ -46,7 +92,8 @@ export class ChatService {
       createdBy: userIdObj,
     });
 
-    return newChat.save();
+    const saved = await newChat.save();
+    return saved.populate('members', 'firstName lastName profilePhoto');
   }
 
   /**
@@ -59,10 +106,10 @@ export class ChatService {
     memberIds: string[],
     groupImageUrl?: string,
   ): Promise<ChatGroup> {
-    const userIdObj = new Types.ObjectId(userId);
-    const memberObjIds = memberIds.map((id) => new Types.ObjectId(id));
+    const userIdObj = await this.profileIdForAuth(userId);
+    const memberObjIds = memberIds.map((id) => this.objectId(id, 'member ID'));
 
-    if (!memberObjIds.includes(userIdObj)) {
+    if (!memberObjIds.some((id) => id.equals(userIdObj))) {
       memberObjIds.push(userIdObj);
     }
 
@@ -88,10 +135,10 @@ export class ChatService {
     memberIds: string[],
     deleteAtTimestamp: Date,
   ): Promise<ChatGroup> {
-    const userIdObj = new Types.ObjectId(userId);
-    const memberObjIds = memberIds.map((id) => new Types.ObjectId(id));
+    const userIdObj = await this.profileIdForAuth(userId);
+    const memberObjIds = memberIds.map((id) => this.objectId(id, 'member ID'));
 
-    if (!memberObjIds.includes(userIdObj)) {
+    if (!memberObjIds.some((id) => id.equals(userIdObj))) {
       memberObjIds.push(userIdObj);
     }
 
@@ -114,24 +161,63 @@ export class ChatService {
     userId: string,
     page = 1,
     limit = 20,
-  ): Promise<{ data: ChatGroup[]; total: number }> {
-    const userIdObj = new Types.ObjectId(userId);
+  ): Promise<{ data: Record<string, unknown>[]; total: number }> {
+    const userIdObj = await this.profileIdForAuth(userId);
 
     const total = await this.chatGroupModel.countDocuments({
       members: userIdObj,
       isActive: true,
     });
 
-    const data = await this.chatGroupModel
+    const conversations = await this.chatGroupModel
       .find({
         members: userIdObj,
         isActive: true,
       })
-      .populate('members', 'name profilePhoto')
-      .populate('createdBy', 'name profilePhoto')
+      .populate('members', 'firstName lastName profilePhoto')
+      .populate('createdBy', 'firstName lastName profilePhoto')
       .sort({ lastMessageAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
+
+    const chatIds = conversations.map((conversation) => conversation._id);
+    const summaries = chatIds.length
+      ? await this.chatMessageModel.aggregate<{
+          _id: Types.ObjectId;
+          lastMessage: ChatMessage;
+          unreadCount: number;
+        }>([
+          {
+            $match: {
+              chatGroupId: { $in: chatIds },
+              isDeleted: false,
+            },
+          },
+          { $sort: { createdAt: -1 } },
+          {
+            $group: {
+              _id: '$chatGroupId',
+              lastMessage: { $first: '$$ROOT' },
+              unreadCount: {
+                $sum: {
+                  $cond: [{ $in: [userIdObj, '$readBy'] }, 0, 1],
+                },
+              },
+            },
+          },
+        ])
+      : [];
+    const summaryByChat = new Map(
+      summaries.map((summary) => [summary._id.toString(), summary]),
+    );
+    const data = conversations.map((conversation) => {
+      const summary = summaryByChat.get(conversation._id.toString());
+      return {
+        ...conversation.toObject(),
+        lastMessage: summary?.lastMessage ?? null,
+        unreadCount: summary?.unreadCount ?? 0,
+      };
+    });
 
     return { data, total };
   }
@@ -139,11 +225,12 @@ export class ChatService {
   /**
    * Get chat group details
    */
-  async getChatGroup(chatGroupId: string): Promise<ChatGroup> {
+  async getChatGroup(chatGroupId: string, userId: string): Promise<ChatGroup> {
+    await this.requireMember(chatGroupId, userId);
     const chat = await this.chatGroupModel
       .findById(chatGroupId)
-      .populate('members', 'name email profilePhoto')
-      .populate('createdBy', 'name profilePhoto');
+      .populate('members', 'firstName lastName profilePhoto')
+      .populate('createdBy', 'firstName lastName profilePhoto');
 
     if (!chat) {
       throw new NotFoundException('Chat group not found');
@@ -160,6 +247,7 @@ export class ChatService {
     memberIds: string[],
     userId: string,
   ): Promise<ChatGroup> {
+    const actorProfileId = await this.profileIdForAuth(userId);
     const chat = await this.chatGroupModel.findById(chatGroupId);
 
     if (!chat) {
@@ -167,15 +255,19 @@ export class ChatService {
     }
 
     if (chat.type === 'person_to_person') {
-      throw new BadRequestException('Cannot add members to person-to-person chat');
+      throw new BadRequestException(
+        'Cannot add members to person-to-person chat',
+      );
     }
 
     // Check if user is group creator
-    if (chat.createdBy.toString() !== userId) {
+    if (chat.createdBy.toString() !== actorProfileId.toString()) {
       throw new BadRequestException('Only group creator can add members');
     }
 
-    const newMemberObjIds = memberIds.map((id) => new Types.ObjectId(id));
+    const newMemberObjIds = memberIds.map((id) =>
+      this.objectId(id, 'member ID'),
+    );
 
     // Add new members (avoid duplicates)
     for (const memberId of newMemberObjIds) {
@@ -195,6 +287,7 @@ export class ChatService {
     memberId: string,
     userId: string,
   ): Promise<ChatGroup> {
+    const actorProfileId = await this.profileIdForAuth(userId);
     const chat = await this.chatGroupModel.findById(chatGroupId);
 
     if (!chat) {
@@ -202,11 +295,16 @@ export class ChatService {
     }
 
     if (chat.type === 'person_to_person') {
-      throw new BadRequestException('Cannot remove members from person-to-person chat');
+      throw new BadRequestException(
+        'Cannot remove members from person-to-person chat',
+      );
     }
 
     // Check if user is group creator or is removing themselves
-    if (chat.createdBy.toString() !== userId && userId !== memberId) {
+    if (
+      chat.createdBy.toString() !== actorProfileId.toString() &&
+      actorProfileId.toString() !== memberId
+    ) {
       throw new BadRequestException('Cannot remove other members');
     }
 
@@ -223,13 +321,14 @@ export class ChatService {
    * Leave group chat
    */
   async leaveGroup(chatGroupId: string, userId: string): Promise<void> {
+    const profileId = await this.profileIdForAuth(userId);
     const chat = await this.chatGroupModel.findById(chatGroupId);
 
     if (!chat) {
       throw new NotFoundException('Chat group not found');
     }
 
-    await this.removeMember(chatGroupId, userId, userId);
+    await this.removeMember(chatGroupId, profileId.toString(), userId);
   }
 
   // ==================== CHAT MESSAGE OPERATIONS ====================
@@ -245,18 +344,10 @@ export class ChatService {
     attachmentUrl?: string,
     metadata?: Record<string, any>,
   ): Promise<ChatMessage> {
-    const chat = await this.chatGroupModel.findById(chatGroupId);
-
-    if (!chat) {
-      throw new NotFoundException('Chat group not found');
-    }
-
-    const senderIdObj = new Types.ObjectId(senderId);
-
-    // Check if user is member of chat
-    if (!chat.members.some((m) => m.toString() === senderId)) {
-      throw new BadRequestException('User is not a member of this chat');
-    }
+    const { profileId: senderIdObj } = await this.requireMember(
+      chatGroupId,
+      senderId,
+    );
 
     const message = new this.chatMessageModel({
       chatGroupId: new Types.ObjectId(chatGroupId),
@@ -276,7 +367,7 @@ export class ChatService {
       { lastMessageAt: new Date() },
     );
 
-    return savedMessage.populate('senderId', 'name profilePhoto');
+    return savedMessage.populate('senderId', 'firstName lastName profilePhoto');
   }
 
   /**
@@ -284,10 +375,12 @@ export class ChatService {
    */
   async getMessages(
     chatGroupId: string,
+    userId: string,
     page = 1,
     limit = 50,
   ): Promise<{ data: ChatMessage[]; total: number }> {
-    const chatGroupIdObj = new Types.ObjectId(chatGroupId);
+    await this.requireMember(chatGroupId, userId);
+    const chatGroupIdObj = this.objectId(chatGroupId, 'chat ID');
 
     const total = await this.chatMessageModel.countDocuments({
       chatGroupId: chatGroupIdObj,
@@ -299,8 +392,8 @@ export class ChatService {
         chatGroupId: chatGroupIdObj,
         isDeleted: false,
       })
-      .populate('senderId', 'name profilePhoto')
-      .populate('readBy', 'name')
+      .populate('senderId', 'firstName lastName profilePhoto')
+      .populate('readBy', 'firstName lastName')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -315,10 +408,20 @@ export class ChatService {
     messageIds: string[],
     userId: string,
   ): Promise<void> {
-    const userIdObj = new Types.ObjectId(userId);
+    const userIdObj = await this.profileIdForAuth(userId);
+    const objectIds = messageIds.map((id) => this.objectId(id, 'message ID'));
+    const messages = await this.chatMessageModel
+      .find({ _id: { $in: objectIds } })
+      .select('chatGroupId');
+    const chatIds = [
+      ...new Set(messages.map((message) => message.chatGroupId.toString())),
+    ];
+    await Promise.all(
+      chatIds.map((chatId) => this.requireMember(chatId, userId)),
+    );
 
     await this.chatMessageModel.updateMany(
-      { _id: { $in: messageIds.map((id) => new Types.ObjectId(id)) } },
+      { _id: { $in: objectIds } },
       {
         $addToSet: { readBy: userIdObj },
       },
@@ -329,10 +432,13 @@ export class ChatService {
    * Get unread count for a chat group
    */
   async getUnreadCount(chatGroupId: string, userId: string): Promise<number> {
-    const userIdObj = new Types.ObjectId(userId);
+    const { profileId: userIdObj } = await this.requireMember(
+      chatGroupId,
+      userId,
+    );
 
     return this.chatMessageModel.countDocuments({
-      chatGroupId: new Types.ObjectId(chatGroupId),
+      chatGroupId: this.objectId(chatGroupId, 'chat ID'),
       isDeleted: false,
       readBy: { $ne: userIdObj },
     });
@@ -346,13 +452,14 @@ export class ChatService {
     content: string,
     userId: string,
   ): Promise<ChatMessage> {
+    const profileId = await this.profileIdForAuth(userId);
     const message = await this.chatMessageModel.findById(messageId);
 
     if (!message) {
       throw new NotFoundException('Message not found');
     }
 
-    if (message.senderId.toString() !== userId) {
+    if (message.senderId.toString() !== profileId.toString()) {
       throw new BadRequestException('Can only edit your own messages');
     }
 
@@ -370,13 +477,14 @@ export class ChatService {
     userId: string,
     reason = 'user',
   ): Promise<ChatMessage> {
+    const profileId = await this.profileIdForAuth(userId);
     const message = await this.chatMessageModel.findById(messageId);
 
     if (!message) {
       throw new NotFoundException('Message not found');
     }
 
-    if (message.senderId.toString() !== userId) {
+    if (message.senderId.toString() !== profileId.toString()) {
       throw new BadRequestException('Can only delete your own messages');
     }
 
@@ -392,23 +500,30 @@ export class ChatService {
    */
   async searchMessages(
     chatGroupId: string,
+    userId: string,
     query: string,
     page = 1,
     limit = 20,
   ): Promise<{ data: ChatMessage[]; total: number }> {
+    await this.requireMember(chatGroupId, userId);
+    const chatObjectId = this.objectId(chatGroupId, 'chat ID');
+    const normalizedQuery = query?.trim();
+    if (!normalizedQuery)
+      throw new BadRequestException('Search query is required');
+    const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const total = await this.chatMessageModel.countDocuments({
-      chatGroupId: new Types.ObjectId(chatGroupId),
-      content: { $regex: query, $options: 'i' },
+      chatGroupId: chatObjectId,
+      content: { $regex: escapedQuery, $options: 'i' },
       isDeleted: false,
     });
 
     const data = await this.chatMessageModel
       .find({
-        chatGroupId: new Types.ObjectId(chatGroupId),
-        content: { $regex: query, $options: 'i' },
+        chatGroupId: chatObjectId,
+        content: { $regex: escapedQuery, $options: 'i' },
         isDeleted: false,
       })
-      .populate('senderId', 'name profilePhoto')
+      .populate('senderId', 'firstName lastName profilePhoto')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -420,7 +535,7 @@ export class ChatService {
    * Get all unread conversations for a user
    */
   async getUnreadConversations(userId: string): Promise<any[]> {
-    const userIdObj = new Types.ObjectId(userId);
+    const userIdObj = await this.profileIdForAuth(userId);
 
     return this.chatGroupModel.aggregate([
       {

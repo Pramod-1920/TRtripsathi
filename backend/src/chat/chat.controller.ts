@@ -75,7 +75,9 @@ export class ChatController {
   @Post('groups/campaign')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a campaign group chat (auto-deletes 24h after campaign)' })
+  @ApiOperation({
+    summary: 'Create a campaign group chat (auto-deletes 24h after campaign)',
+  })
   async createCampaignGroupChat(
     @Body() dto: CreateCampaignGroupChatDto,
     @CurrentUser('userId') userId: string,
@@ -126,8 +128,11 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get chat group details' })
-  async getChatGroup(@Param('chatGroupId') chatGroupId: string) {
-    return this.chatService.getChatGroup(chatGroupId);
+  async getChatGroup(
+    @Param('chatGroupId') chatGroupId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.chatService.getChatGroup(chatGroupId, userId);
   }
 
   /**
@@ -142,11 +147,7 @@ export class ChatController {
     @Body() dto: AddMembersToGroupDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.chatService.addMembers(
-      chatGroupId,
-      dto.memberIds,
-      userId,
-    );
+    return this.chatService.addMembers(chatGroupId, dto.memberIds, userId);
   }
 
   /**
@@ -161,11 +162,7 @@ export class ChatController {
     @Body() dto: RemoveMemberDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.chatService.removeMember(
-      chatGroupId,
-      dto.memberId,
-      userId,
-    );
+    return this.chatService.removeMember(chatGroupId, dto.memberId, userId);
   }
 
   /**
@@ -215,11 +212,13 @@ export class ChatController {
   @ApiOperation({ summary: 'Get messages in a chat' })
   async getMessages(
     @Param('chatGroupId') chatGroupId: string,
+    @CurrentUser('userId') userId: string,
     @Query('page') page = '1',
     @Query('limit') limit = '50',
   ) {
     return this.chatService.getMessages(
       chatGroupId,
+      userId,
       parseInt(page),
       parseInt(limit),
     );
@@ -236,10 +235,7 @@ export class ChatController {
     @Body() dto: MarkMessageAsReadDto,
     @CurrentUser('userId') userId: string,
   ) {
-    await this.chatService.markMessagesAsRead(
-      dto.messageIds,
-      userId,
-    );
+    await this.chatService.markMessagesAsRead(dto.messageIds, userId);
     return { message: 'Messages marked as read' };
   }
 
@@ -254,10 +250,7 @@ export class ChatController {
     @Param('chatGroupId') chatGroupId: string,
     @CurrentUser('userId') userId: string,
   ) {
-    const count = await this.chatService.getUnreadCount(
-      chatGroupId,
-      userId,
-    );
+    const count = await this.chatService.getUnreadCount(chatGroupId, userId);
     return { unreadCount: count };
   }
 
@@ -273,11 +266,7 @@ export class ChatController {
     @Body() dto: EditMessageDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.chatService.editMessage(
-      messageId,
-      dto.content,
-      userId,
-    );
+    return this.chatService.editMessage(messageId, dto.content, userId);
   }
 
   /**
@@ -292,11 +281,7 @@ export class ChatController {
     @Body() dto: DeleteMessageDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.chatService.deleteMessage(
-      messageId,
-      userId,
-      dto.reason,
-    );
+    return this.chatService.deleteMessage(messageId, userId, dto.reason);
   }
 
   /**
@@ -308,16 +293,17 @@ export class ChatController {
   @ApiOperation({ summary: 'Search messages in a chat' })
   async searchMessages(
     @Param('chatGroupId') chatGroupId: string,
+    @CurrentUser('userId') userId: string,
     @Query('query') query: string,
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
     return this.chatService.searchMessages(
       chatGroupId,
+      userId,
       query,
       parseInt(page),
       parseInt(limit),
     );
   }
 }
-

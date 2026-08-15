@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Report } from './schemas/report.schema';
@@ -25,23 +30,29 @@ export class ReportService {
   ) {}
 
   private async getReporterProfile(authId: string) {
-    const profile = await this.userModel
-      .findOne({ authId: new Types.ObjectId(authId) })
-      .select('_id firstName lastName phoneNumber');
-
-    if (!profile) {
+    const authObjectId = new Types.ObjectId(authId);
+    const account = await this.authModel
+      .findOne({
+        _id: authObjectId,
+        isActive: { $ne: false },
+      })
+      .select('_id role');
+    if (!account) {
       throw new NotFoundException('Reporter profile not found');
     }
-
-    const isUser = await this.authModel.exists({
-      _id: profile.authId,
-      role: Role.User,
-    });
-    if (!isUser) {
-      throw new NotFoundException('Reporter profile not found');
+    if (account.role !== Role.User) {
+      throw new ForbiddenException('Only users can submit reports');
     }
 
-    return profile;
+    // Repair older user accounts that have an Auth record but are missing the
+    // companion profile required by reports.
+    return this.userModel
+      .findOneAndUpdate(
+        { authId: authObjectId },
+        { $setOnInsert: { authId: authObjectId } },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      )
+      .select('_id authId firstName lastName phoneNumber');
   }
 
   /**
@@ -55,7 +66,10 @@ export class ReportService {
     const reporter = await this.getReporterProfile(reporterId);
 
     // Prevent self-reporting
-    if (createDto.targetType === 'user' && targetId === reporter._id.toString()) {
+    if (
+      createDto.targetType === 'user' &&
+      targetId === reporter._id.toString()
+    ) {
       throw new BadRequestException('Cannot report yourself');
     }
 
@@ -88,6 +102,29 @@ export class ReportService {
     });
 
     return feedback.save();
+  }
+
+  async getMyReports(
+    reporterId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Report[]; total: number }> {
+    const reporter = await this.getReporterProfile(reporterId);
+    const safePage = this.normalizePage(page);
+    const safeLimit = this.normalizeLimit(limit);
+    const query = { reporterId: reporter._id };
+
+    const [data, total] = await Promise.all([
+      this.reportModel
+        .find(query)
+        .select('-reporterId -assignedTo')
+        .sort({ createdAt: -1 })
+        .skip((safePage - 1) * safeLimit)
+        .limit(safeLimit),
+      this.reportModel.countDocuments(query),
+    ]);
+
+    return { data, total };
   }
 
   private normalizePage(page: number) {
@@ -126,7 +163,11 @@ export class ReportService {
   /**
    * Get all open reports (for moderators)
    */
-  async getOpenReports(page = 1, limit = 20, category?: string): Promise<{
+  async getOpenReports(
+    page = 1,
+    limit = 20,
+    category?: string,
+  ): Promise<{
     data: Report[];
     total: number;
   }> {
@@ -211,10 +252,7 @@ export class ReportService {
     if (updateDto.resolution) {
       report.resolution = updateDto.resolution;
     }
-    if (
-      updateDto.status === 'resolved' ||
-      updateDto.status === 'dismissed'
-    ) {
+    if (updateDto.status === 'resolved' || updateDto.status === 'dismissed') {
       report.resolvedAt = new Date();
     }
     report.updatedAt = new Date();
@@ -248,7 +286,11 @@ export class ReportService {
   /**
    * Get reports assigned to a moderator
    */
-  async getAssignedReports(moderatorId: string, page = 1, limit = 20): Promise<{
+  async getAssignedReports(
+    moderatorId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{
     data: Report[];
     total: number;
   }> {
@@ -302,10 +344,13 @@ export class ReportService {
       return acc;
     }, {});
 
-    const byCategory = categoryCounts.reduce<Record<string, number>>((acc, item) => {
-      acc[String(item._id ?? 'report')] = Number(item.count ?? 0);
-      return acc;
-    }, {});
+    const byCategory = categoryCounts.reduce<Record<string, number>>(
+      (acc, item) => {
+        acc[String(item._id ?? 'report')] = Number(item.count ?? 0);
+        return acc;
+      },
+      {},
+    );
 
     const total =
       (counts.open ?? 0) +
