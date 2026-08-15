@@ -485,6 +485,30 @@ class ApiService {
     throw Exception(_errorMessage(response, 'Unable to load your reports'));
   }
 
+  static Future<void> registerPushToken({
+    required String token,
+    required String platform,
+  }) async {
+    final response = await _postWithAuth(
+      Uri.parse('$baseUrl/notifications/push-token'),
+      body: jsonEncode({'token': token, 'platform': platform}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) return;
+    throw Exception(
+        _errorMessage(response, 'Unable to register notifications'));
+  }
+
+  static Future<void> unregisterPushToken(String token) async {
+    final encodedToken = Uri.encodeComponent(token);
+    final response = await _deleteWithAuth(
+      Uri.parse('$baseUrl/notifications/push-token/$encodedToken'),
+    );
+    if (response.statusCode == 200 || response.statusCode == 204) return;
+    throw Exception(
+      _errorMessage(response, 'Unable to unregister notifications'),
+    );
+  }
+
   static Future<Map<String, dynamic>> getChatConversations({
     int page = 1,
     int limit = 50,

@@ -4,6 +4,7 @@ import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/chat/presentation/pages/chat_page.dart';
+import 'package:trtripsathi_mobile/features/map/presentation/pages/trip_map_page.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/profile_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/trips_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
@@ -94,7 +95,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       1 => const TripsListScreen(),
       2 => const CampaignsListScreen(),
       3 => const ChatInboxScreen(),
-      4 => const _MapPlaceholderScreen(),
+      4 => const TripMapScreen(),
       _ => _HomeTab(onSelectPage: _selectPage),
     };
 
@@ -338,69 +339,6 @@ class _HomeTabState extends State<_HomeTab> {
       ),
     );
   }
-}
-
-class _MapPlaceholderScreen extends StatelessWidget {
-  const _MapPlaceholderScreen();
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Map'),
-              Text(
-                'Explore trips by location',
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withValues(alpha: .2),
-                    borderRadius: BorderRadius.circular(26),
-                  ),
-                  child: const Icon(
-                    Icons.map_rounded,
-                    color: AppColors.navy,
-                    size: 42,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Interactive map coming soon',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.navy,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'This tab will show nearby trips, campaign destinations, and places you have visited.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.muted, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
 }
 
 class _HomeBottomNavigationBar extends StatelessWidget {

@@ -93,6 +93,7 @@ export default function ReportManager() {
   const [totalReports, setTotalReports] = useState(0);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [resolutionText, setResolutionText] = useState('');
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const itemsPerPage = 20;
 
   useEffect(() => {
@@ -102,10 +103,13 @@ export default function ReportManager() {
 
   useEffect(() => {
     let active = true;
+    let refreshInFlight = false;
 
-    async function load() {
+    async function load(showLoading = false) {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
       try {
-        setLoading(true);
+        if (showLoading) setLoading(true);
         setError(null);
 
         const [listResponse, statsResponse] = await Promise.all([
@@ -132,16 +136,25 @@ export default function ReportManager() {
           setError('Failed to load admin report data.');
         }
       } finally {
+        refreshInFlight = false;
         if (active) {
           setLoading(false);
         }
       }
     }
 
-    void load();
+    void load(true);
+
+    // Keep the moderation queue current when another administrator changes a
+    // report. The refresh is silent so the table does not flash a loader.
+    const refreshTimer = window.setInterval(() => void load(), 8000);
+    const refreshOnFocus = () => void load();
+    window.addEventListener('focus', refreshOnFocus);
 
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', refreshOnFocus);
     };
   }, [category, filterStatus, page]);
 
@@ -161,22 +174,62 @@ export default function ReportManager() {
     newStatus: ReportStatus,
     resolution?: string,
   ) => {
+    const previousStatus =
+      selectedReport?._id === reportId
+        ? selectedReport.status
+        : reports.find((report) => report._id === reportId)?.status;
+    const nextResolution = resolution?.trim();
+
     try {
+      setUpdatingStatus(true);
+      setError(null);
       await apiClient.patch(`/reports/${reportId}/status`, {
         status: newStatus,
-        ...(resolution ? { resolution } : {}),
+        ...(nextResolution ? { resolution: nextResolution } : {}),
       });
 
-      setSelectedReport(null);
+      const applyUpdate = (report: Report): Report =>
+        report._id === reportId
+          ? {
+              ...report,
+              status: newStatus,
+              ...(nextResolution ? { resolution: nextResolution } : {}),
+            }
+          : report;
+
+      // Reflect the successful mutation immediately. Because the table is
+      // status-filtered, an item moved to another status leaves this list.
+      setReports((current) =>
+        filterStatus === newStatus ? current.map(applyUpdate) : current.filter((report) => report._id !== reportId),
+      );
+      if (filterStatus !== newStatus) {
+        setTotalReports((current) => Math.max(0, current - 1));
+      }
+      setSelectedReport((current) => (current ? applyUpdate(current) : null));
       setResolutionText('');
-      setPage(1);
 
-      const statsResponse = await apiClient.get('/reports/admin/stats', {
-        params: { category },
-      });
-      setStats(statsResponse.data);
+      if (previousStatus && previousStatus !== newStatus) {
+        setStats((current) =>
+          current
+            ? {
+                ...current,
+                [previousStatus]: Math.max(0, current[previousStatus] - 1),
+                [newStatus]: current[newStatus] + 1,
+              }
+            : current,
+        );
+      }
+
+      // Revalidate the counters in the background in case another moderator
+      // changed a report at the same time.
+      void apiClient
+        .get('/reports/admin/stats', { params: { category } })
+        .then((response) => setStats(response.data))
+        .catch(() => undefined);
     } catch {
       setError('Failed to update report status.');
+    } finally {
+      setUpdatingStatus(false);
     }
   };
 
@@ -426,25 +479,28 @@ export default function ReportManager() {
                     {selectedReport.status === 'open' && (
                       <button
                         type="button"
+                        disabled={updatingStatus}
                         onClick={() => updateReportStatus(selectedReport._id, 'investigating', resolutionText)}
-                        className="flex-1 rounded-md bg-primary py-2 text-primary-foreground hover:bg-primary/90"
+                        className="flex-1 rounded-md bg-primary py-2 text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Mark Investigating
+                        {updatingStatus ? 'Updating...' : 'Mark Investigating'}
                       </button>
                     )}
                     <button
                       type="button"
+                      disabled={updatingStatus}
                       onClick={() => updateReportStatus(selectedReport._id, 'resolved', resolutionText)}
-                      className="flex-1 rounded-md bg-secondary py-2 text-secondary-foreground hover:bg-secondary/90"
+                      className="flex-1 rounded-md bg-secondary py-2 text-secondary-foreground hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Resolve
+                      {updatingStatus ? 'Updating...' : 'Resolve'}
                     </button>
                     <button
                       type="button"
+                      disabled={updatingStatus}
                       onClick={() => updateReportStatus(selectedReport._id, 'dismissed', resolutionText)}
-                      className="flex-1 rounded-md bg-muted py-2 text-foreground hover:bg-accent"
+                      className="flex-1 rounded-md bg-muted py-2 text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Dismiss
+                      {updatingStatus ? 'Updating...' : 'Dismiss'}
                     </button>
                   </div>
                 </div>

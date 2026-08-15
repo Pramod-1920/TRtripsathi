@@ -22,6 +22,7 @@ export class Notification extends Document {
       'level_up',
       'admin_message',
       'safety_alert',
+      'report_status_changed',
     ],
   })
   type: string;

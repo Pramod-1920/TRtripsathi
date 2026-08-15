@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
+import 'package:trtripsathi_mobile/features/map/domain/nepal_boundary.dart';
 
 class CreateTripWizard extends StatefulWidget {
   const CreateTripWizard({super.key, this.campaign});
@@ -50,6 +53,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
   String? _subcategory;
   String? _province;
   String? _district;
+  LatLng? _destinationPoint;
   DateTime? _startDate;
   XFile? _coverPhoto;
   String? _existingCoverUrl;
@@ -81,6 +85,18 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     if (_district!.isEmpty) _district = null;
     _municipality.text = (campaign['municipality'] ?? '').toString();
     _placeName.text = (campaign['placeName'] ?? '').toString();
+    final locationGps = campaign['locationGps'];
+    if (locationGps is Map && locationGps['coordinates'] is List) {
+      final coordinates = locationGps['coordinates'] as List;
+      if (coordinates.length >= 2 &&
+          coordinates[0] is num &&
+          coordinates[1] is num) {
+        _destinationPoint = LatLng(
+          (coordinates[1] as num).toDouble(),
+          (coordinates[0] as num).toDouble(),
+        );
+      }
+    }
     _difficulty = (campaign['difficulty'] ?? 'moderate').toString();
     _joinMode = (campaign['joinMode'] ?? 'open').toString();
     _genderVisibility = (campaign['genderVisibility'] ?? 'all').toString();
@@ -319,6 +335,9 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
       if (_province == null) return 'Choose a province.';
       if (_district == null) return 'Choose a district.';
       if (_placeName.text.trim().isEmpty) return 'Add the destination name.';
+      if (_destinationPoint == null) {
+        return 'Drop a pin on the map for the exact destination.';
+      }
     }
     if (step == 2) {
       if (_startDate == null) return 'Choose the trip date and time.';
@@ -380,6 +399,13 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
         if (_municipality.text.trim().isNotEmpty)
           'municipality': _municipality.text.trim(),
         'placeName': _placeName.text.trim(),
+        'locationGps': {
+          'type': 'Point',
+          'coordinates': [
+            _destinationPoint!.longitude,
+            _destinationPoint!.latitude,
+          ],
+        },
         'difficulty': _difficulty,
         'durationDays': duration,
         'estimatedNPR': num.parse(_estimatedCost.text.trim()),
@@ -541,17 +567,26 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                     destinations: _destinationOptions,
                     municipality: _municipality,
                     placeName: _placeName,
+                    destinationPoint: _destinationPoint,
                     onProvinceChanged: (value) => setState(() {
                       _province = value;
                       _district = null;
                       _placeName.clear();
+                      _destinationPoint = null;
                     }),
                     onDistrictChanged: (value) => setState(() {
                       _district = value;
                       _placeName.clear();
+                      _destinationPoint = null;
                     }),
-                    onDestinationChanged: (value) =>
-                        setState(() => _placeName.text = value ?? ''),
+                    onDestinationChanged: (value) => setState(() {
+                      _placeName.text = value ?? '';
+                      _destinationPoint = null;
+                    }),
+                    onDestinationPointChanged: (value) => setState(() {
+                      _destinationPoint = value;
+                      _error = null;
+                    }),
                   ),
                   _PlanStep(
                     hikeType: _hikeType,
@@ -736,9 +771,11 @@ class _PlaceStep extends StatelessWidget {
     required this.destinations,
     required this.municipality,
     required this.placeName,
+    required this.destinationPoint,
     required this.onProvinceChanged,
     required this.onDistrictChanged,
     required this.onDestinationChanged,
+    required this.onDestinationPointChanged,
   });
   final bool loading;
   final List<_TripProvince> places;
@@ -748,9 +785,11 @@ class _PlaceStep extends StatelessWidget {
   final List<String> destinations;
   final TextEditingController municipality;
   final TextEditingController placeName;
+  final LatLng? destinationPoint;
   final ValueChanged<String?> onProvinceChanged;
   final ValueChanged<String?> onDistrictChanged;
   final ValueChanged<String?> onDestinationChanged;
+  final ValueChanged<LatLng> onDestinationPointChanged;
 
   @override
   Widget build(BuildContext context) => _StepScroll(
@@ -844,6 +883,138 @@ class _PlaceStep extends StatelessWidget {
                       prefixIcon: Icon(Icons.landscape_outlined),
                     ),
                   ),
+                const SizedBox(height: 18),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Pin the exact destination',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Move the map and tap where the trip will take place.',
+                    style: TextStyle(color: AppColors.muted, height: 1.35),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: SizedBox(
+                    height: 230,
+                    child: FlutterMap(
+                      key: ValueKey(destinationPoint),
+                      options: MapOptions(
+                        initialCenter:
+                            destinationPoint ?? const LatLng(28.3949, 84.1240),
+                        initialZoom: destinationPoint == null ? 6 : 13,
+                        minZoom: 6,
+                        maxZoom: 18,
+                        backgroundColor: AppColors.canvas,
+                        cameraConstraint: CameraConstraint.containCenter(
+                          bounds: nepalMapBounds,
+                        ),
+                        onTap: (_, point) {
+                          if (isInsideNepal(point)) {
+                            onDestinationPointChanged(point);
+                            return;
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Choose a destination inside Nepal.',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.test.tripsathi',
+                          maxNativeZoom: 19,
+                          tileBounds: nepalMapBounds,
+                        ),
+                        PolygonLayer(
+                          invertedFill: AppColors.canvas,
+                          polygons: [
+                            Polygon(
+                              points: nepalBoundary,
+                              color: Colors.transparent,
+                              borderColor:
+                                  AppColors.navy.withValues(alpha: .55),
+                              borderStrokeWidth: 1.2,
+                            ),
+                          ],
+                        ),
+                        if (destinationPoint != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: destinationPoint!,
+                                width: 48,
+                                height: 48,
+                                alignment: Alignment.topCenter,
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  size: 46,
+                                  color: AppColors.navy,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        const RichAttributionWidget(
+                          attributions: [
+                            TextSourceAttribution(
+                              'OpenStreetMap contributors',
+                            ),
+                            TextSourceAttribution(
+                              'Nepal boundary: geoBoundaries / Open Data Nepal',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Icon(
+                      destinationPoint == null
+                          ? Icons.touch_app_outlined
+                          : Icons.check_circle_rounded,
+                      color: destinationPoint == null
+                          ? AppColors.muted
+                          : const Color(0xFF18794E),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      destinationPoint == null
+                          ? 'Tap the map to add the destination pin'
+                          : 'Destination pin added',
+                      style: TextStyle(
+                        color: destinationPoint == null
+                            ? AppColors.muted
+                            : const Color(0xFF18794E),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ],
           ),

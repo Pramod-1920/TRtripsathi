@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:trtripsathi_mobile/app/tripsathi_app.dart';
 import 'package:trtripsathi_mobile/core/config/app_environment.dart';
+import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 
 Future<void> bootstrap() async {
@@ -12,6 +13,7 @@ Future<void> bootstrap() async {
 
   try {
     await AppEnvironment.load();
+    await PushNotificationService.instance.initialize();
 
     final authProvider = AuthProvider();
     runApp(TripSathiApp(authProvider: authProvider));

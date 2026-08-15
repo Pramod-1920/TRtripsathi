@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
+import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   bool _isAuthenticated = false;
@@ -26,6 +27,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    await PushNotificationService.instance.unregisterCurrentDevice();
     await ApiService.logout();
     _setAuth(false);
   }

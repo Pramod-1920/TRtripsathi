@@ -1408,6 +1408,18 @@ export class CampaignService {
           approvalStatus: 'approved',
         },
         {
+          lifecyclePhase: { $nin: ['completed', 'cancelled'] },
+        },
+        {
+          completed: { $ne: true },
+        },
+        {
+          failed: { $ne: true },
+        },
+        {
+          $or: [{ endDate: null }, { endDate: { $gt: now } }],
+        },
+        {
           $or: [{ startDate: null }, { startDate: { $lte: now } }],
         },
         {

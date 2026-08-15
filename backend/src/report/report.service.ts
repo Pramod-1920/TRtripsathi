@@ -10,6 +10,7 @@ import { Report } from './schemas/report.schema';
 import { User } from '../user/schemas/user.schema';
 import { Auth } from '../auth/schemas/auth.schema';
 import { Role } from '../auth/constants/roles.enum';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreateReportDto,
   CreateFeedbackDto,
@@ -27,6 +28,7 @@ export class ReportService {
     private userModel: Model<User>,
     @InjectModel(Auth.name)
     private authModel: Model<Auth>,
+    private notificationService: NotificationService,
   ) {}
 
   private async getReporterProfile(authId: string) {
@@ -248,6 +250,7 @@ export class ReportService {
       throw new NotFoundException('Report not found');
     }
 
+    const previousStatus = report.status;
     report.status = updateDto.status;
     if (updateDto.resolution) {
       report.resolution = updateDto.resolution;
@@ -257,7 +260,37 @@ export class ReportService {
     }
     report.updatedAt = new Date();
 
-    return report.save();
+    const saved = await report.save();
+
+    if (previousStatus !== saved.status) {
+      const statusLabel =
+        saved.status === 'investigating'
+          ? 'being reviewed'
+          : saved.status === 'resolved'
+            ? 'resolved'
+            : saved.status === 'dismissed'
+              ? 'closed'
+              : 'received';
+      try {
+        await this.notificationService.createNotification(
+          saved.reporterId.toString(),
+          'report_status_changed',
+          'Your report was updated',
+          `Your report is now ${statusLabel}.`,
+          {
+            reportId: saved._id.toString(),
+            status: saved.status,
+            route: 'report_issue',
+          },
+        );
+      } catch (error) {
+        // The moderation action is already committed. A temporary push or
+        // notification-store failure must not make the admin retry it.
+        console.warn('Report status notification failed:', error);
+      }
+    }
+
+    return saved;
   }
 
   /**

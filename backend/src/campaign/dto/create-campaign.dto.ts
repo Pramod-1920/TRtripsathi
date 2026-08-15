@@ -10,6 +10,8 @@ import {
   Min,
   ValidateNested,
   IsMongoId,
+  ArrayMaxSize,
+  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -88,6 +90,17 @@ class CampaignPlanningDto {
   tasks?: CampaignTaskDto[];
 }
 
+class CampaignGeoPointDto {
+  @IsIn(['Point'])
+  type!: 'Point';
+
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(2)
+  @IsNumber({}, { each: true })
+  coordinates!: [number, number];
+}
+
 export class CreateCampaignDto {
   @IsString()
   @IsNotEmpty()
@@ -116,6 +129,11 @@ export class CreateCampaignDto {
   @IsString()
   @IsOptional()
   placeName?: string;
+
+  @ValidateNested()
+  @Type(() => CampaignGeoPointDto)
+  @IsOptional()
+  locationGps?: CampaignGeoPointDto;
 
   @IsString()
   @IsOptional()

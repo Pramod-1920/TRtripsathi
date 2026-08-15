@@ -17,10 +17,12 @@ import {
   FiShield,
   FiMessageSquare,
   FiX,
+  FiBell,
 } from 'react-icons/fi';
 import clsx from 'clsx';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { useAdminNotifications } from '@/components/admin-notifications-provider';
 
 type SidebarProps = {
   collapsed: boolean;
@@ -31,6 +33,7 @@ type SidebarProps = {
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) {
   const pathname = usePathname();
   const logout = useAuthStore((state) => state.logout);
+  const { unreadCount } = useAdminNotifications();
 
   const handleLogout = async () => {
     try {
@@ -44,6 +47,12 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: FiHome },
+    {
+      href: '/notifications',
+      label: 'Notifications',
+      icon: FiBell,
+      badge: unreadCount,
+    },
     { href: '/users', label: 'Users', icon: FiUsers },
     { href: '/photo-verification-queue', label: 'Photo Queue', icon: FiShield },
     { href: '/reports', label: 'Reports', icon: FiMessageSquare },
@@ -92,11 +101,16 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
         className={clsx(
           'fixed inset-y-0 left-0 z-50 flex h-screen w-[min(16rem,calc(100vw-2rem))] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-xl transition-all duration-300 ease-out',
           sidebarWidthClass,
-          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
         {/* Logo */}
-        <div className={clsx('flex items-center justify-between border-b border-sidebar-border p-5', collapsed ? 'md:px-3' : 'md:px-5')}>
+        <div
+          className={clsx(
+            'flex items-center justify-between border-b border-sidebar-border p-5',
+            collapsed ? 'md:px-3' : 'md:px-5',
+          )}
+        >
           <div className={clsx('min-w-0', collapsed ? 'md:hidden' : 'block')}>
             <h1 className="text-xl font-bold tracking-tight text-sidebar-foreground">Yatri Admin</h1>
             <p className="text-sm text-muted-foreground">Management Panel</p>
@@ -113,7 +127,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3">
-          {menuItems.map(({ href, label, icon: Icon }) => {
+          {menuItems.map(({ href, label, icon: Icon, badge }) => {
             const active = pathname === href;
 
             return (
@@ -123,17 +137,26 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                 onClick={onCloseMobile}
                 title={collapsed ? label : undefined}
                 className={clsx(
+                  'relative',
                   'mx-2 flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
                   collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
                   active
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                 )}
               >
                 <Icon size={20} className="shrink-0" />
-                <span className={clsx('truncate', collapsed ? 'md:hidden' : 'block')}>
-                  {label}
-                </span>
+                <span className={clsx('truncate', collapsed ? 'md:hidden' : 'block')}>{label}</span>
+                {badge ? (
+                  <span
+                    className={clsx(
+                      'ml-auto rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground',
+                      collapsed ? 'md:absolute md:right-1 md:top-1 md:px-1.5' : '',
+                    )}
+                  >
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -146,7 +169,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isMySectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                isMySectionActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               )}
             >
               <span className="flex items-center gap-3">
@@ -160,9 +185,8 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
 
             <div className={clsx('space-y-1 py-1', myOpen ? 'block' : 'hidden', collapsed ? 'md:hidden' : 'block')}>
               {myItems.map((item) => {
-                const active = item.href === '/my-campaign'
-                  ? pathname.startsWith('/my-campaign')
-                  : pathname === item.href;
+                const active =
+                  item.href === '/my-campaign' ? pathname.startsWith('/my-campaign') : pathname === item.href;
 
                 return (
                   <Link
@@ -173,7 +197,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
                         ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -192,7 +216,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isCampaignSectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                isCampaignSectionActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               )}
             >
               <span className="flex items-center gap-3">
@@ -204,7 +230,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               </span>
             </button>
 
-            <div className={clsx('space-y-1 py-1', campaignOpen ? 'block' : 'hidden', collapsed ? 'md:hidden' : 'block')}>
+            <div
+              className={clsx('space-y-1 py-1', campaignOpen ? 'block' : 'hidden', collapsed ? 'md:hidden' : 'block')}
+            >
               {campaignItems.map((item) => {
                 const active = pathname === item.href;
 
@@ -217,7 +245,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
                         ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -236,7 +264,9 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
               className={clsx(
                 'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-xl px-4 py-3 transition-colors',
                 collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
-                isExtraSectionActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                isExtraSectionActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               )}
             >
               <span className="flex items-center gap-3">
@@ -261,7 +291,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
                       'mx-2 flex items-center gap-2 rounded-xl px-4 py-2 text-sm transition-colors',
                       active
                         ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                     )}
                   >
                     <FiCircle size={8} className="shrink-0" />
@@ -280,7 +310,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
             onClick={handleLogout}
             className={clsx(
               'flex w-full items-center gap-3 rounded-xl px-4 py-3 font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent',
-              collapsed ? 'md:justify-center md:px-3' : 'md:px-4'
+              collapsed ? 'md:justify-center md:px-3' : 'md:px-4',
             )}
           >
             <FiLogOut size={20} className="shrink-0 text-red-600" />

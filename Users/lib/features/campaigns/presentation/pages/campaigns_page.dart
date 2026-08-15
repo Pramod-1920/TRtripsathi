@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
+import 'package:trtripsathi_mobile/features/campaigns/domain/campaign_lifecycle.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 
 class CampaignsListScreen extends StatefulWidget {
@@ -105,6 +106,11 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
             final campaigns = provider.campaigns
                 .whereType<Map>()
                 .map((item) => Map<String, dynamic>.from(item))
+                .where(
+                  (item) =>
+                      campaignJourneyState(item) !=
+                      CampaignJourneyState.expired,
+                )
                 .where(_matchesFilters)
                 .toList(growable: false);
             return RefreshIndicator(

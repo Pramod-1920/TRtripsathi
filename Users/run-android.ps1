@@ -42,7 +42,26 @@ Write-Host "Using device: $resolvedDevice" -ForegroundColor Cyan
 
 if (-not $SkipBuild) {
   Write-Host "Building debug APK..." -ForegroundColor Yellow
-  flutter build apk --debug --dart-define="BACKEND_URL=$($BackendUrl.Trim())"
+  $dartDefines = @("--dart-define=BACKEND_URL=$($BackendUrl.Trim())")
+  $envFile = Join-Path $PSScriptRoot ".env"
+  if (Test-Path $envFile) {
+    foreach ($key in @(
+      "FIREBASE_API_KEY",
+      "FIREBASE_APP_ID",
+      "FIREBASE_MESSAGING_SENDER_ID",
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_STORAGE_BUCKET"
+    )) {
+      $entry = Get-Content -LiteralPath $envFile |
+        Where-Object { $_ -match "^\s*$key\s*=" } |
+        Select-Object -First 1
+      if ($entry) {
+        $value = ($entry -split '=', 2)[1].Trim().Trim('"').Trim("'")
+        if ($value) { $dartDefines += "--dart-define=$key=$value" }
+      }
+    }
+  }
+  flutter build apk --debug @dartDefines
 }
 
 $apkPath = Join-Path $PSScriptRoot "build\app\outputs\flutter-apk\app-debug.apk"
@@ -54,6 +73,6 @@ Write-Host "Installing APK with no-streaming..." -ForegroundColor Yellow
 adb -s $resolvedDevice install --no-streaming -r -d -t "$apkPath"
 
 Write-Host "Launching app..." -ForegroundColor Yellow
-adb -s $resolvedDevice shell monkey -p com.example.trtripsathi_mobile -c android.intent.category.LAUNCHER 1 | Out-Null
+adb -s $resolvedDevice shell monkey -p com.test.tripsathi -c android.intent.category.LAUNCHER 1 | Out-Null
 
 Write-Host "Done. App should now be open on your phone." -ForegroundColor Green

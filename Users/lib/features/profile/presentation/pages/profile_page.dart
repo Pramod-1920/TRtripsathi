@@ -7,9 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
+import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/my_journeys_page.dart';
-import 'package:trtripsathi_mobile/features/profile/presentation/pages/report_issue_page.dart';
 
 const _profileForest = Color(0xFF173F38);
 const _profileForestLight = Color(0xFF28685A);
@@ -114,6 +114,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _notificationsEnabled = value);
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool('profile_notifications_enabled', value);
+    if (value) {
+      await PushNotificationService.instance.registerForCurrentUser();
+    } else {
+      await PushNotificationService.instance.unregisterCurrentDevice();
+    }
     if (mounted) {
       _showMessage(value ? 'Notifications enabled' : 'Notifications paused');
     }
@@ -322,11 +327,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: Icons.flag_outlined,
                         title: 'Report an issue',
                         subtitle: 'Tell us what went wrong and track updates',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const ReportIssuePage(),
-                          ),
-                        ),
+                        onTap: () => Navigator.of(context)
+                            .pushNamed(RouteNames.reportIssue),
                       ),
                       _SettingsTile(
                         icon: Icons.privacy_tip_outlined,

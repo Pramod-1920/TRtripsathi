@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/sidebar';
 import { Header } from '@/components/header';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { AdminNotificationsProvider } from '@/components/admin-notifications-provider';
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -38,11 +39,7 @@ async function getSessionWithStartupRetry() {
   throw new Error('Unable to check admin session');
 }
 
-export default function LayoutWrapper({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -150,7 +147,6 @@ export default function LayoutWrapper({
   // Unload/logout via sendBeacon was removed because it may fail to clear server session.
   // Use server-side session expiry and normal POST /auth/logout flows instead.
 
-
   // Handle pages restored from Back-Forward Cache (BFCache) and popstate navigation.
   // Some browsers restore the page instantly from cache after navigating back which can show protected UI
   // before client-side auth checks run. Detect BFCache and force a fresh check/navigation.
@@ -173,12 +169,10 @@ export default function LayoutWrapper({
     };
 
     const handlePopState = () => {
-      apiClient
-        .get('/auth/me')
-        .catch(() => {
-          logout();
-          window.location.replace('/login');
-        });
+      apiClient.get('/auth/me').catch(() => {
+        logout();
+        window.location.replace('/login');
+      });
     };
 
     window.addEventListener('pageshow', handlePageShow);
@@ -206,21 +200,14 @@ export default function LayoutWrapper({
   }
 
   return (
-    <div className={`min-h-screen bg-background ${sidebarWidthClass}`}>
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        mobileOpen={sidebarOpen}
-        onCloseMobile={() => setSidebarOpen(false)}
-      />
-      <div className="min-h-screen min-w-0 flex flex-col overflow-hidden">
-        <Header
-          onMenuClick={toggleSidebar}
-          sidebarCollapsed={sidebarCollapsed}
-        />
-        <main className="flex-1 min-h-0 overflow-y-auto bg-background">
-          {children}
-        </main>
+    <AdminNotificationsProvider>
+      <div className={`min-h-screen bg-background ${sidebarWidthClass}`}>
+        <Sidebar collapsed={sidebarCollapsed} mobileOpen={sidebarOpen} onCloseMobile={() => setSidebarOpen(false)} />
+        <div className="min-h-screen min-w-0 flex flex-col overflow-hidden">
+          <Header onMenuClick={toggleSidebar} sidebarCollapsed={sidebarCollapsed} />
+          <main className="flex-1 min-h-0 overflow-y-auto bg-background">{children}</main>
+        </div>
       </div>
-    </div>
+    </AdminNotificationsProvider>
   );
 }

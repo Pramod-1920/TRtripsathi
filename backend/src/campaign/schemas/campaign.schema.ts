@@ -71,6 +71,26 @@ export class Campaign {
   @Prop({ type: String, default: null })
   placeName?: string | null;
 
+  @Prop({
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point',
+    },
+    coordinates: {
+      type: [Number],
+      validate: {
+        validator: (value: number[]) => value.length === 2,
+        message: 'locationGps coordinates must contain longitude and latitude',
+      },
+    },
+    default: null,
+  })
+  locationGps?: {
+    type: 'Point';
+    coordinates: [number, number];
+  } | null;
+
   @Prop({ type: String, default: null })
   difficulty?: string | null;
 
@@ -375,3 +395,5 @@ export class Campaign {
 }
 
 export const CampaignSchema = SchemaFactory.createForClass(Campaign);
+
+CampaignSchema.index({ locationGps: '2dsphere' }, { sparse: true });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
+import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 
 const _forest = Color(0xFF173F38);
 const _forestSoft = Color(0xFFE8F0ED);
@@ -18,12 +19,14 @@ class ReportIssuePage extends StatefulWidget {
   State<ReportIssuePage> createState() => _ReportIssuePageState();
 }
 
-class _ReportIssuePageState extends State<ReportIssuePage> {
+class _ReportIssuePageState extends State<ReportIssuePage>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _detailsController = TextEditingController();
   String? _reason;
   bool _submitting = false;
   bool _loadingHistory = true;
+  bool _refreshingHistory = false;
   String? _historyError;
   List<Map<String, dynamic>> _reports = const [];
 
@@ -57,20 +60,46 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    PushNotificationService.reportStatusRevision.addListener(
+      _handleReportStatusNotification,
+    );
     _loadHistory();
   }
 
   @override
   void dispose() {
+    PushNotificationService.reportStatusRevision.removeListener(
+      _handleReportStatusNotification,
+    );
+    WidgetsBinding.instance.removeObserver(this);
     _detailsController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadHistory() async {
-    setState(() {
-      _loadingHistory = true;
-      _historyError = null;
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadHistory(showLoading: false, showErrors: false);
+    }
+  }
+
+  void _handleReportStatusNotification() {
+    _loadHistory(showLoading: false, showErrors: false);
+  }
+
+  Future<void> _loadHistory({
+    bool showLoading = true,
+    bool showErrors = true,
+  }) async {
+    if (_refreshingHistory) return;
+    _refreshingHistory = true;
+    if (showLoading && mounted) {
+      setState(() {
+        _loadingHistory = true;
+        _historyError = null;
+      });
+    }
     try {
       final response = await ApiService.getMyReports(limit: 20);
       final raw = response['data'];
@@ -84,13 +113,18 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
       setState(() {
         _reports = reports;
         _loadingHistory = false;
+        _historyError = null;
       });
     } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _loadingHistory = false;
-        _historyError = ApiService.readableError(error);
-      });
+      if (showErrors) {
+        setState(() {
+          _loadingHistory = false;
+          _historyError = ApiService.readableError(error);
+        });
+      }
+    } finally {
+      _refreshingHistory = false;
     }
   }
 
@@ -142,7 +176,7 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
         ),
         body: RefreshIndicator(
           color: _forest,
-          onRefresh: _loadHistory,
+          onRefresh: () => _loadHistory(showLoading: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 36),

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trtripsathi_mobile/app/app_router.dart';
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
+import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/achievements/presentation/providers/achievements_provider.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/login_page.dart';
@@ -39,12 +42,14 @@ class _TripSathiAppState extends State<TripSathiApp> {
   void initState() {
     super.initState();
     widget.authProvider.addListener(_handleAuthStateChanged);
+    PushNotificationService.instance.setReportOpenHandler(_openReports);
     _checkOnboarding();
   }
 
   @override
   void dispose() {
     widget.authProvider.removeListener(_handleAuthStateChanged);
+    PushNotificationService.instance.clearReportOpenHandler();
     super.dispose();
   }
 
@@ -58,6 +63,12 @@ class _TripSathiAppState extends State<TripSathiApp> {
         widget.authProvider.initialize(),
       ]);
       final prefs = await preferencesFuture;
+
+      if (widget.authProvider.isAuthenticated) {
+        unawaited(
+          PushNotificationService.instance.registerForCurrentUser(),
+        );
+      }
 
       if (!mounted) return;
       setState(() {
@@ -84,12 +95,24 @@ class _TripSathiAppState extends State<TripSathiApp> {
   }
 
   void _handleAuthStateChanged() {
-    if (widget.authProvider.isAuthenticated || _showSplash) return;
+    if (widget.authProvider.isAuthenticated) {
+      unawaited(PushNotificationService.instance.registerForCurrentUser());
+      return;
+    }
+    if (_showSplash) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final navigator = TripSathiApp.navigatorKey.currentState;
       if (navigator == null) return;
       navigator.pushNamedAndRemoveUntil(RouteNames.login, (_) => false);
+    });
+  }
+
+  void _openReports() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = TripSathiApp.navigatorKey.currentState;
+      if (navigator == null) return;
+      navigator.pushNamed(RouteNames.reportIssue);
     });
   }
 

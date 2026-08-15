@@ -83,12 +83,16 @@ class TripsProvider extends ChangeNotifier {
         maxDistance: maxDistance,
       );
 
-      _trips = result['data'] as List<dynamic>? ?? [];
-      _totalTrips = result['total'] as int? ?? 0;
+      _trips =
+          (result['items'] ?? result['data']) as List<dynamic>? ?? const [];
+      final pagination = result['pagination'];
+      _totalTrips = pagination is Map
+          ? (pagination['total'] as num?)?.toInt() ?? _trips.length
+          : (result['total'] as num?)?.toInt() ?? _trips.length;
       _currentPage = page;
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = ApiService.readableError(e);
       _trips = [];
     }
 

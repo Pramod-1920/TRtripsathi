@@ -106,7 +106,13 @@ class CampaignsProvider extends ChangeNotifier {
 
       final remote =
           ((result['items'] ?? result['data']) as List<dynamic>? ?? [])
-              .where((item) => item is Map && item['hikeType'] == 'group')
+              .where(
+                (item) =>
+                    item is Map &&
+                    item['hikeType'] == 'group' &&
+                    campaignJourneyState(Map<String, dynamic>.from(item)) !=
+                        CampaignJourneyState.expired,
+              )
               .toList(growable: false);
       final remoteIds = remote
           .whereType<Map>()
@@ -116,6 +122,7 @@ class CampaignsProvider extends ChangeNotifier {
         ..._createdCampaigns.where(
           (item) =>
               item['hikeType'] == 'group' &&
+              campaignJourneyState(item) != CampaignJourneyState.expired &&
               !remoteIds.contains((item['_id'] ?? item['id']).toString()),
         ),
         ...remote,

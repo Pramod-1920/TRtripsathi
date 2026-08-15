@@ -6,19 +6,22 @@ import 'package:trtripsathi_mobile/features/dashboard/presentation/pages/dashboa
 import 'package:trtripsathi_mobile/features/onboarding/presentation/pages/intro_page.dart';
 import 'package:trtripsathi_mobile/features/onboarding/presentation/pages/profile_setup_page.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/profile_page.dart';
+import 'package:trtripsathi_mobile/features/profile/presentation/pages/report_issue_page.dart';
 
 abstract final class AppRouter {
   static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     final Widget? page = switch (settings.name) {
       RouteNames.login => LoginScreen(
-          initialIdentifier:
-              settings.arguments is String ? settings.arguments as String : null,
+          initialIdentifier: settings.arguments is String
+              ? settings.arguments as String
+              : null,
         ),
       RouteNames.signup => const SignupScreen(),
       RouteNames.onboarding => const IntroOnboardingScreen(),
       RouteNames.profileSetup => const ProfileSetupScreen(),
       RouteNames.profile => const ProfileScreen(),
       RouteNames.dashboard => const DashboardScreen(),
+      RouteNames.reportIssue => const ReportIssuePage(),
       _ => null,
     };
     if (page == null) return null;

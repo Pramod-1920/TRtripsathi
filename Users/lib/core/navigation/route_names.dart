@@ -5,4 +5,5 @@ abstract final class RouteNames {
   static const profileSetup = '/profile-setup';
   static const profile = '/profile';
   static const dashboard = '/dashboard';
+  static const reportIssue = '/report-issue';
 }
