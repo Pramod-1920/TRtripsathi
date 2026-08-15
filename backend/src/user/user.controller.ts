@@ -142,7 +142,8 @@ export class UserController {
 
   @Post('photos/verification-requests')
   @ApiOperation({
-    summary: 'Submit campaign photo for manual verification before XP award',
+    summary:
+      'Submit campaign or catalog-place photo for admin verification and XP',
   })
   @ApiBody({ type: CreatePhotoVerificationRequestDto })
   @ApiOkResponse({ description: 'Photo verification request submitted' })

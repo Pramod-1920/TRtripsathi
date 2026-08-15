@@ -84,6 +84,7 @@ export class CampaignService {
                 district,
                 'district',
                 visitedAt,
+                String(campaign._id),
               ),
             ]
           : []),
@@ -94,6 +95,7 @@ export class CampaignService {
                 province,
                 'province',
                 visitedAt,
+                String(campaign._id),
               ),
             ]
           : []),

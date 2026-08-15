@@ -25,6 +25,15 @@ type PhotoVerificationQueueItem = {
   submittedAt: string;
   reviewedAt?: string;
   reviewNote?: string | null;
+  title?: string | null;
+  category?: string | null;
+  requestProvince?: string | null;
+  requestDistrict?: string | null;
+  municipality?: string | null;
+  place?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type QueueResponse = {
@@ -155,7 +164,9 @@ export default function PhotoVerificationQueuePage() {
 
       setSuccess(
         status === 'approved'
-          ? 'Request approved.'
+          ? item.place
+            ? `Approved. XP awarded and ${item.requestDistrict || 'the district'} added to the user's map.`
+            : 'Request approved and XP awarded.'
           : 'Request rejected.',
       );
 
@@ -174,7 +185,7 @@ export default function PhotoVerificationQueuePage() {
           <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Admin Queue</p>
           <h1 className="mt-2 text-3xl font-bold text-slate-900">Photo Verification Queue</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Review all pending campaign photo requests in one place instead of opening each user profile individually.
+            Confirm that the photo matches the selected place and address. Approval awards XP and completes the district on the user&apos;s travel map.
           </p>
         </div>
 
@@ -281,8 +292,18 @@ export default function PhotoVerificationQueuePage() {
                     </div>
                   </td>
                   <td className="px-5 py-4">
-                    <p className="text-sm font-semibold text-slate-800">{item.requestCode}</p>
-                    <p className="mt-1 text-xs text-slate-500">Campaign: {item.campaignId}</p>
+                    <p className="text-sm font-semibold text-slate-800">{item.title || item.requestCode}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.place ? `Place: ${item.place}` : `Campaign: ${item.campaignId}`}</p>
+                    {item.requestDistrict && (
+                      <p className="text-xs text-slate-500">{item.requestDistrict} • {item.requestProvince}</p>
+                    )}
+                    {item.municipality && (
+                      <p className="text-xs text-slate-500">Municipality: {item.municipality}</p>
+                    )}
+                    {item.address && <p className="mt-1 text-xs text-slate-600">{item.address}</p>}
+                    {item.category && (
+                      <p className="mt-1 text-xs capitalize text-slate-500">{item.category.replaceAll('_', ' ')}</p>
+                    )}
                     <p className="text-xs text-slate-500">Kind: {item.kind}</p>
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
@@ -297,6 +318,13 @@ export default function PhotoVerificationQueuePage() {
                     </span>
                   </td>
                   <td className="px-5 py-4">
+                    <a href={item.url} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={item.url}
+                        alt={item.title || item.place || 'Verification evidence'}
+                        className="mb-2 h-24 w-32 rounded-lg border border-slate-200 object-cover"
+                      />
+                    </a>
                     <a
                       href={item.url}
                       target="_blank"
@@ -306,6 +334,16 @@ export default function PhotoVerificationQueuePage() {
                       Open photo
                       <FiExternalLink size={14} />
                     </a>
+                    {item.latitude != null && item.longitude != null && (
+                      <a
+                        href={`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=17/${item.latitude}/${item.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 block text-xs font-medium text-emerald-700 hover:underline"
+                      >
+                        Check submitted GPS
+                      </a>
+                    )}
                     {item.reviewNote && (
                       <p className="mt-2 text-xs text-slate-600">Note: {item.reviewNote}</p>
                     )}

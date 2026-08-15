@@ -142,7 +142,9 @@ export class AdminNotificationService {
           id: `photo:${String(photo._id)}:${photo.request.requestCode}`,
           type: 'photo_verification' as const,
           title: 'Photo verification requested',
-          description: `${name} submitted ${photo.request.kind} trip evidence for review.`,
+          description: photo.request.place
+            ? `${name} submitted a photo from ${photo.request.place} for review.`
+            : `${name} submitted ${photo.request.kind} trip evidence for review.`,
           createdAt: new Date(photo.request.submittedAt),
           status: photo.request.status,
           href: '/photo-verification-queue',

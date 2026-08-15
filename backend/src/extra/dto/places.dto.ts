@@ -9,6 +9,20 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export class PlaceTitleDto {
+  @IsString()
+  @IsNotEmpty()
+  id!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsBoolean()
+  @IsOptional()
+  deleted?: boolean;
+}
+
 export class PlaceMunicipalityDto {
   @IsString()
   @IsNotEmpty()
@@ -17,6 +31,12 @@ export class PlaceMunicipalityDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PlaceTitleDto)
+  @IsOptional()
+  places?: PlaceTitleDto[];
 
   @IsBoolean()
   @IsOptional()
@@ -74,9 +94,9 @@ export class PlaceOperationDto {
   op!: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
 
   @IsString()
-  @IsIn(['province', 'district', 'municipality'])
+  @IsIn(['province', 'district', 'municipality', 'place'])
   @IsOptional()
-  type?: 'province' | 'district' | 'municipality';
+  type?: 'province' | 'district' | 'municipality' | 'place';
 
   @IsString()
   @IsOptional()

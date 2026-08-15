@@ -55,6 +55,7 @@ export type PlaceCatalogItem = {
 export type PlaceCatalogDistrictItem = {
   district: string;
   places: string[];
+  placeItems?: Array<{ place: string; municipality: string }>;
 };
 
 export type PlaceCatalogResponse = {
@@ -67,9 +68,16 @@ export type PlaceCatalogResponse = {
   };
 };
 
+export type PlaceTitleNode = {
+  id: string;
+  name: string;
+  deleted?: boolean;
+};
+
 export type PlaceMunicipalityNode = {
   id: string;
   name: string;
+  places: PlaceTitleNode[];
   deleted?: boolean;
 };
 
@@ -93,7 +101,7 @@ export type PlacesHierarchyResponse = {
 
 export type PlacePatchOperation = {
   op: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
-  type?: 'province' | 'district' | 'municipality';
+  type?: 'province' | 'district' | 'municipality' | 'place';
   parentId?: string;
   id?: string;
   name?: string;

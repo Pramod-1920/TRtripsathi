@@ -113,6 +113,15 @@ export class User extends Document {
         reviewedAt: Date,
         reviewedByAuthId: Types.ObjectId,
         reviewNote: String,
+        title: String,
+        category: String,
+        province: String,
+        district: String,
+        municipality: String,
+        place: String,
+        address: String,
+        latitude: Number,
+        longitude: Number,
       },
     ],
     default: [],
@@ -127,6 +136,15 @@ export class User extends Document {
     reviewedAt?: Date;
     reviewedByAuthId?: Types.ObjectId;
     reviewNote?: string;
+    title?: string;
+    category?: string;
+    province?: string;
+    district?: string;
+    municipality?: string;
+    place?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
   }>;
 
   @Prop({

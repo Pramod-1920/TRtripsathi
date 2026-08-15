@@ -5,7 +5,10 @@ import {
   VisitedPlace,
   VisitedPlaceSchema,
 } from './schemas/visited-place.schema';
-import { VisitedPlaceController } from './visited-place.controller';
+import {
+  MyVisitedPlaceController,
+  VisitedPlaceController,
+} from './visited-place.controller';
 import { UserModule } from '../user/user.module';
 
 @Module({
@@ -15,7 +18,7 @@ import { UserModule } from '../user/user.module';
     ]),
     UserModule,
   ],
-  controllers: [VisitedPlaceController],
+  controllers: [VisitedPlaceController, MyVisitedPlaceController],
   providers: [VisitedPlaceService],
   exports: [VisitedPlaceService],
 })

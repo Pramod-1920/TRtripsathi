@@ -8,6 +8,7 @@ import { User, UserSchema } from './schemas/user.schema';
 import { UserService } from './user.service';
 import { AuditModule } from '../audit/audit.module';
 import { BadgeModule } from '../badge/badge.module';
+import { ExtraModule } from '../extra/extra.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { BadgeModule } from '../badge/badge.module';
     forwardRef(() => AuditModule),
     // Import BadgeModule so UserService can include persisted user badges in profile responses
     forwardRef(() => BadgeModule),
+    ExtraModule,
   ],
   controllers: [UserController],
   providers: [UserService],

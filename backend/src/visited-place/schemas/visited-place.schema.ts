@@ -19,6 +19,12 @@ export class VisitedPlace extends Document {
   @Prop({ type: Date, required: true })
   visitedAt: Date;
 
+  @Prop({ type: Number, default: 1, min: 1 })
+  visitCount: number;
+
+  @Prop({ type: [String], default: [] })
+  sourceCampaignIds: string[];
+
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
 }

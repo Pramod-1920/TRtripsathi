@@ -8,7 +8,9 @@ export class PlaceCatalogController {
   constructor(private readonly extraService: ExtraService) {}
 
   @Get('catalog')
-  @ApiOperation({ summary: 'Get active place catalog (province + districts + places)' })
+  @ApiOperation({
+    summary: 'Get active place catalog (province + districts + places)',
+  })
   @ApiOkResponse({
     description: 'Place catalog fetched successfully',
     example: {
@@ -21,6 +23,12 @@ export class PlaceCatalogController {
             {
               district: 'KATHMANDU',
               places: ['PASHUPATINATH TEMPLE', 'BOUDHANATH STUPA'],
+              placeItems: [
+                {
+                  place: 'PASHUPATINATH TEMPLE',
+                  municipality: 'KATHMANDU METROPOLITAN CITY',
+                },
+              ],
             },
           ],
         },
@@ -35,9 +43,18 @@ export class PlaceCatalogController {
   async getCatalog() {
     const result = await this.extraService.getPlaceCatalog();
     const provinceCount = result.items.length;
-    const districtCount = result.items.reduce((sum, item) => sum + item.districts.length, 0);
+    const districtCount = result.items.reduce(
+      (sum, item) => sum + item.districts.length,
+      0,
+    );
     const placeCount = result.items.reduce(
-      (sum, item) => sum + item.districtItems.reduce((districtSum, districtItem) => districtSum + districtItem.places.length, 0),
+      (sum, item) =>
+        sum +
+        item.districtItems.reduce(
+          (districtSum, districtItem) =>
+            districtSum + districtItem.places.length,
+          0,
+        ),
       0,
     );
 

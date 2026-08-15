@@ -299,6 +299,52 @@ class ApiService {
     return {'url': secureUrl, 'publicId': publicId};
   }
 
+  static Future<String> uploadPlaceVerificationImage(File image) async {
+    final upload = await _uploadProfileImageToCloudinary(
+      image,
+      folder: 'place_verification',
+    );
+    final secureUrl = (upload['secure_url'] ?? '').toString();
+    if (secureUrl.isEmpty) {
+      throw Exception('Place photo upload did not return a secure URL');
+    }
+    return secureUrl;
+  }
+
+  static Future<Map<String, dynamic>> submitPlacePhotoVerification({
+    required String photoUrl,
+    required String title,
+    required String category,
+    required String province,
+    required String district,
+    required String municipality,
+    required String place,
+    required String address,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/user/photos/verification-requests'),
+      body: jsonEncode({
+        'url': photoUrl,
+        'kind': 'solo',
+        'title': title.trim(),
+        'category': category,
+        'province': province,
+        'district': district,
+        'municipality': municipality,
+        'place': place,
+        'address': address.trim(),
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+      }),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Unable to submit place photo'));
+  }
+
   static Future<Map<String, String>> uploadCampaignEvidence(
     File file, {
     required String mediaType,
@@ -1032,6 +1078,15 @@ class ApiService {
   }
 
   // ============ Campaigns Endpoints ============
+
+  /// GET /visited-places/mine - Verified travel coverage for this user.
+  static Future<Map<String, dynamic>> getMyVisitedPlaces() async {
+    final res = await _getWithAuth(Uri.parse('$baseUrl/visited-places/mine'));
+    if (res.statusCode == 200) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(_errorMessage(res, 'Unable to load travel history'));
+  }
 
   /// GET /campaigns - List campaigns
   static Future<Map<String, dynamic>> listCampaigns({

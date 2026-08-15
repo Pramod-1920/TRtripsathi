@@ -7,15 +7,19 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ExtraCategory } from './constants/extra-category.enum';
-import {
-  BulkSeedPlacesDto,
-  PlaceOperationDto,
-} from './dto/places.dto';
+import { BulkSeedPlacesDto, PlaceOperationDto } from './dto/places.dto';
 import { ExtraItem } from './schemas/extra.schema';
+
+export type PlaceTitleNode = {
+  id: string;
+  name: string;
+  deleted?: boolean;
+};
 
 export type PlaceMunicipalityNode = {
   id: string;
   name: string;
+  places: PlaceTitleNode[];
   deleted?: boolean;
 };
 
@@ -40,6 +44,7 @@ export type PlacesHierarchy = {
 type CatalogDistrictItem = {
   district: string;
   places: string[];
+  placeItems: Array<{ place: string; municipality: string }>;
 };
 
 type CatalogItem = {
@@ -67,7 +72,10 @@ function normalizeSlug(value: string) {
 
 @Injectable()
 export class PlacesService {
-  private readonly hierarchyCache = new Map<string, { expiresAt: number; data: PlacesHierarchy }>();
+  private readonly hierarchyCache = new Map<
+    string,
+    { expiresAt: number; data: PlacesHierarchy }
+  >();
 
   constructor(
     @InjectModel(ExtraItem.name) private readonly extraModel: Model<ExtraItem>,
@@ -131,6 +139,13 @@ export class PlacesService {
                       id: String(municipality.id ?? '').trim(),
                       name: String(municipality.name ?? '').trim(),
                       deleted: municipality.deleted === true ? true : undefined,
+                      places: Array.isArray(municipality.places)
+                        ? municipality.places.map((place) => ({
+                            id: String(place.id ?? '').trim(),
+                            name: String(place.name ?? '').trim(),
+                            deleted: place.deleted === true ? true : undefined,
+                          }))
+                        : [],
                     }))
                   : [],
               }))
@@ -138,7 +153,9 @@ export class PlacesService {
         })),
       };
     } catch {
-      throw new InternalServerErrorException('Stored places hierarchy is invalid JSON');
+      throw new InternalServerErrorException(
+        'Stored places hierarchy is invalid JSON',
+      );
     }
   }
 
@@ -159,13 +176,19 @@ export class PlacesService {
                 .map((municipality) => ({
                   id: municipality.id,
                   name: municipality.name,
+                  places: municipality.places
+                    .filter((place) => place.deleted !== true)
+                    .map((place) => ({ id: place.id, name: place.name })),
                 })),
             })),
         })),
     };
   }
 
-  private validateHierarchy(hierarchy: PlacesHierarchy, options?: { requireAtLeastOneProvince?: boolean }) {
+  private validateHierarchy(
+    hierarchy: PlacesHierarchy,
+    options?: { requireAtLeastOneProvince?: boolean },
+  ) {
     if (!Array.isArray(hierarchy.provinces)) {
       throw new BadRequestException('places.provinces must be an array');
     }
@@ -179,7 +202,9 @@ export class PlacesService {
 
     for (const province of hierarchy.provinces) {
       if (!province.id || !province.name) {
-        throw new BadRequestException('Every province must include id and name');
+        throw new BadRequestException(
+          'Every province must include id and name',
+        );
       }
 
       if (allIds.has(province.id)) {
@@ -189,14 +214,18 @@ export class PlacesService {
 
       const provinceNameKey = normalizeName(province.name);
       if (provinceNames.has(provinceNameKey)) {
-        throw new BadRequestException(`Duplicate province name: ${province.name}`);
+        throw new BadRequestException(
+          `Duplicate province name: ${province.name}`,
+        );
       }
       provinceNames.add(provinceNameKey);
 
       const districtNames = new Set<string>();
       for (const district of province.districts ?? []) {
         if (!district.id || !district.name) {
-          throw new BadRequestException(`Every district in ${province.name} must include id and name`);
+          throw new BadRequestException(
+            `Every district in ${province.name} must include id and name`,
+          );
         }
 
         if (allIds.has(district.id)) {
@@ -206,41 +235,85 @@ export class PlacesService {
 
         const districtNameKey = normalizeName(district.name);
         if (districtNames.has(districtNameKey)) {
-          throw new BadRequestException(`Duplicate district name in ${province.name}: ${district.name}`);
+          throw new BadRequestException(
+            `Duplicate district name in ${province.name}: ${district.name}`,
+          );
         }
         districtNames.add(districtNameKey);
 
         const municipalityNames = new Set<string>();
         for (const municipality of district.municipalities ?? []) {
           if (!municipality.id || !municipality.name) {
-            throw new BadRequestException(`Every municipality in ${district.name} must include id and name`);
+            throw new BadRequestException(
+              `Every municipality in ${district.name} must include id and name`,
+            );
           }
 
           if (allIds.has(municipality.id)) {
-            throw new BadRequestException(`Duplicate ID found: ${municipality.id}`);
+            throw new BadRequestException(
+              `Duplicate ID found: ${municipality.id}`,
+            );
           }
           allIds.add(municipality.id);
 
           const municipalityNameKey = normalizeName(municipality.name);
           if (municipalityNames.has(municipalityNameKey)) {
-            throw new BadRequestException(`Duplicate municipality name in ${district.name}: ${municipality.name}`);
+            throw new BadRequestException(
+              `Duplicate municipality name in ${district.name}: ${municipality.name}`,
+            );
           }
           municipalityNames.add(municipalityNameKey);
+
+          const placeNames = new Set<string>();
+          for (const place of municipality.places ?? []) {
+            if (!place.id || !place.name) {
+              throw new BadRequestException(
+                `Every place in ${municipality.name} must include id and name`,
+              );
+            }
+            if (allIds.has(place.id)) {
+              throw new BadRequestException(`Duplicate ID found: ${place.id}`);
+            }
+            allIds.add(place.id);
+            const placeNameKey = normalizeName(place.name);
+            if (placeNames.has(placeNameKey)) {
+              throw new BadRequestException(
+                `Duplicate place name in ${municipality.name}: ${place.name}`,
+              );
+            }
+            placeNames.add(placeNameKey);
+          }
         }
       }
     }
   }
 
-  private findNode(hierarchy: PlacesHierarchy, id: string): (
-    | { type: 'province'; province: PlaceProvinceNode }
-    | { type: 'district'; province: PlaceProvinceNode; district: PlaceDistrictNode }
-    | {
-        type: 'municipality';
-        province: PlaceProvinceNode;
-        district: PlaceDistrictNode;
-        municipality: PlaceMunicipalityNode;
-      }
-  ) | null {
+  private findNode(
+    hierarchy: PlacesHierarchy,
+    id: string,
+  ):
+    | (
+        | { type: 'province'; province: PlaceProvinceNode }
+        | {
+            type: 'district';
+            province: PlaceProvinceNode;
+            district: PlaceDistrictNode;
+          }
+        | {
+            type: 'municipality';
+            province: PlaceProvinceNode;
+            district: PlaceDistrictNode;
+            municipality: PlaceMunicipalityNode;
+          }
+        | {
+            type: 'place';
+            province: PlaceProvinceNode;
+            district: PlaceDistrictNode;
+            municipality: PlaceMunicipalityNode;
+            place: PlaceTitleNode;
+          }
+      )
+    | null {
     for (const province of hierarchy.provinces) {
       if (province.id === id) {
         return { type: 'province', province };
@@ -260,6 +333,17 @@ export class PlacesService {
               municipality,
             };
           }
+          for (const place of municipality.places ?? []) {
+            if (place.id === id) {
+              return {
+                type: 'place',
+                province,
+                district,
+                municipality,
+                place,
+              };
+            }
+          }
         }
       }
     }
@@ -269,7 +353,7 @@ export class PlacesService {
 
   private generateUniqueNodeId(
     hierarchy: PlacesHierarchy,
-    prefix: 'prov' | 'dist' | 'mun',
+    prefix: 'prov' | 'dist' | 'mun' | 'place',
     name: string,
   ): string {
     const baseSlug = normalizeSlug(name);
@@ -284,6 +368,7 @@ export class PlacesService {
         existingIds.add(district.id);
         district.municipalities.forEach((municipality) => {
           existingIds.add(municipality.id);
+          municipality.places?.forEach((place) => existingIds.add(place.id));
         });
       });
     });
@@ -299,7 +384,10 @@ export class PlacesService {
     return candidate;
   }
 
-  private applyOperation(hierarchy: PlacesHierarchy, operation: PlaceOperationDto) {
+  private applyOperation(
+    hierarchy: PlacesHierarchy,
+    operation: PlaceOperationDto,
+  ) {
     if (operation.op === 'add') {
       if (!operation.type) {
         throw new BadRequestException('Add operation requires type');
@@ -312,7 +400,9 @@ export class PlacesService {
 
       if (operation.type === 'province') {
         if (operation.parentId) {
-          throw new BadRequestException('Province add operation does not accept parentId');
+          throw new BadRequestException(
+            'Province add operation does not accept parentId',
+          );
         }
 
         hierarchy.provinces.push({
@@ -324,17 +414,23 @@ export class PlacesService {
       }
 
       if (!operation.parentId?.trim()) {
-        throw new BadRequestException('Add operation requires parentId for district/municipality');
+        throw new BadRequestException(
+          'Add operation requires parentId for district, municipality or place',
+        );
       }
 
       const parent = this.findNode(hierarchy, operation.parentId.trim());
       if (!parent) {
-        throw new BadRequestException(`Parent not found: ${operation.parentId}`);
+        throw new BadRequestException(
+          `Parent not found: ${operation.parentId}`,
+        );
       }
 
       if (operation.type === 'district') {
         if (parent.type !== 'province') {
-          throw new BadRequestException('District can only be added under a province');
+          throw new BadRequestException(
+            'District can only be added under a province',
+          );
         }
 
         parent.province.districts.push({
@@ -345,13 +441,29 @@ export class PlacesService {
         return;
       }
 
+      if (operation.type === 'place') {
+        if (parent.type !== 'municipality') {
+          throw new BadRequestException(
+            'Place can only be added under a municipality',
+          );
+        }
+        parent.municipality.places.push({
+          id: this.generateUniqueNodeId(hierarchy, 'place', name),
+          name,
+        });
+        return;
+      }
+
       if (parent.type !== 'district') {
-        throw new BadRequestException('Municipality can only be added under a district');
+        throw new BadRequestException(
+          'Municipality can only be added under a district',
+        );
       }
 
       parent.district.municipalities.push({
         id: this.generateUniqueNodeId(hierarchy, 'mun', name),
         name,
+        places: [],
       });
       return;
     }
@@ -368,31 +480,60 @@ export class PlacesService {
 
       const ensureSoftDeleted = (deleted?: boolean) => {
         if (deleted !== true) {
-          throw new BadRequestException('You must disable (soft delete) the node before hard deleting it');
+          throw new BadRequestException(
+            'You must disable (soft delete) the node before hard deleting it',
+          );
         }
       };
 
       if (node.type === 'province') {
         ensureSoftDeleted(node.province.deleted);
-        if (node.province.districts.some((district) => district.deleted !== true)) {
-          throw new BadRequestException('Cannot hard delete a province with non-deleted districts');
+        if (
+          node.province.districts.some((district) => district.deleted !== true)
+        ) {
+          throw new BadRequestException(
+            'Cannot hard delete a province with non-deleted districts',
+          );
         }
-        hierarchy.provinces = hierarchy.provinces.filter((province) => province.id !== node.province.id);
+        hierarchy.provinces = hierarchy.provinces.filter(
+          (province) => province.id !== node.province.id,
+        );
         return;
       }
 
       if (node.type === 'district') {
         ensureSoftDeleted(node.district.deleted);
-        if (node.district.municipalities.some((municipality) => municipality.deleted !== true)) {
-          throw new BadRequestException('Cannot hard delete a district with non-deleted municipalities');
+        if (
+          node.district.municipalities.some(
+            (municipality) => municipality.deleted !== true,
+          )
+        ) {
+          throw new BadRequestException(
+            'Cannot hard delete a district with non-deleted municipalities',
+          );
         }
-        node.province.districts = node.province.districts.filter((district) => district.id !== node.district.id);
+        node.province.districts = node.province.districts.filter(
+          (district) => district.id !== node.district.id,
+        );
         return;
       }
 
-      ensureSoftDeleted(node.municipality.deleted);
-      node.district.municipalities = node.district.municipalities.filter(
-        (municipality) => municipality.id !== node.municipality.id,
+      if (node.type === 'municipality') {
+        ensureSoftDeleted(node.municipality.deleted);
+        if (node.municipality.places.some((place) => place.deleted !== true)) {
+          throw new BadRequestException(
+            'Cannot hard delete a municipality with non-deleted places',
+          );
+        }
+        node.district.municipalities = node.district.municipalities.filter(
+          (municipality) => municipality.id !== node.municipality.id,
+        );
+        return;
+      }
+
+      ensureSoftDeleted(node.place.deleted);
+      node.municipality.places = node.municipality.places.filter(
+        (place) => place.id !== node.place.id,
       );
       return;
     }
@@ -420,28 +561,50 @@ export class PlacesService {
         node.district.name = nextName;
         return;
       }
-      node.municipality.name = nextName;
+      if (node.type === 'municipality') {
+        node.municipality.name = nextName;
+        return;
+      }
+      node.place.name = nextName;
       return;
     }
 
     if (operation.op === 'delete') {
       if (node.type === 'province') {
-        if (node.province.districts.some((district) => district.deleted !== true)) {
-          throw new BadRequestException('Cannot delete a province with non-deleted districts');
+        if (
+          node.province.districts.some((district) => district.deleted !== true)
+        ) {
+          throw new BadRequestException(
+            'Cannot delete a province with non-deleted districts',
+          );
         }
         node.province.deleted = true;
         return;
       }
 
       if (node.type === 'district') {
-        if (node.district.municipalities.some((municipality) => municipality.deleted !== true)) {
-          throw new BadRequestException('Cannot delete a district with non-deleted municipalities');
+        if (
+          node.district.municipalities.some(
+            (municipality) => municipality.deleted !== true,
+          )
+        ) {
+          throw new BadRequestException(
+            'Cannot delete a district with non-deleted municipalities',
+          );
         }
         node.district.deleted = true;
         return;
       }
-
-      node.municipality.deleted = true;
+      if (node.type === 'municipality') {
+        if (node.municipality.places.some((place) => place.deleted !== true)) {
+          throw new BadRequestException(
+            'Cannot delete a municipality with non-deleted places',
+          );
+        }
+        node.municipality.deleted = true;
+        return;
+      }
+      node.place.deleted = true;
       return;
     }
 
@@ -454,7 +617,11 @@ export class PlacesService {
         delete node.district.deleted;
         return;
       }
-      delete node.municipality.deleted;
+      if (node.type === 'municipality') {
+        delete node.municipality.deleted;
+        return;
+      }
+      delete node.place.deleted;
       return;
     }
 
@@ -498,14 +665,16 @@ export class PlacesService {
       extraCode: await this.createUniqueExtraCode(),
       category: ExtraCategory.Places,
       name: PLACE_HIERARCHY_NAME,
-      description: 'Nepal province-district-municipality hierarchy',
+      description: 'Nepal province-district-municipality-place hierarchy',
       value: JSON.stringify({ provinces: [] }),
       enabled: true,
       adminApprovalRequired: false,
     });
   }
 
-  async getHierarchy(params?: { includeDeleted?: boolean }): Promise<PlacesHierarchy> {
+  async getHierarchy(params?: {
+    includeDeleted?: boolean;
+  }): Promise<PlacesHierarchy> {
     const includeDeleted = params?.includeDeleted === true;
     const cacheKey = includeDeleted ? 'with_deleted' : 'active_only';
     const cached = this.hierarchyCache.get(cacheKey);
@@ -531,13 +700,27 @@ export class PlacesService {
   }
 
   async bulkSeed(payload: BulkSeedPlacesDto): Promise<PlacesHierarchy> {
-    this.validateHierarchy(payload, { requireAtLeastOneProvince: true });
+    const normalizedPayload: PlacesHierarchy = {
+      provinces: payload.provinces.map((province) => ({
+        ...province,
+        districts: province.districts.map((district) => ({
+          ...district,
+          municipalities: district.municipalities.map((municipality) => ({
+            ...municipality,
+            places: municipality.places ?? [],
+          })),
+        })),
+      })),
+    };
+    this.validateHierarchy(normalizedPayload, {
+      requireAtLeastOneProvince: true,
+    });
     this.invalidateHierarchyCache();
 
     const document = await this.ensureHierarchyDocument();
     document.category = ExtraCategory.Places;
     document.name = PLACE_HIERARCHY_NAME;
-    document.value = JSON.stringify(payload);
+    document.value = JSON.stringify(normalizedPayload);
     document.enabled = true;
     document.adminApprovalRequired = false;
     await document.save();
@@ -546,9 +729,13 @@ export class PlacesService {
     return this.getHierarchy({ includeDeleted: true });
   }
 
-  async patchHierarchy(operations: PlaceOperationDto[]): Promise<PlacesHierarchy> {
+  async patchHierarchy(
+    operations: PlaceOperationDto[],
+  ): Promise<PlacesHierarchy> {
     if (!Array.isArray(operations) || operations.length < 1) {
-      throw new BadRequestException('operations must include at least one operation');
+      throw new BadRequestException(
+        'operations must include at least one operation',
+      );
     }
 
     const document = await this.ensureHierarchyDocument();
@@ -560,8 +747,11 @@ export class PlacesService {
         this.applyOperation(working, operation);
         this.validateHierarchy(working);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Invalid operation';
-        throw new BadRequestException(`Operation ${index + 1} failed: ${message}`);
+        const message =
+          error instanceof Error ? error.message : 'Invalid operation';
+        throw new BadRequestException(
+          `Operation ${index + 1} failed: ${message}`,
+        );
       }
     });
 
@@ -579,10 +769,19 @@ export class PlacesService {
   async getCatalog(): Promise<{ source: 'extras'; items: CatalogItem[] }> {
     const hierarchy = await this.getHierarchy({ includeDeleted: false });
     const items = hierarchy.provinces.map((province) => {
-      const districtItems = province.districts.map((district) => ({
-        district: district.name,
-        places: district.municipalities.map((municipality) => municipality.name),
-      }));
+      const districtItems = province.districts.map((district) => {
+        const placeItems = district.municipalities.flatMap((municipality) =>
+          municipality.places.map((place) => ({
+            place: place.name,
+            municipality: municipality.name,
+          })),
+        );
+        return {
+          district: district.name,
+          places: placeItems.map((item) => item.place),
+          placeItems,
+        };
+      });
 
       return {
         province: province.name,

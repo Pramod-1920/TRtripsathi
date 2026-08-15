@@ -17,6 +17,7 @@ import { Gender } from './constants/gender.enum';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './schemas/user.schema';
+import { PlacesService } from '../extra/places.service';
 
 const REMOVED_XP_EVENT_KEYS = new Set([
   'daily_streak',
@@ -214,6 +215,7 @@ export class UserService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Auth.name) private readonly authModel: Model<Auth>,
     @InjectModel(ExtraItem.name) private readonly extraModel: Model<ExtraItem>,
+    private readonly placesService: PlacesService,
     private readonly cloudinaryService: CloudinaryService,
     // BadgeService is imported via UserModule
     private readonly badgeService?: BadgeService,
@@ -2965,9 +2967,18 @@ export class UserService {
   async createPhotoVerificationRequest(
     authId: string,
     payload: {
-      campaignId: string;
+      campaignId?: string;
       url: string;
       kind: 'group' | 'solo';
+      title?: string;
+      category?: string;
+      province?: string;
+      district?: string;
+      municipality?: string;
+      place?: string;
+      address?: string;
+      latitude?: number;
+      longitude?: number;
     },
   ) {
     const profile = await this.userModel.findOne({
@@ -2978,15 +2989,125 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    const campaignId = String(payload.campaignId ?? '').trim();
+    const isPlaceEvidence = Boolean(payload.place?.trim());
+    if (!campaignId && !isPlaceEvidence) {
+      throw new BadRequestException(
+        'Choose a valid catalog place for standalone photo verification',
+      );
+    }
+
+    let placeSelection:
+      | {
+          province: string;
+          district: string;
+          municipality: string;
+          place: string;
+        }
+      | undefined;
+    if (isPlaceEvidence) {
+      if (
+        !payload.title?.trim() ||
+        !payload.category?.trim() ||
+        !payload.address?.trim()
+      ) {
+        throw new BadRequestException(
+          'title, category and address are required for place verification',
+        );
+      }
+      const hierarchy = await this.placesService.getHierarchy({
+        includeDeleted: false,
+      });
+      const placeKey = payload.place!.trim().toLowerCase();
+      const provinceKey = payload.province?.trim().toLowerCase();
+      const districtKey = payload.district?.trim().toLowerCase();
+      const municipalityKey = payload.municipality?.trim().toLowerCase();
+      const matches = hierarchy.provinces.flatMap((province) =>
+        province.districts.flatMap((district) =>
+          district.municipalities.flatMap((municipality) =>
+            municipality.places
+              .filter(
+                (place) =>
+                  place.name.trim().toLowerCase() === placeKey &&
+                  (!municipalityKey ||
+                    municipality.name.trim().toLowerCase() ===
+                      municipalityKey) &&
+                  (!provinceKey ||
+                    province.name.trim().toLowerCase() === provinceKey) &&
+                  (!districtKey ||
+                    district.name.trim().toLowerCase() === districtKey),
+              )
+              .map((place) => ({
+                province: province.name,
+                district: district.name,
+                municipality: municipality.name,
+                place: place.name,
+              })),
+          ),
+        ),
+      );
+      if (matches.length !== 1) {
+        throw new BadRequestException(
+          matches.length === 0
+            ? 'Selected place is not in the active Nepal place catalog'
+            : 'Selected place is ambiguous; choose its district and province',
+        );
+      }
+      placeSelection = matches[0];
+      const duplicate = (profile.photoVerificationRequests ?? []).find(
+        (entry) =>
+          ['pending', 'approved'].includes(entry.status) &&
+          entry.place?.trim().toLowerCase() ===
+            placeSelection!.place.toLowerCase() &&
+          entry.municipality?.trim().toLowerCase() ===
+            placeSelection!.municipality.toLowerCase() &&
+          entry.district?.trim().toLowerCase() ===
+            placeSelection!.district.toLowerCase(),
+      );
+      if (duplicate) {
+        throw new BadRequestException(
+          duplicate.status === 'approved'
+            ? 'This place is already completed'
+            : 'This place already has a pending verification request',
+        );
+      }
+    }
+
+    if ((payload.latitude == null) !== (payload.longitude == null)) {
+      throw new BadRequestException(
+        'latitude and longitude must be provided together',
+      );
+    }
+    if (
+      payload.latitude != null &&
+      (payload.latitude < 26.3 ||
+        payload.latitude > 30.5 ||
+        payload.longitude! < 80.0 ||
+        payload.longitude! > 88.3)
+    ) {
+      throw new BadRequestException('Photo location must be inside Nepal');
+    }
+
     const requestCode = `PVR-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 
     const request = {
       requestCode,
-      campaignId: String(payload.campaignId).trim(),
+      campaignId,
       url: String(payload.url).trim(),
       kind: payload.kind,
       status: 'pending' as const,
       submittedAt: new Date(),
+      ...(placeSelection
+        ? {
+            title: payload.title!.trim(),
+            category: payload.category!.trim(),
+            ...placeSelection,
+            address: payload.address!.trim(),
+            ...(payload.latitude != null
+              ? { latitude: payload.latitude, longitude: payload.longitude }
+              : {}),
+          }
+        : {}),
     };
 
     await this.userModel.findByIdAndUpdate(
@@ -3066,8 +3187,13 @@ export class UserService {
           : 'group_photo_uploaded';
 
       xp = await this.awardXpForEvent(profile.authId.toString(), eventKey, {
-        campaignId: requests[index].campaignId,
+        campaignId:
+          requests[index].campaignId ||
+          `place:${requests[index].district}:${requests[index].municipality}:${requests[index].place}`,
         solo: requests[index].kind === 'solo',
+        district: requests[index].district,
+        placeName: requests[index].place,
+        locationKey: requests[index].place,
       });
     }
 
@@ -3615,6 +3741,15 @@ export class UserService {
                 reviewedAt: '$photoVerificationRequests.reviewedAt',
                 reviewedByAuthId: '$photoVerificationRequests.reviewedByAuthId',
                 reviewNote: '$photoVerificationRequests.reviewNote',
+                title: '$photoVerificationRequests.title',
+                category: '$photoVerificationRequests.category',
+                requestProvince: '$photoVerificationRequests.province',
+                requestDistrict: '$photoVerificationRequests.district',
+                municipality: '$photoVerificationRequests.municipality',
+                place: '$photoVerificationRequests.place',
+                address: '$photoVerificationRequests.address',
+                latitude: '$photoVerificationRequests.latitude',
+                longitude: '$photoVerificationRequests.longitude',
               },
             },
           ],

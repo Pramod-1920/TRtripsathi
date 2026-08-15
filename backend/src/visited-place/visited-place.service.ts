@@ -18,6 +18,7 @@ export class VisitedPlaceService {
     placeCode: string,
     placeType: string,
     visitedAt?: Date,
+    sourceCampaignId?: string,
   ): Promise<VisitedPlace | null> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid profile ID');
@@ -37,14 +38,27 @@ export class VisitedPlaceService {
     }
     const userIdObj = new Types.ObjectId(userId);
 
-    // Check if already visited
+    const normalizedSourceCampaignId = String(sourceCampaignId ?? '').trim();
+
+    // One campaign can record a district/province only once, even if its
+    // verification flow is retried. Older/manual records remain unique.
     const existing = await this.visitedPlaceModel.findOne({
       userId: userIdObj,
       placeCode: normalizedPlaceCode,
     });
 
     if (existing) {
-      return null; // Already recorded
+      if (!normalizedSourceCampaignId) return null;
+      if (existing.sourceCampaignIds?.includes(normalizedSourceCampaignId)) {
+        return null;
+      }
+      existing.visitCount = Math.max(1, existing.visitCount ?? 1) + 1;
+      existing.visitedAt = visitedAt || new Date();
+      existing.sourceCampaignIds = [
+        ...(existing.sourceCampaignIds ?? []),
+        normalizedSourceCampaignId,
+      ];
+      return existing.save();
     }
 
     const visitedPlace = new this.visitedPlaceModel({
@@ -52,6 +66,10 @@ export class VisitedPlaceService {
       placeCode: normalizedPlaceCode,
       placeType,
       visitedAt: visitedAt || new Date(),
+      visitCount: 1,
+      sourceCampaignIds: normalizedSourceCampaignId
+        ? [normalizedSourceCampaignId]
+        : [],
     });
 
     return visitedPlace.save();
