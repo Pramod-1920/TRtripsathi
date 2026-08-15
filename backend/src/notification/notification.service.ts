@@ -3,16 +3,22 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
+  App,
   applicationDefault,
   cert,
   getApp,
   getApps,
   initializeApp,
-} from 'firebase-admin/app';
-import { getMessaging, Messaging } from 'firebase-admin/messaging';
+} from 'firebase-admin';
 import { Notification } from './schemas/notification.schema';
 import { PushToken } from './schemas/push-token.schema';
 import { User } from '../user/schemas/user.schema';
+
+type MessagingClient = {
+  sendEachForMulticast(message: Record<string, unknown>): Promise<{
+    responses: Array<{ error?: { code?: string } }>;
+  }>;
+};
 
 @Injectable()
 export class NotificationService {
@@ -28,11 +34,27 @@ export class NotificationService {
     this.messaging = this.configureFirebaseMessaging();
   }
 
-  private readonly messaging?: Messaging;
+  private readonly messaging?: MessagingClient;
 
-  private configureFirebaseMessaging(): Messaging | undefined {
+  private getMessagingClient(app: App): MessagingClient | undefined {
     try {
-      if (getApps().length > 0) return getMessaging(getApp());
+      const modular = require('firebase-admin/messaging') as {
+        getMessaging: (target?: App) => MessagingClient;
+      };
+      return modular.getMessaging(app);
+    } catch {
+      const legacy = require('firebase-admin') as {
+        messaging?: (target?: App) => MessagingClient;
+      };
+      return legacy.messaging?.(app);
+    }
+  }
+
+  private configureFirebaseMessaging(): MessagingClient | undefined {
+    try {
+      if (getApps().length > 0) {
+        return this.getMessagingClient(getApp());
+      }
 
       const projectId = this.configService
         .get<string>('FIREBASE_PROJECT_ID')
@@ -49,16 +71,20 @@ export class NotificationService {
         ?.trim();
 
       if (projectId && clientEmail && privateKey) {
-        return getMessaging(
-          initializeApp({
-            credential: cert({ projectId, clientEmail, privateKey }),
+        const app = initializeApp({
+          credential: cert({
+            projectId,
+            clientEmail,
+            privateKey,
           }),
-        );
+        });
+        return this.getMessagingClient(app);
       }
       if (applicationCredentials) {
-        return getMessaging(
-          initializeApp({ credential: applicationDefault() }),
-        );
+        const app = initializeApp({
+          credential: applicationDefault(),
+        });
+        return this.getMessagingClient(app);
       }
     } catch (error) {
       // Push delivery is optional at startup. Database notifications continue

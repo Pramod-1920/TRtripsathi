@@ -414,7 +414,7 @@ export function PlacesManager() {
                 if (municipality.name.toLowerCase().includes(query)) {
                   return municipality;
                 }
-                const places = municipality.places.filter((place) =>
+                const places = (municipality.places ?? []).filter((place) =>
                   place.name.toLowerCase().includes(query));
                 return places.length > 0 ? { ...municipality, places } : null;
               })
@@ -461,7 +461,7 @@ export function PlacesManager() {
     const places = hierarchy.provinces.reduce(
       (count, province) => count + province.districts.reduce(
         (districtCount, district) => districtCount + district.municipalities.reduce(
-          (municipalityCount, municipality) => municipalityCount + municipality.places.length,
+          (municipalityCount, municipality) => municipalityCount + (municipality.places ?? []).length,
           0,
         ),
         0,
@@ -571,7 +571,7 @@ export function PlacesManager() {
       const district = province?.districts.find((item) => item.id === node.id);
       const municipalities = district?.municipalities ?? [];
       municipalities.forEach((municipality) => {
-        municipality.places.forEach((place) => {
+        (municipality.places ?? []).forEach((place) => {
           if (place.deleted !== true) ops.push({ op: 'delete', id: place.id });
         });
         if (municipality.deleted !== true) {
@@ -588,7 +588,7 @@ export function PlacesManager() {
     const districts = province?.districts ?? [];
     districts.forEach((district) => {
       (district.municipalities ?? []).forEach((municipality) => {
-        municipality.places.forEach((place) => {
+        (municipality.places ?? []).forEach((place) => {
           if (place.deleted !== true) ops.push({ op: 'delete', id: place.id });
         });
         if (municipality.deleted !== true) {
@@ -666,7 +666,7 @@ export function PlacesManager() {
       const province = hierarchy.provinces.find((item) => item.id === selectedNode.provinceId);
       const district = province?.districts.find((item) => item.id === selectedNode.districtId);
       const municipality = district?.municipalities.find((item) => item.id === selectedNode.parentId);
-      duplicate = Boolean(municipality?.places.some(
+      duplicate = Boolean(municipality?.places?.some(
         (place) => place.id !== selectedNode.id && place.name.trim().toLowerCase() === lower,
       ));
     }
@@ -755,7 +755,7 @@ export function PlacesManager() {
         const municipality = province.districts
           .flatMap((district) => district.municipalities)
           .find((item) => item.id === addDialog.parentId);
-        return Boolean(municipality?.places.some(
+        return Boolean(municipality?.places?.some(
           (place) => place.name.trim().toLowerCase() === name.toLowerCase(),
         ));
       }
@@ -865,7 +865,7 @@ export function PlacesManager() {
               .filter((municipality) => municipality.deleted !== true)
               .map((municipality) => ({
                 ...municipality,
-                places: municipality.places.filter((place) => place.deleted !== true),
+                places: (municipality.places ?? []).filter((place) => place.deleted !== true),
               })),
           })),
         })),

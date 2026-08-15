@@ -99,6 +99,28 @@ export type PlacesHierarchyResponse = {
   provinces: PlaceProvinceNode[];
 };
 
+function normalizePlacesHierarchy(data: unknown): PlacesHierarchyResponse {
+  const raw = data as Partial<PlacesHierarchyResponse> | null;
+  return {
+    provinces: (Array.isArray(raw?.provinces) ? raw.provinces : []).map(
+      (province) => ({
+        ...province,
+        districts: (province.districts ?? []).map((district) => ({
+          ...district,
+          municipalities: (district.municipalities ?? []).map(
+            (municipality) => ({
+              ...municipality,
+              places: Array.isArray(municipality.places)
+                ? municipality.places
+                : [],
+            }),
+          ),
+        })),
+      }),
+    ),
+  };
+}
+
 export type PlacePatchOperation = {
   op: 'add' | 'rename' | 'delete' | 'restore' | 'hard_delete';
   type?: 'province' | 'district' | 'municipality' | 'place';
@@ -282,7 +304,7 @@ export async function fetchAdminPlaceHierarchy(params?: { includeDeleted?: boole
     },
   });
 
-  return response.data as PlacesHierarchyResponse;
+  return normalizePlacesHierarchy(response.data);
 }
 
 export async function fetchPlacesHierarchy(params?: { includeDeleted?: boolean }) {
@@ -292,17 +314,17 @@ export async function fetchPlacesHierarchy(params?: { includeDeleted?: boolean }
     },
   });
 
-  return response.data as PlacesHierarchyResponse;
+  return normalizePlacesHierarchy(response.data);
 }
 
 export async function bulkSeedPlaces(payload: PlacesHierarchyResponse) {
   const response = await apiClient.post('/extra/places/bulk-seed', payload);
-  return response.data as PlacesHierarchyResponse;
+  return normalizePlacesHierarchy(response.data);
 }
 
 export async function patchPlaces(operations: PlacePatchOperation[]) {
   const response = await apiClient.patch('/extra/places', { operations });
-  return response.data as PlacesHierarchyResponse;
+  return normalizePlacesHierarchy(response.data);
 }
 
 export async function fetchDifficultySettings() {
