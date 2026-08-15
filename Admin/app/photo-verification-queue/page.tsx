@@ -34,6 +34,13 @@ type PhotoVerificationQueueItem = {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  locationAccuracyMeters?: number | null;
+  locationCapturedAt?: string | null;
+  distanceFromPlaceMeters?: number | null;
+  allowedRadiusMeters?: number | null;
+  appealNote?: string | null;
+  appealedAt?: string | null;
+  appealCount?: number;
 };
 
 type QueueResponse = {
@@ -149,6 +156,10 @@ export default function PhotoVerificationQueuePage() {
   }
 
   async function handleReviewRequest(item: PhotoVerificationQueueItem, status: 'approved' | 'rejected') {
+    if (status === 'rejected' && !reviewNoteByCode[item.requestCode]?.trim()) {
+      setError('Enter a clear rejection reason so the user can correct or appeal the decision.');
+      return;
+    }
     setReviewingCode(item.requestCode);
     setError('');
     setSuccess('');
@@ -304,6 +315,19 @@ export default function PhotoVerificationQueuePage() {
                     {item.category && (
                       <p className="mt-1 text-xs capitalize text-slate-500">{item.category.replaceAll('_', ' ')}</p>
                     )}
+                    {item.distanceFromPlaceMeters != null && (
+                      <p className="mt-1 text-xs font-medium text-emerald-700">
+                        GPS distance: {Math.round(item.distanceFromPlaceMeters)} m / {Math.round(item.allowedRadiusMeters ?? 0)} m allowed
+                      </p>
+                    )}
+                    {item.locationAccuracyMeters != null && (
+                      <p className="text-xs text-slate-500">GPS accuracy: ±{Math.round(item.locationAccuracyMeters)} m</p>
+                    )}
+                    {item.appealNote && (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                        <strong>User appeal:</strong> {item.appealNote}
+                      </div>
+                    )}
                     <p className="text-xs text-slate-500">Kind: {item.kind}</p>
                     <span
                       className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
@@ -366,14 +390,14 @@ export default function PhotoVerificationQueuePage() {
                               [item.requestCode]: event.target.value,
                             }))
                           }
-                          placeholder="Optional review note"
+                          placeholder="Review note (required when rejecting)"
                           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => void handleReviewRequest(item, 'approved')}
-                            disabled={reviewingCode === item.requestCode}
+                            disabled={reviewingCode === item.requestCode || !reviewNoteByCode[item.requestCode]?.trim()}
                             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
                           >
                             <FiCheck size={14} />

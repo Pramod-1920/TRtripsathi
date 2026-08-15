@@ -3,6 +3,10 @@ import {
   IsEnum,
   IsLatitude,
   IsLongitude,
+  IsDateString,
+  IsNumber,
+  Max,
+  Min,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -84,4 +88,16 @@ export class CreatePhotoVerificationRequestDto {
   @IsOptional()
   @IsLongitude()
   longitude?: number;
+
+  @ApiProperty({ example: 18.4, required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  locationAccuracyMeters?: number;
+
+  @ApiProperty({ example: '2026-08-15T10:00:00.000Z', required: false })
+  @IsOptional()
+  @IsDateString()
+  locationCapturedAt?: string;
 }

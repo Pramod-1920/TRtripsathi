@@ -6,6 +6,12 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Auth, AuthSchema } from './schemas/auth.schema';
+import {
+  AuthChallenge,
+  AuthChallengeSchema,
+} from './schemas/auth-challenge.schema';
+import { AccountSecurityService } from './account-security.service';
+import { AuthCodeDeliveryService } from './auth-code-delivery.service';
 import { AccessTokenStrategy } from './strategies/access-token.strategy';
 import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { RolesGuard } from './guards/roles.guard';
@@ -17,7 +23,10 @@ import { SecurityModule } from '../security/security.module';
     ConfigModule,
     PassportModule,
     JwtModule.register({}),
-    MongooseModule.forFeature([{ name: Auth.name, schema: AuthSchema }]),
+    MongooseModule.forFeature([
+      { name: Auth.name, schema: AuthSchema },
+      { name: AuthChallenge.name, schema: AuthChallengeSchema },
+    ]),
     UserModule,
     // security helpers (token revocation, audit)
     // exports TokenRevocationService, AuditService
@@ -29,6 +38,8 @@ import { SecurityModule } from '../security/security.module';
     AccessTokenStrategy,
     RefreshTokenStrategy,
     RolesGuard,
+    AccountSecurityService,
+    AuthCodeDeliveryService,
   ],
 })
 export class AuthModule {}

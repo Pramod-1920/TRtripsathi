@@ -11,6 +11,7 @@ import { User } from '../user/schemas/user.schema';
 import { Auth } from '../auth/schemas/auth.schema';
 import { Role } from '../auth/constants/roles.enum';
 import { NotificationService } from '../notification/notification.service';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateReportDto,
   CreateFeedbackDto,
@@ -29,6 +30,7 @@ export class ReportService {
     @InjectModel(Auth.name)
     private authModel: Model<Auth>,
     private notificationService: NotificationService,
+    private readonly audit: AuditService,
   ) {}
 
   private async getReporterProfile(authId: string) {
@@ -239,6 +241,7 @@ export class ReportService {
   async updateReportStatus(
     reportId: string,
     updateDto: UpdateReportStatusDto,
+    actorId: string,
   ): Promise<Report> {
     const userProfileIds = await this.getUserProfileIds();
     const report = await this.reportModel.findOne({
@@ -261,6 +264,15 @@ export class ReportService {
     report.updatedAt = new Date();
 
     const saved = await report.save();
+
+    await this.audit.logEvent({
+      type: 'moderation.report_status_changed',
+      actorId,
+      reportId,
+      previousStatus,
+      nextStatus: saved.status,
+      resolutionProvided: Boolean(updateDto.resolution),
+    });
 
     if (previousStatus !== saved.status) {
       const statusLabel =
@@ -299,6 +311,7 @@ export class ReportService {
   async assignReport(
     reportId: string,
     assignDto: AssignReportDto,
+    actorId: string,
   ): Promise<Report> {
     const userProfileIds = await this.getUserProfileIds();
     const report = await this.reportModel.findOne({
@@ -313,7 +326,14 @@ export class ReportService {
     report.assignedTo = new Types.ObjectId(assignDto.moderatorId);
     report.updatedAt = new Date();
 
-    return report.save();
+    const saved = await report.save();
+    await this.audit.logEvent({
+      type: 'moderation.report_assigned',
+      actorId,
+      reportId,
+      moderatorId: assignDto.moderatorId,
+    });
+    return saved;
   }
 
   /**

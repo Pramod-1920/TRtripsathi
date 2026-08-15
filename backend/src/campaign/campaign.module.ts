@@ -5,7 +5,6 @@ import { Campaign, CampaignSchema } from './schemas/campaign.schema';
 import { CampaignService } from './campaign.service';
 import { CampaignScheduler } from './campaign.scheduler';
 import { CampaignController } from './campaign.controller';
-import { AuditService } from '../audit/audit.service';
 import { UserModule } from '../user/user.module';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { Auth, AuthSchema } from '../auth/schemas/auth.schema';
@@ -27,7 +26,7 @@ import { VisitedPlaceModule } from '../visited-place/visited-place.module';
     VisitedPlaceModule,
   ],
   controllers: [CampaignController],
-  providers: [CampaignService, AuditService, CampaignScheduler],
+  providers: [CampaignService, CampaignScheduler],
   exports: [CampaignService],
 })
 export class CampaignModule {}

@@ -157,8 +157,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
         'isProfilePublic': _isPublic,
       };
 
+      // A profile photo is a server-required completion field. Finish any
+      // deferred signup upload before asking the backend to mark onboarding
+      // complete.
+      final pendingImagePath =
+          preferences.getString('pending_profile_image_path');
+      if (pendingImagePath != null && pendingImagePath.isNotEmpty) {
+        final pendingImage = File(pendingImagePath);
+        if (!await pendingImage.exists()) {
+          throw Exception(
+            'Your selected profile photo is no longer available. Please try account setup again.',
+          );
+        }
+        await ApiService.uploadProfileImage(pendingImage);
+        await preferences.remove('pending_profile_image_path');
+      }
+
       try {
-        await ApiService.updateProfile({
+        await ApiService.completeProfile({
           ...supportedProfileFields,
           ...travelerFields,
         });
@@ -174,19 +190,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
         );
       }
       await preferences.remove('pending_identity_profile');
-
-      final pendingImagePath =
-          preferences.getString('pending_profile_image_path');
-      if (pendingImagePath != null && pendingImagePath.isNotEmpty) {
-        final pendingImage = File(pendingImagePath);
-        if (!await pendingImage.exists()) {
-          throw Exception(
-            'Your selected profile photo is no longer available. Please try account setup again.',
-          );
-        }
-        await ApiService.uploadProfileImage(pendingImage);
-        await preferences.remove('pending_profile_image_path');
-      }
       await preferences.setBool('onboarding_done', true);
 
       if (!mounted) return;
@@ -273,10 +276,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                                                       onTap: _loading
                                                           ? null
                                                           : () => setState(
-                                                                () =>
-                                                                    _travelStyle =
-                                                                        choice
-                                                                            .value,
+                                                                () => _travelStyle =
+                                                                    choice
+                                                                        .value,
                                                               ),
                                                     ),
                                                   ),
@@ -352,7 +354,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                                 spacing: 9,
                                 runSpacing: 9,
                                 children: _languageOptions.map((language) {
-                                  final selected = _languages.contains(language);
+                                  final selected =
+                                      _languages.contains(language);
                                   return FilterChip(
                                     selected: selected,
                                     label: Text(language),
@@ -378,7 +381,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
                                 minLines: 4,
                                 maxLines: 6,
                                 maxLength: 500,
-                                textCapitalization: TextCapitalization.sentences,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
                                 decoration: const InputDecoration(
                                   hintText:
                                       'I love slow mountain mornings, local food, and leaving every trail cleaner than I found it...',
@@ -615,9 +619,7 @@ class _ChoiceCard extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  selected
-                      ? Icons.check_circle_rounded
-                      : Icons.circle_outlined,
+                  selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                   color: selected ? AppColors.gold : AppColors.line,
                 ),
               ],

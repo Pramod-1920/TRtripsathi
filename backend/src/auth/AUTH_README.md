@@ -19,6 +19,9 @@ Credentials are stored in the auth schema, while profile fields are stored in a 
 - Roles guard for admin/user authorization
 - Account lockout after repeated failed login attempts
 - Rate limiting on signup/login endpoints
+- Email/SMS one-time-code verification for new accounts
+- Enumeration-resistant forgot-password and one-time-code reset
+- One-time challenges stored as HMAC digests with expiry, cooldown, attempt limits, and TTL cleanup
 
 ## Required Environment Variables
 
@@ -30,6 +33,14 @@ JWT_REFRESH_SECRET=your_refresh_token_secret
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 FRONTEND_URL=http://localhost:3000
+AUTH_OTP_SECRET=replace_with_at_least_32_random_characters
+email=your-gmail-address@example.com
+email_app_password=your_google_app_password
+AUTH_EMAIL_FROM=TripSathi <security@example.com>
+RESEND_API_KEY=replace_me
+TWILIO_ACCOUNT_SID=replace_me
+TWILIO_AUTH_TOKEN=replace_me
+TWILIO_FROM_PHONE=replace_me
 ```
 
 ## Data Model Additions
@@ -122,6 +133,17 @@ User schema includes:
 - `GET /auth/admin-only`
 - Header: `Authorization: Bearer <access_token>`
 - Requires role: `admin`
+
+### Account verification and recovery
+
+- `POST /auth/verification/request` (authenticated): `{ "channel": "email" }` or `{ "channel": "sms" }`
+- `POST /auth/verification/confirm` (authenticated): `{ "challengeId": "...", "code": "123456" }`
+- `POST /auth/password/forgot`: `{ "identifier": "email-or-phone" }`; always returns the same response shape
+- `POST /auth/password/reset`: `{ "challengeId": "...", "code": "123456", "password": "12+ characters" }`
+
+Codes contain exactly six digits and expire after 3 minutes. If `email` and `email_app_password` are configured, email codes use authenticated Gmail SMTP. Resend remains the fallback when those SMTP credentials are absent.
+
+Set `AUTH_OTP_TEST_MODE=true` only in local/test environments to return a debug code without contacting a provider. Never enable it in production.
 
 ## Guard Strategy
 

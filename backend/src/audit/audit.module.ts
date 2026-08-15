@@ -1,10 +1,18 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { MongooseModule } from '@nestjs/mongoose';
+import { AuditEvent, AuditEventSchema } from './audit-event.schema';
+import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
-import { UserModule } from '../user/user.module';
 
+@Global()
 @Module({
-  imports: [forwardRef(() => UserModule)], // remove this line if there's no circular dependency
+  imports: [
+    MongooseModule.forFeature([
+      { name: AuditEvent.name, schema: AuditEventSchema },
+    ]),
+  ],
+  controllers: [AuditController],
   providers: [AuditService],
-  exports: [AuditService], // make AuditService available to UserModule
+  exports: [AuditService],
 })
 export class AuditModule {}

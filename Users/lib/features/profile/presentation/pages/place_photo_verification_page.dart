@@ -43,11 +43,75 @@ class _PlacePhotoVerificationPageState
   bool _locating = false;
   bool _submitting = false;
   String? _catalogError;
+  List<Map<String, dynamic>> _requests = const [];
 
   @override
   void initState() {
     super.initState();
     _loadPlaces();
+    _loadRequests();
+  }
+
+  Future<void> _loadRequests() async {
+    try {
+      final profile = await ApiService.getProfile(forceRefresh: true);
+      final raw = profile['photoVerificationRequests'] as List? ?? const [];
+      if (mounted) {
+        setState(() => _requests = raw
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+            .reversed
+            .take(5)
+            .toList());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _appeal(Map<String, dynamic> request) async {
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Appeal this decision'),
+        content: TextField(
+          controller: controller,
+          minLines: 3,
+          maxLines: 5,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            hintText:
+                'Explain what the reviewer may have missed (20+ characters)',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('Submit appeal')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (note == null || note.length < 20) {
+      if (note != null) {
+        _showMessage('Please explain your appeal in at least 20 characters.');
+      }
+      return;
+    }
+    try {
+      await ApiService.appealPhotoVerification(
+        requestCode: request['requestCode'].toString(),
+        appealNote: note,
+      );
+      await _loadRequests();
+      if (mounted) _showMessage('Appeal sent for a second review.');
+    } catch (error) {
+      if (mounted) _showMessage(ApiService.readableError(error));
+    }
   }
 
   @override
@@ -74,10 +138,16 @@ class _PlacePhotoVerificationPageState
             final place = (rawPlace['place'] ?? '').toString().trim();
             final municipality =
                 (rawPlace['municipality'] ?? '').toString().trim();
+            final latitude =
+                double.tryParse(rawPlace['latitude']?.toString() ?? '');
+            final longitude =
+                double.tryParse(rawPlace['longitude']?.toString() ?? '');
             if (province.isNotEmpty &&
                 district.isNotEmpty &&
                 municipality.isNotEmpty &&
-                place.isNotEmpty) {
+                place.isNotEmpty &&
+                latitude != null &&
+                longitude != null) {
               options.add(_PlaceOption(
                 province: province,
                 district: district,
@@ -157,6 +227,10 @@ class _PlacePhotoVerificationPageState
       _showMessage('Choose a place from the verified list.');
       return;
     }
+    if (_position == null) {
+      _showMessage('Capture your current GPS location before submitting.');
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final photoUrl = await ApiService.uploadPlaceVerificationImage(_photo!);
@@ -169,8 +243,10 @@ class _PlacePhotoVerificationPageState
         municipality: _selectedPlace!.municipality,
         place: _selectedPlace!.place,
         address: _addressController.text,
-        latitude: _position?.latitude,
-        longitude: _position?.longitude,
+        latitude: _position!.latitude,
+        longitude: _position!.longitude,
+        locationAccuracyMeters: _position!.accuracy,
+        locationCapturedAt: _position!.timestamp,
       );
       if (!mounted) return;
       await showDialog<void>(
@@ -181,7 +257,7 @@ class _PlacePhotoVerificationPageState
           title: const Text('Sent for verification'),
           content: Text(
             'An admin will review your photo and location. Once approved, '
-            '${_selectedPlace!.district} will turn green on your map and your XP will be awarded.',
+            '${_selectedPlace!.district} will turn green on your map and 40 XP will be awarded once for this place.',
           ),
           actions: [
             FilledButton(
@@ -417,6 +493,41 @@ class _PlacePhotoVerificationPageState
                   style: TextStyle(
                       color: AppColors.muted, fontSize: 12, height: 1.35),
                 ),
+                if (_requests.isNotEmpty) ...[
+                  const SizedBox(height: 26),
+                  Text('Recent requests',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  ..._requests.map((request) {
+                    final status = request['status']?.toString() ?? 'pending';
+                    final canAppeal = status == 'rejected' &&
+                        (request['appealCount'] as num? ?? 0) < 1;
+                    return Card(
+                      child: ListTile(
+                        title: Text(request['title']?.toString() ??
+                            request['place']?.toString() ??
+                            'Place verification'),
+                        subtitle: Text([
+                          status.toUpperCase(),
+                          if (request['reviewNote']
+                                  ?.toString()
+                                  .trim()
+                                  .isNotEmpty ==
+                              true)
+                            request['reviewNote'].toString(),
+                        ].join(' · ')),
+                        trailing: canAppeal
+                            ? TextButton(
+                                onPressed: () => _appeal(request),
+                                child: const Text('Appeal'))
+                            : null,
+                      ),
+                    );
+                  }),
+                ],
               ],
             ),
           ),

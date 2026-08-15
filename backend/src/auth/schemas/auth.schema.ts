@@ -10,6 +10,17 @@ export class Auth extends Document {
   @Prop({ type: String, default: null, unique: true, sparse: true })
   email?: string | null;
 
+  @Prop({ type: Date, default: null })
+  emailVerifiedAt?: Date | null;
+
+  @Prop({ type: Date, default: null })
+  phoneVerifiedAt?: Date | null;
+
+  // Enabled for accounts created after verification rollout. Older accounts
+  // remain usable until they verify a contact or are migrated deliberately.
+  @Prop({ type: Boolean, default: false })
+  verificationRequired!: boolean;
+
   @Prop({ type: String, required: true })
   password!: string;
 

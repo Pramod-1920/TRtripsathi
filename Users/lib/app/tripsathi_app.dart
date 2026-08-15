@@ -1,14 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trtripsathi_mobile/app/app_router.dart';
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
+import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
+import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/achievements/presentation/providers/achievements_provider.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/login_page.dart';
+import 'package:trtripsathi_mobile/features/auth/presentation/pages/account_verification_page.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/dashboard/presentation/pages/dashboard_page.dart';
@@ -30,9 +34,11 @@ class TripSathiApp extends StatefulWidget {
 }
 
 class _TripSathiAppState extends State<TripSathiApp> {
+  final AppLocaleController _localeController = AppLocaleController();
   bool _introDone = false;
   bool _travelerProfileDone = false;
   bool _accountCreatedHere = false;
+  bool _verificationRequired = false;
   bool _loading = true;
   bool _showSplash = true;
   bool _splashFinished = false;
@@ -43,6 +49,7 @@ class _TripSathiAppState extends State<TripSathiApp> {
     super.initState();
     widget.authProvider.addListener(_handleAuthStateChanged);
     PushNotificationService.instance.setReportOpenHandler(_openReports);
+    unawaited(_localeController.load());
     _checkOnboarding();
   }
 
@@ -50,6 +57,7 @@ class _TripSathiAppState extends State<TripSathiApp> {
   void dispose() {
     widget.authProvider.removeListener(_handleAuthStateChanged);
     PushNotificationService.instance.clearReportOpenHandler();
+    _localeController.dispose();
     super.dispose();
   }
 
@@ -63,6 +71,9 @@ class _TripSathiAppState extends State<TripSathiApp> {
         widget.authProvider.initialize(),
       ]);
       final prefs = await preferencesFuture;
+      final verificationRequired = widget.authProvider.isAuthenticated
+          ? await ApiService.requiresAccountVerification()
+          : false;
 
       if (widget.authProvider.isAuthenticated) {
         unawaited(
@@ -75,6 +86,7 @@ class _TripSathiAppState extends State<TripSathiApp> {
         _introDone = prefs.getBool('intro_done') ?? false;
         _travelerProfileDone = prefs.getBool('onboarding_done') ?? false;
         _accountCreatedHere = prefs.getBool('account_created') ?? false;
+        _verificationRequired = verificationRequired;
         _loading = false;
         if (_splashFinished) _showSplash = false;
       });
@@ -125,21 +137,66 @@ class _TripSathiAppState extends State<TripSathiApp> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AuthProvider>.value(value: widget.authProvider),
+        ChangeNotifierProvider<AppLocaleController>.value(
+            value: _localeController),
         ChangeNotifierProvider(create: (_) => TripsProvider()),
         ChangeNotifierProvider(create: (_) => ReviewsProvider()),
         ChangeNotifierProvider(create: (_) => CampaignsProvider()),
         ChangeNotifierProvider(create: (_) => AchievementsProvider()),
       ],
-      child: Consumer<AuthProvider>(
-        builder: (context, auth, _) => MaterialApp(
+      child: Consumer2<AuthProvider, AppLocaleController>(
+        builder: (context, auth, localeController, _) => MaterialApp(
           debugShowCheckedModeBanner: false,
           navigatorKey: TripSathiApp.navigatorKey,
           title: 'Yatri',
+          locale: localeController.locale,
+          supportedLocales: AppStrings.supportedLocales,
+          localizationsDelegates: const [
+            AppStrings.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           themeMode: ThemeMode.light,
           theme: AppTheme.light(),
           builder: (context, child) => ColoredBox(
             color: Colors.white,
-            child: child ?? const SizedBox.shrink(),
+            child: Column(
+              children: [
+                ValueListenableBuilder<bool>(
+                  valueListenable: ApiService.isOffline,
+                  builder: (context, offline, _) {
+                    if (!offline) return const SizedBox.shrink();
+                    return Semantics(
+                      liveRegion: true,
+                      child: Material(
+                        color: const Color(0xFFFFE8B3),
+                        child: SafeArea(
+                          bottom: false,
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              child: Text(
+                                AppStrings.of(context).offline,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                Expanded(child: child ?? const SizedBox.shrink()),
+              ],
+            ),
           ),
           home: _showSplash
               ? SplashScreen(onComplete: _completeSplash)
@@ -160,6 +217,9 @@ class _TripSathiAppState extends State<TripSathiApp> {
 
   Widget _initialScreen(AuthProvider auth) {
     if (auth.isAuthenticated) {
+      if (_verificationRequired) {
+        return const AccountVerificationPage();
+      }
       if (_accountCreatedHere && !_travelerProfileDone) {
         return const ProfileSetupScreen();
       }

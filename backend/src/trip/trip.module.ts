@@ -4,7 +4,6 @@ import { Trip, TripSchema } from './schemas/trip.schema';
 import { TripParticipant, TripParticipantSchema } from './schemas/trip-participant.schema';
 import { TripService } from './trip.service';
 import { TripController } from './trip.controller';
-import { AuditService } from '../audit/audit.service';
 
 @Module({
   imports: [
@@ -14,7 +13,7 @@ import { AuditService } from '../audit/audit.service';
     ]),
   ],
   controllers: [TripController],
-  providers: [TripService, AuditService],
+  providers: [TripService],
   exports: [TripService],
 })
 export class TripModule {}

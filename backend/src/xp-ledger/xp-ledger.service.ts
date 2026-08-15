@@ -10,6 +10,70 @@ export class XpLedgerService {
     private xpLedgerModel: Model<XpLedger>,
   ) {}
 
+  private isDuplicateKeyError(error: unknown) {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      Number((error as { code?: number }).code) === 11000
+    );
+  }
+
+  /**
+   * Reserve a unique XP context before mutating the user's XP balance.
+   * A retry receives the existing reservation and can safely finish applying it.
+   */
+  async reserveXpAward(input: {
+    userId: string;
+    xpAmount: number;
+    eventCode: string;
+    contextKey: string;
+    description?: string;
+    metadata?: Record<string, unknown>;
+    awardedBy?: string;
+  }): Promise<{ ledger: XpLedger; created: boolean }> {
+    const userId = new Types.ObjectId(input.userId);
+    try {
+      const ledger = await this.xpLedgerModel.create({
+        userId,
+        xpAmount: input.xpAmount,
+        balanceAfter: 0,
+        eventCode: input.eventCode,
+        contextKey: input.contextKey,
+        description: input.description,
+        metadata: input.metadata ?? {},
+        awardedBy: input.awardedBy ? new Types.ObjectId(input.awardedBy) : null,
+      });
+      return { ledger, created: true };
+    } catch (error) {
+      if (!this.isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      const ledger = await this.xpLedgerModel.findOne({
+        userId,
+        contextKey: input.contextKey,
+      });
+      if (!ledger) {
+        throw error;
+      }
+      return { ledger, created: false };
+    }
+  }
+
+  async markXpAwardApplied(ledgerId: string, balanceAfter: number) {
+    return this.xpLedgerModel.findByIdAndUpdate(
+      ledgerId,
+      {
+        $set: {
+          balanceAfter,
+          appliedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+  }
+
   /**
    * Record an XP award
    */
@@ -21,6 +85,7 @@ export class XpLedgerService {
     description?: string,
     metadata?: Record<string, any>,
     awardedBy?: string,
+    contextKey?: string,
   ): Promise<XpLedger> {
     const ledger = new this.xpLedgerModel({
       userId: new Types.ObjectId(userId),
@@ -30,6 +95,8 @@ export class XpLedgerService {
       description,
       metadata: metadata || {},
       awardedBy: awardedBy ? new Types.ObjectId(awardedBy) : null,
+      ...(contextKey ? { contextKey } : {}),
+      appliedAt: new Date(),
     });
 
     return ledger.save();
@@ -103,9 +170,7 @@ export class XpLedgerService {
   /**
    * Get leaderboard by total XP
    */
-  async getXpLeaderboard(
-    limit = 100,
-  ): Promise<any[]> {
+  async getXpLeaderboard(limit = 100): Promise<any[]> {
     return this.xpLedgerModel.aggregate([
       { $match: { isReversed: false } },
       {

@@ -136,9 +136,8 @@ class _SignupScreenState extends State<SignupScreen>
         normalizedPhone,
         _password.text,
         firstName: _firstName.text.trim(),
-        middleName: _middleName.text.trim().isEmpty
-            ? null
-            : _middleName.text.trim(),
+        middleName:
+            _middleName.text.trim().isEmpty ? null : _middleName.text.trim(),
         lastName: _lastName.text.trim(),
         email: _email.text.trim().toLowerCase(),
         address: _address.text.trim(),
@@ -159,8 +158,7 @@ class _SignupScreenState extends State<SignupScreen>
             'email': _email.text.trim().toLowerCase(),
             'location': _address.text.trim(),
             'gender': _gender,
-            if (_selectedDate != null)
-              'dateOfBirth': _apiDate(_selectedDate!),
+            if (_selectedDate != null) 'dateOfBirth': _apiDate(_selectedDate!),
           }),
         );
       } else {
@@ -182,12 +180,10 @@ class _SignupScreenState extends State<SignupScreen>
 
       if (!mounted) return;
       await _showAccountCreated();
-      await ApiService.logout();
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
-        RouteNames.login,
+        RouteNames.accountVerification,
         (_) => false,
-        arguments: normalizedPhone,
       );
     } catch (error) {
       final message = ApiService.readableError(error);
@@ -584,8 +580,8 @@ class _SignupScreenState extends State<SignupScreen>
                           height: 150,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(
-                                color: AppColors.goldDark, width: 2),
+                            border:
+                                Border.all(color: AppColors.goldDark, width: 2),
                           ),
                           child: const Align(
                             alignment: Alignment.topCenter,
@@ -648,9 +644,8 @@ class _SignupScreenState extends State<SignupScreen>
                   ? 'Add profile photo  •  Required'
                   : 'Profile photo ready  •  Tap to change',
               style: TextStyle(
-                color: _profileImage == null
-                    ? AppColors.goldDark
-                    : AppColors.navy,
+                color:
+                    _profileImage == null ? AppColors.goldDark : AppColors.navy,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -730,8 +725,8 @@ class _SignupScreenState extends State<SignupScreen>
           hintText: '98XXXXXXXX',
           prefixIcon: Icon(Icons.phone_outlined),
         ),
-        validator: (value) => RegExp(r'^\d{10}$').hasMatch(
-                ApiService.normalizePhoneNumber(value?.trim() ?? ''))
+        validator: (value) => RegExp(r'^\d{10}$')
+                .hasMatch(ApiService.normalizePhoneNumber(value?.trim() ?? ''))
             ? null
             : 'Enter a 10-digit phone number',
       );

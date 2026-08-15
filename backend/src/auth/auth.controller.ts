@@ -30,6 +30,13 @@ import { AuditService } from '../audit/audit.service';
 import type { Request } from 'express';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import {
+  ConfirmAuthCodeDto,
+  ForgotPasswordDto,
+  RequestContactVerificationDto,
+  ResetPasswordDto,
+} from './dto/account-security.dto';
+import { AccountSecurityService } from './account-security.service';
 import { GetCurrentUser } from './decorators/get-current-user.decorator';
 import { Roles } from './decorators/roles.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -41,8 +48,56 @@ import { RolesGuard } from './guards/roles.guard';
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly accountSecurity: AccountSecurityService,
     private readonly audit: AuditService,
   ) {}
+
+  @Post('verification/request')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Send an email or SMS account-verification code' })
+  requestVerification(
+    @GetCurrentUser('userId') userId: string,
+    @Body() body: RequestContactVerificationDto,
+    @Req() request: Request,
+  ) {
+    return this.accountSecurity.requestContactVerification(
+      userId,
+      body.channel,
+      request.ip,
+    );
+  }
+
+  @Post('verification/confirm')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Confirm an account-verification code' })
+  confirmVerification(
+    @GetCurrentUser('userId') userId: string,
+    @Body() body: ConfirmAuthCodeDto,
+  ) {
+    return this.accountSecurity.confirmContactVerification(
+      userId,
+      body.challengeId,
+      body.code,
+    );
+  }
+
+  @Post('password/forgot')
+  @ApiOperation({ summary: 'Request a password-reset code' })
+  forgotPassword(@Body() body: ForgotPasswordDto, @Req() request: Request) {
+    return this.accountSecurity.forgotPassword(body.identifier, request.ip);
+  }
+
+  @Post('password/reset')
+  @ApiOperation({ summary: 'Reset a password with a valid one-time code' })
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    return this.accountSecurity.resetPassword(
+      body.challengeId,
+      body.code,
+      await this.authService.hashNewPassword(body.password),
+    );
+  }
 
   private getCookieOptions() {
     const isProduction = process.env.NODE_ENV === 'production';
@@ -237,10 +292,8 @@ export class AuthController {
   @ApiOkResponse({
     description: 'Current user profile from token and profile data',
   })
-  getMe(
-    @GetCurrentUser() user: { userId: string; phoneNumber: string; role: Role },
-  ) {
-    return user;
+  getMe(@GetCurrentUser('userId') userId: string) {
+    return this.authService.getCurrentUser(userId);
   }
 
   @Get('admin-only')

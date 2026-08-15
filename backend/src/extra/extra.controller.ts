@@ -30,6 +30,8 @@ import { ExtraCategory } from './constants/extra-category.enum';
 import { ExtraService } from './extra.service';
 import { PlacesService } from './places.service';
 import { XP_EVENT_CATALOG } from './constants/xp-event-catalog';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('extra')
 @Controller('extra')
@@ -37,6 +39,7 @@ export class ExtraController {
   constructor(
     private readonly extraService: ExtraService,
     private readonly placesService: PlacesService,
+    private readonly audit: AuditService,
   ) {}
 
   // PUBLIC ENDPOINTS (no auth required)
@@ -126,8 +129,17 @@ export class ExtraController {
   })
   @ApiBody({ type: BulkSeedPlacesDto })
   @ApiOkResponse({ description: 'Places hierarchy seeded successfully' })
-  bulkSeedPlaces(@Body() dto: BulkSeedPlacesDto) {
-    return this.placesService.bulkSeed(dto);
+  async bulkSeedPlaces(
+    @Body() dto: BulkSeedPlacesDto,
+    @CurrentUser('userId') actorId: string,
+  ) {
+    const result = await this.placesService.bulkSeed(dto);
+    await this.audit.logEvent({
+      type: 'places.bulk_seeded',
+      actorId,
+      provinceCount: dto.provinces.length,
+    });
+    return result;
   }
 
   @Patch('places')
@@ -139,8 +151,18 @@ export class ExtraController {
   })
   @ApiBody({ type: PatchPlacesDto })
   @ApiOkResponse({ description: 'Places hierarchy updated successfully' })
-  patchPlaces(@Body() dto: PatchPlacesDto) {
-    return this.placesService.patchHierarchy(dto.operations);
+  async patchPlaces(
+    @Body() dto: PatchPlacesDto,
+    @CurrentUser('userId') actorId: string,
+  ) {
+    const result = await this.placesService.patchHierarchy(dto.operations);
+    await this.audit.logEvent({
+      type: 'places.hierarchy_changed',
+      actorId,
+      operationCount: dto.operations.length,
+      operations: dto.operations.map((operation) => operation.type),
+    });
+    return result;
   }
 
   @Get('difficulty')

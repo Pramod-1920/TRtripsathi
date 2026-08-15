@@ -56,8 +56,20 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      await ApiService.login(_identifier.text.trim(), _password.text);
+      final result =
+          await ApiService.login(_identifier.text.trim(), _password.text);
       if (!mounted) return;
+      final user = result['user'] is Map
+          ? Map<String, dynamic>.from(result['user'] as Map)
+          : <String, dynamic>{};
+      if (user['verificationRequired'] == true &&
+          user['contactVerified'] != true) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          RouteNames.accountVerification,
+          (_) => false,
+        );
+        return;
+      }
       final preferences = await SharedPreferences.getInstance();
       final needsTravelerProfile =
           (preferences.getBool('account_created') ?? false) &&
@@ -88,39 +100,6 @@ class _LoginScreenState extends State<LoginScreen>
       }
       setState(() => _cooldownSeconds -= 1);
     });
-  }
-
-  void _showPasswordHelp() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.lock_reset_rounded,
-                  size: 38, color: AppColors.goldDark),
-              const SizedBox(height: 14),
-              Text('Reset your password',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text(
-                'Password recovery is handled by TripSathi support while secure email recovery is being rolled out. Contact support with your registered email or phone number.',
-                style: TextStyle(color: AppColors.muted, height: 1.5),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Got it'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -182,9 +161,9 @@ class _LoginScreenState extends State<LoginScreen>
                                 AutofillHints.telephoneNumber,
                               ],
                               decoration: const InputDecoration(
-                                labelText: 'Phone Number',
-                                hintText: '98xxxxxxxx',
-                                prefixIcon: Icon(Icons.phone_rounded),
+                                labelText: 'Email or phone number',
+                                hintText: 'you@example.com or 98xxxxxxxx',
+                                prefixIcon: Icon(Icons.person_outline_rounded),
                               ),
                               validator: _validateIdentifier,
                             ),
@@ -220,7 +199,11 @@ class _LoginScreenState extends State<LoginScreen>
                             Align(
                               alignment: Alignment.centerRight,
                               child: TextButton(
-                                onPressed: _loading ? null : _showPasswordHelp,
+                                onPressed: _loading
+                                    ? null
+                                    : () => Navigator.of(context).pushNamed(
+                                          RouteNames.passwordRecovery,
+                                        ),
                                 child: const Text('Forgot Password?'),
                               ),
                             ),

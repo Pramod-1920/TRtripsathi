@@ -122,6 +122,14 @@ export class User extends Document {
         address: String,
         latitude: Number,
         longitude: Number,
+        locationAccuracyMeters: Number,
+        locationCapturedAt: Date,
+        distanceFromPlaceMeters: Number,
+        allowedRadiusMeters: Number,
+        evidenceHash: String,
+        appealNote: String,
+        appealedAt: Date,
+        appealCount: Number,
       },
     ],
     default: [],
@@ -145,6 +153,14 @@ export class User extends Document {
     address?: string;
     latitude?: number;
     longitude?: number;
+    locationAccuracyMeters?: number;
+    locationCapturedAt?: Date;
+    distanceFromPlaceMeters?: number;
+    allowedRadiusMeters?: number;
+    evidenceHash?: string;
+    appealNote?: string;
+    appealedAt?: Date;
+    appealCount?: number;
   }>;
 
   @Prop({
@@ -282,3 +298,4 @@ UserSchema.index({ createdAt: -1 });
 
 // Index for admin flags filtering
 UserSchema.index({ 'adminFlags.type': 1, 'adminFlags.date': -1 });
+UserSchema.index({ 'photoVerificationRequests.evidenceHash': 1 });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
+import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/chat/presentation/pages/chat_page.dart';
@@ -188,8 +189,13 @@ class _HomeTabState extends State<_HomeTab> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 68,
-        title: const Text('Trip Sathi'),
+        title: Text(AppStrings.of(context).appName),
         actions: [
+          IconButton(
+            tooltip: AppStrings.of(context).changeLanguage,
+            onPressed: () => context.read<AppLocaleController>().toggle(),
+            icon: const Icon(Icons.translate_rounded),
+          ),
           Semantics(
             button: true,
             label: 'Open profile, rank $rankCode',

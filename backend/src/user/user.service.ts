@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, PipelineStage, Types } from 'mongoose';
 import { Auth } from '../auth/schemas/auth.schema';
@@ -18,12 +20,15 @@ import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { User } from './schemas/user.schema';
 import { PlacesService } from '../extra/places.service';
+import { VisitedPlaceService } from '../visited-place/visited-place.service';
+import { XpLedgerService } from '../xp-ledger/xp-ledger.service';
 
 const REMOVED_XP_EVENT_KEYS = new Set([
   'daily_streak',
   'daily-streak',
   'daily streak',
 ]);
+const STANDALONE_PLACE_VERIFICATION_XP = 40;
 
 type LevelUpRule = {
   rankCode: string;
@@ -217,6 +222,8 @@ export class UserService {
     @InjectModel(ExtraItem.name) private readonly extraModel: Model<ExtraItem>,
     private readonly placesService: PlacesService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly visitedPlaceService: VisitedPlaceService,
+    private readonly xpLedgerService: XpLedgerService,
     // BadgeService is imported via UserModule
     private readonly badgeService?: BadgeService,
   ) {}
@@ -2064,6 +2071,57 @@ export class UserService {
     return updated;
   }
 
+  private async applyLedgerBackedXpAward(
+    profileId: string,
+    entry: NonNullable<User['xpHistory']>[number],
+  ): Promise<{ applied: boolean; profile: User }> {
+    const reservation = await this.xpLedgerService.reserveXpAward({
+      userId: profileId,
+      xpAmount: Math.max(0, entry.points),
+      eventCode: entry.eventKey,
+      contextKey: entry.contextKey,
+      description: entry.ruleName,
+      metadata: {
+        ruleCode: entry.ruleCode,
+        ruleName: entry.ruleName,
+        context: entry.context ?? {},
+      },
+    });
+    const reservedPoints = Math.max(
+      0,
+      Math.floor(Number(reservation.ledger.xpAmount) || 0),
+    );
+    const historyEntry = {
+      ...entry,
+      points: reservedPoints,
+    };
+    const updated = await this.userModel.findOneAndUpdate(
+      {
+        _id: this.toObjectId(profileId),
+        'xpHistory.contextKey': { $ne: entry.contextKey },
+      },
+      {
+        ...(reservedPoints > 0 ? { $inc: { totalXp: reservedPoints } } : {}),
+        $push: { xpHistory: historyEntry },
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+    const current =
+      updated ?? (await this.userModel.findById(this.toObjectId(profileId)));
+    if (!current) {
+      throw new NotFoundException('Profile not found while applying XP');
+    }
+
+    await this.xpLedgerService.markXpAwardApplied(
+      String(reservation.ledger._id),
+      this.getTotalXp(current),
+    );
+    return { applied: Boolean(updated), profile: current };
+  }
+
   private async evaluateXpForProfile(
     profile: User,
     eventKey: string,
@@ -2114,23 +2172,18 @@ export class UserService {
 
       const shouldLog =
         options?.simulateOnly !== true || fallbackBreakdown.finalXp > 0;
-      const totalAwarded = fallbackBreakdown.finalXp;
+      let totalAwarded = fallbackBreakdown.finalXp;
       const previousRank = profile.experienceLevel ?? 'F';
       let syncedProfile = profile;
       let updatedProfile: User | null | undefined = undefined;
 
       if (!options?.simulateOnly && shouldLog) {
-        updatedProfile = await this.userModel.findByIdAndUpdate(
-          profile._id,
-          {
-            ...(totalAwarded > 0 ? { $inc: { totalXp: totalAwarded } } : {}),
-            $push: { xpHistory: { $each: [fallbackUpdate] } },
-          },
-          {
-            new: true,
-            runValidators: true,
-          },
+        const applied = await this.applyLedgerBackedXpAward(
+          String(profile._id),
+          fallbackUpdate,
         );
+        updatedProfile = applied.profile;
+        totalAwarded = applied.applied ? fallbackUpdate.points : 0;
 
         syncedProfile = await this.applyLevelProgression(
           updatedProfile ?? profile,
@@ -2220,7 +2273,7 @@ export class UserService {
       };
     }
 
-    const totalAwarded = updates.reduce(
+    let totalAwarded = updates.reduce(
       (total, entry) => total + Math.max(0, entry.points),
       0,
     );
@@ -2245,16 +2298,21 @@ export class UserService {
       };
     }
 
-    const updatedProfile = await this.userModel.findByIdAndUpdate(
-      profile._id,
-      {
-        ...(totalAwarded > 0 ? { $inc: { totalXp: totalAwarded } } : {}),
-        $push: { xpHistory: { $each: updates } },
-      },
-      {
-        new: true,
-        runValidators: true,
-      },
+    const appliedUpdates: NonNullable<User['xpHistory']> = [];
+    let updatedProfile: User | null = null;
+    for (const entry of updates) {
+      const result = await this.applyLedgerBackedXpAward(
+        String(profile._id),
+        entry,
+      );
+      updatedProfile = result.profile;
+      if (result.applied) {
+        appliedUpdates.push(entry);
+      }
+    }
+    totalAwarded = appliedUpdates.reduce(
+      (total, entry) => total + Math.max(0, entry.points),
+      0,
     );
 
     const syncedProfile = await this.applyLevelProgression(
@@ -2271,7 +2329,7 @@ export class UserService {
       eventKey: normalizedEventKey,
       totalAwarded,
       currentXp: this.getTotalXp(syncedProfile ?? updatedProfile ?? profile),
-      appliedRules: updates.map((entry) => ({
+      appliedRules: appliedUpdates.map((entry) => ({
         ruleCode: entry.ruleCode,
         ruleName: entry.ruleName,
         points: entry.points,
@@ -2964,6 +3022,175 @@ export class UserService {
     };
   }
 
+  private haversineMeters(
+    firstLatitude: number,
+    firstLongitude: number,
+    secondLatitude: number,
+    secondLongitude: number,
+  ) {
+    const radians = (degrees: number) => (degrees * Math.PI) / 180;
+    const latitudeDelta = radians(secondLatitude - firstLatitude);
+    const longitudeDelta = radians(secondLongitude - firstLongitude);
+    const firstLat = radians(firstLatitude);
+    const secondLat = radians(secondLatitude);
+    const value =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(firstLat) *
+        Math.cos(secondLat) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    return 6_371_000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+  }
+
+  private async hashTrustedEvidenceImage(rawUrl: string) {
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      throw new BadRequestException('Evidence photo URL is invalid');
+    }
+    const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME ?? '').trim();
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'res.cloudinary.com' ||
+      (cloudName && !url.pathname.startsWith(`/${cloudName}/`))
+    ) {
+      throw new BadRequestException(
+        'Evidence photo must use the configured TripSathi Cloudinary account',
+      );
+    }
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        redirect: 'error',
+        signal: AbortSignal.timeout(8_000),
+      });
+    } catch {
+      throw new BadRequestException(
+        'Evidence photo could not be verified. Upload it again.',
+      );
+    }
+    const contentType = response.headers.get('content-type') ?? '';
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (
+      !response.ok ||
+      !contentType.startsWith('image/') ||
+      (contentLength > 0 && contentLength > 12 * 1024 * 1024)
+    ) {
+      throw new BadRequestException('Evidence must be an image under 12 MB');
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length < 1 || bytes.length > 12 * 1024 * 1024) {
+      throw new BadRequestException('Evidence must be an image under 12 MB');
+    }
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+
+  private async assertPlaceEvidenceStillValid(
+    request: NonNullable<User['photoVerificationRequests']>[number],
+  ) {
+    if (
+      request.latitude == null ||
+      request.longitude == null ||
+      !request.place ||
+      !request.district ||
+      !request.municipality
+    ) {
+      throw new BadRequestException(
+        'Place evidence is missing required GPS or catalog data',
+      );
+    }
+    const hierarchy = await this.placesService.getHierarchy({
+      includeDeleted: false,
+    });
+    const place = hierarchy.provinces
+      .flatMap((province) => province.districts)
+      .filter(
+        (district) =>
+          district.name.trim().toLowerCase() ===
+          request.district!.trim().toLowerCase(),
+      )
+      .flatMap((district) => district.municipalities)
+      .filter(
+        (municipality) =>
+          municipality.name.trim().toLowerCase() ===
+          request.municipality!.trim().toLowerCase(),
+      )
+      .flatMap((municipality) => municipality.places)
+      .find(
+        (candidate) =>
+          candidate.name.trim().toLowerCase() ===
+          request.place!.trim().toLowerCase(),
+      );
+    if (
+      !place ||
+      !Number.isFinite(place.latitude) ||
+      !Number.isFinite(place.longitude)
+    ) {
+      throw new BadRequestException(
+        'The catalog place is disabled or has no trusted coordinates',
+      );
+    }
+    const radius = place.verificationRadiusMeters ?? 500;
+    const distance = this.haversineMeters(
+      request.latitude,
+      request.longitude,
+      place.latitude!,
+      place.longitude!,
+    );
+    if (distance > radius) {
+      throw new BadRequestException(
+        `Evidence is ${Math.round(distance)} metres from the trusted place coordinates; maximum is ${radius} metres`,
+      );
+    }
+  }
+
+  private async awardStandalonePlaceVerificationXp(
+    profile: User,
+    request: NonNullable<User['photoVerificationRequests']>[number],
+  ) {
+    const locationKey = [request.district, request.municipality, request.place]
+      .map((value) => this.normalizeKey(String(value ?? '')))
+      .join(':');
+    const contextKey = `standalone_place_verified:${locationKey}`;
+    const result = await this.applyLedgerBackedXpAward(String(profile._id), {
+      eventKey: 'standalone_place_verified',
+      ruleCode: 'SYS-STANDALONE-PLACE-V1',
+      ruleName: 'Verified standalone place visit',
+      points: STANDALONE_PLACE_VERIFICATION_XP,
+      contextKey,
+      context: {
+        requestCode: request.requestCode,
+        district: request.district,
+        municipality: request.municipality,
+        placeName: request.place,
+        policyVersion: 1,
+      },
+      awardedAt: new Date(),
+    });
+    if (!result.applied) {
+      return {
+        eventKey: 'standalone_place_verified',
+        totalAwarded: 0,
+        appliedRules: [],
+        idempotent: true,
+      };
+    }
+    const synced = await this.applyLevelProgression(result.profile);
+    return {
+      eventKey: 'standalone_place_verified',
+      totalAwarded: STANDALONE_PLACE_VERIFICATION_XP,
+      currentXp: this.getTotalXp(synced),
+      appliedRules: [
+        {
+          ruleCode: 'SYS-STANDALONE-PLACE-V1',
+          ruleName: 'Verified standalone place visit',
+          points: STANDALONE_PLACE_VERIFICATION_XP,
+        },
+      ],
+      idempotent: false,
+    };
+  }
+
   async createPhotoVerificationRequest(
     authId: string,
     payload: {
@@ -2979,6 +3206,8 @@ export class UserService {
       address?: string;
       latitude?: number;
       longitude?: number;
+      locationAccuracyMeters?: number;
+      locationCapturedAt?: string;
     },
   ) {
     const profile = await this.userModel.findOne({
@@ -2987,6 +3216,29 @@ export class UserService {
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
+    }
+
+    const account = await this.authModel
+      .findById(profile.authId)
+      .select(
+        'role verificationRequired emailVerifiedAt phoneVerifiedAt isActive',
+      );
+    if (!account || account.isActive === false) {
+      throw new ForbiddenException('Account is not active');
+    }
+    if (account.role !== Role.User) {
+      throw new ForbiddenException(
+        'Only user accounts can submit place evidence',
+      );
+    }
+    if (
+      account.verificationRequired === true &&
+      !account.emailVerifiedAt &&
+      !account.phoneVerifiedAt
+    ) {
+      throw new ForbiddenException(
+        'Verify your email or phone number before submitting evidence',
+      );
     }
 
     const campaignId = String(payload.campaignId ?? '').trim();
@@ -3003,6 +3255,9 @@ export class UserService {
           district: string;
           municipality: string;
           place: string;
+          latitude: number;
+          longitude: number;
+          verificationRadiusMeters: number;
         }
       | undefined;
     if (isPlaceEvidence) {
@@ -3042,6 +3297,9 @@ export class UserService {
                 district: district.name,
                 municipality: municipality.name,
                 place: place.name,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                verificationRadiusMeters: place.verificationRadiusMeters ?? 500,
               })),
           ),
         ),
@@ -3053,7 +3311,20 @@ export class UserService {
             : 'Selected place is ambiguous; choose its district and province',
         );
       }
-      placeSelection = matches[0];
+      const selectedPlace = matches[0];
+      if (
+        !Number.isFinite(selectedPlace.latitude) ||
+        !Number.isFinite(selectedPlace.longitude)
+      ) {
+        throw new BadRequestException(
+          'This place cannot accept verification until an admin adds trusted coordinates',
+        );
+      }
+      placeSelection = {
+        ...selectedPlace,
+        latitude: selectedPlace.latitude!,
+        longitude: selectedPlace.longitude!,
+      };
       const duplicate = (profile.photoVerificationRequests ?? []).find(
         (entry) =>
           ['pending', 'approved'].includes(entry.status) &&
@@ -3079,6 +3350,36 @@ export class UserService {
       );
     }
     if (
+      isPlaceEvidence &&
+      (payload.latitude == null || payload.longitude == null)
+    ) {
+      throw new BadRequestException(
+        'Current GPS location is required for place verification',
+      );
+    }
+    if (
+      isPlaceEvidence &&
+      (!Number.isFinite(payload.locationAccuracyMeters) ||
+        payload.locationAccuracyMeters! > 100)
+    ) {
+      throw new BadRequestException(
+        'GPS accuracy must be 100 metres or better. Move outdoors and try again.',
+      );
+    }
+    const capturedAt = payload.locationCapturedAt
+      ? new Date(payload.locationCapturedAt)
+      : null;
+    if (
+      isPlaceEvidence &&
+      (!capturedAt ||
+        Number.isNaN(capturedAt.getTime()) ||
+        Math.abs(Date.now() - capturedAt.getTime()) > 15 * 60 * 1000)
+    ) {
+      throw new BadRequestException(
+        'Capture a fresh GPS location before submitting evidence',
+      );
+    }
+    if (
       payload.latitude != null &&
       (payload.latitude < 26.3 ||
         payload.latitude > 30.5 ||
@@ -3086,6 +3387,43 @@ export class UserService {
         payload.longitude! > 88.3)
     ) {
       throw new BadRequestException('Photo location must be inside Nepal');
+    }
+
+    const distanceFromPlaceMeters =
+      placeSelection && payload.latitude != null
+        ? this.haversineMeters(
+            payload.latitude,
+            payload.longitude!,
+            placeSelection.latitude,
+            placeSelection.longitude,
+          )
+        : null;
+    if (
+      placeSelection &&
+      distanceFromPlaceMeters! > placeSelection.verificationRadiusMeters
+    ) {
+      throw new BadRequestException(
+        `You are ${Math.round(distanceFromPlaceMeters!)} metres from ${placeSelection.place}; move within ${placeSelection.verificationRadiusMeters} metres to submit evidence`,
+      );
+    }
+
+    const evidenceHash = isPlaceEvidence
+      ? await this.hashTrustedEvidenceImage(payload.url)
+      : undefined;
+    if (
+      evidenceHash &&
+      (await this.userModel.exists({
+        photoVerificationRequests: {
+          $elemMatch: {
+            evidenceHash,
+            status: { $in: ['pending', 'approved'] },
+          },
+        },
+      }))
+    ) {
+      throw new BadRequestException(
+        'This exact photo was already submitted for verification',
+      );
     }
 
     const requestCode = `PVR-${Math.random().toString(36).slice(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
@@ -3104,8 +3442,16 @@ export class UserService {
             ...placeSelection,
             address: payload.address!.trim(),
             ...(payload.latitude != null
-              ? { latitude: payload.latitude, longitude: payload.longitude }
+              ? {
+                  latitude: payload.latitude,
+                  longitude: payload.longitude,
+                  locationAccuracyMeters: payload.locationAccuracyMeters,
+                  locationCapturedAt: capturedAt,
+                  distanceFromPlaceMeters,
+                  allowedRadiusMeters: placeSelection.verificationRadiusMeters,
+                }
               : {}),
+            evidenceHash,
           }
         : {}),
     };
@@ -3137,7 +3483,7 @@ export class UserService {
     },
     adminAuthId: string,
   ) {
-    const profile = await this.userModel.findById(this.toObjectId(profileId));
+    let profile = await this.userModel.findById(this.toObjectId(profileId));
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -3152,55 +3498,180 @@ export class UserService {
       throw new NotFoundException('Photo verification request not found');
     }
 
-    if (requests[index].status !== 'pending') {
+    if (
+      requests[index].status !== 'pending' &&
+      requests[index].status !== review.status
+    ) {
       throw new BadRequestException(
-        'Photo verification request already reviewed',
+        `Photo verification request was already ${requests[index].status}`,
+      );
+    }
+
+    if (
+      requests[index].status === 'pending' &&
+      review.status === 'rejected' &&
+      !review.reviewNote?.trim()
+    ) {
+      throw new BadRequestException(
+        'A rejection reason is required so the user can correct or appeal it',
+      );
+    }
+
+    if (
+      requests[index].status === 'pending' &&
+      review.status === 'approved' &&
+      requests[index].place
+    ) {
+      await this.assertPlaceEvidenceStillValid(requests[index]);
+    }
+
+    let transitioned = false;
+    if (requests[index].status === 'pending') {
+      const updated = await this.userModel.findOneAndUpdate(
+        {
+          _id: profile._id,
+          photoVerificationRequests: {
+            $elemMatch: { requestCode, status: 'pending' },
+          },
+        },
+        {
+          $set: {
+            'photoVerificationRequests.$[request].status': review.status,
+            'photoVerificationRequests.$[request].reviewedAt': new Date(),
+            'photoVerificationRequests.$[request].reviewedByAuthId':
+              this.toObjectId(adminAuthId),
+            'photoVerificationRequests.$[request].reviewNote':
+              review.reviewNote?.trim() || null,
+          },
+        },
+        {
+          arrayFilters: [
+            {
+              'request.requestCode': requestCode,
+              'request.status': 'pending',
+            },
+          ],
+          new: true,
+          runValidators: true,
+        },
+      );
+      transitioned = Boolean(updated);
+      profile =
+        updated ?? (await this.userModel.findById(this.toObjectId(profileId)));
+      if (!profile) {
+        throw new NotFoundException('Profile not found');
+      }
+    }
+
+    const reviewedRequest = (profile.photoVerificationRequests ?? []).find(
+      (entry) => entry.requestCode === requestCode,
+    );
+    if (!reviewedRequest) {
+      throw new NotFoundException('Photo verification request not found');
+    }
+    if (reviewedRequest.status !== review.status) {
+      throw new BadRequestException(
+        `Photo verification request was already ${reviewedRequest.status}`,
+      );
+    }
+
+    let xp: Record<string, unknown> | null = null;
+
+    if (review.status === 'approved') {
+      xp = reviewedRequest.campaignId
+        ? await this.awardXpForEvent(
+            profile.authId.toString(),
+            reviewedRequest.kind === 'solo'
+              ? 'solo_photo_uploaded'
+              : 'group_photo_uploaded',
+            {
+              campaignId: reviewedRequest.campaignId,
+              solo: reviewedRequest.kind === 'solo',
+              district: reviewedRequest.district,
+              placeName: reviewedRequest.place,
+              locationKey: reviewedRequest.place,
+            },
+          )
+        : await this.awardStandalonePlaceVerificationXp(
+            profile,
+            reviewedRequest,
+          );
+      if (!reviewedRequest.campaignId && reviewedRequest.district) {
+        const sourceId = `place-verification:${reviewedRequest.requestCode}`;
+        await Promise.all([
+          this.visitedPlaceService.recordVisit(
+            String(profile._id),
+            reviewedRequest.district!,
+            'district',
+            new Date(),
+            sourceId,
+          ),
+          ...(reviewedRequest.province
+            ? [
+                this.visitedPlaceService.recordVisit(
+                  String(profile._id),
+                  reviewedRequest.province!,
+                  'province',
+                  new Date(),
+                  sourceId,
+                ),
+              ]
+            : []),
+        ]);
+      }
+    }
+
+    return {
+      message: `Photo verification request ${review.status}`,
+      request: reviewedRequest,
+      idempotent: !transitioned,
+      ...(xp ? { xp } : {}),
+    };
+  }
+
+  async appealPhotoVerificationRequest(
+    authId: string,
+    requestCode: string,
+    appealNote: string,
+  ) {
+    const profile = await this.userModel.findOne({
+      authId: this.toObjectId(authId),
+    });
+    if (!profile) throw new NotFoundException('Profile not found');
+
+    const requests = [...(profile.photoVerificationRequests ?? [])];
+    const index = requests.findIndex(
+      (entry) => entry.requestCode === requestCode,
+    );
+    if (index < 0) {
+      throw new NotFoundException('Photo verification request not found');
+    }
+    if (requests[index].status !== 'rejected') {
+      throw new BadRequestException('Only a rejected request can be appealed');
+    }
+    if ((requests[index].appealCount ?? 0) >= 1) {
+      throw new BadRequestException(
+        'This decision has already been appealed. Submit new evidence instead.',
       );
     }
 
     requests[index] = {
       ...requests[index],
-      status: review.status,
-      reviewedAt: new Date(),
-      reviewedByAuthId: this.toObjectId(adminAuthId),
-      ...(review.reviewNote?.trim()
-        ? { reviewNote: review.reviewNote.trim() }
-        : {}),
+      status: 'pending',
+      appealNote: appealNote.trim(),
+      appealedAt: new Date(),
+      appealCount: (requests[index].appealCount ?? 0) + 1,
+      reviewedAt: undefined,
+      reviewedByAuthId: undefined,
     };
-
     await this.userModel.findByIdAndUpdate(
       profile._id,
-      {
-        photoVerificationRequests: requests,
-      },
-      {
-        runValidators: true,
-      },
+      { photoVerificationRequests: requests },
+      { runValidators: true },
     );
-
-    let xp: Awaited<ReturnType<UserService['awardXpForEvent']>> | null = null;
-
-    if (review.status === 'approved') {
-      const eventKey =
-        requests[index].kind === 'solo'
-          ? 'solo_photo_uploaded'
-          : 'group_photo_uploaded';
-
-      xp = await this.awardXpForEvent(profile.authId.toString(), eventKey, {
-        campaignId:
-          requests[index].campaignId ||
-          `place:${requests[index].district}:${requests[index].municipality}:${requests[index].place}`,
-        solo: requests[index].kind === 'solo',
-        district: requests[index].district,
-        placeName: requests[index].place,
-        locationKey: requests[index].place,
-      });
-    }
-
     return {
-      message: `Photo verification request ${review.status}`,
+      message: 'Appeal submitted for a second review',
       request: requests[index],
-      ...(xp ? { xp } : {}),
     };
   }
 
@@ -3264,7 +3735,7 @@ export class UserService {
       throw new NotFoundException('Account not found');
     }
 
-    const authUpdates: Record<string, string | null> = {};
+    const authUpdates: Record<string, string | Date | boolean | null> = {};
 
     if (hasPhoneUpdate) {
       const nextPhoneNumber = String(updates.phoneNumber ?? '').trim();
@@ -3281,6 +3752,8 @@ export class UserService {
         }
 
         authUpdates.phoneNumber = nextPhoneNumber;
+        authUpdates.phoneVerifiedAt = null;
+        authUpdates.verificationRequired = true;
       }
     }
 
@@ -3314,6 +3787,8 @@ export class UserService {
         }
 
         authUpdates.email = normalizedEmail;
+        authUpdates.emailVerifiedAt = null;
+        authUpdates.verificationRequired = true;
       }
     }
 
@@ -3353,19 +3828,12 @@ export class UserService {
     },
     session?: ClientSession,
   ) {
-    const hasCompleteIdentity = Boolean(
-      initial?.firstName?.trim() &&
-      initial?.lastName?.trim() &&
-      initial?.location?.trim() &&
-      initial?.gender &&
-      initial?.dateOfBirth,
-    );
     const parsedDateOfBirth = initial?.dateOfBirth
       ? new Date(initial.dateOfBirth)
       : null;
     const profileData = {
       authId: this.toObjectId(authId),
-      profileCompleted: hasCompleteIdentity,
+      profileCompleted: false,
       xp: 0,
       totalXp: 0,
       level: 1,
@@ -3410,6 +3878,15 @@ export class UserService {
       throw new NotFoundException('Profile not found');
     }
 
+    const shouldBeComplete =
+      this.missingRequiredProfileFields(
+        profile.toObject() as unknown as Record<string, unknown>,
+      ).length === 0;
+    if (profile.profileCompleted !== shouldBeComplete) {
+      profile.profileCompleted = shouldBeComplete;
+      await profile.save();
+    }
+
     const levelUpRules = await this.getLevelUpRules();
     const syncedProfile = await this.applyLevelProgression(
       profile,
@@ -3440,7 +3917,38 @@ export class UserService {
     };
   }
 
-  async updateOwnProfile(authId: string, updates: UpdateProfileDto) {
+  private missingRequiredProfileFields(profile: Record<string, unknown>) {
+    const missing: string[] = [];
+    const text = (key: string) => String(profile[key] ?? '').trim();
+    if (text('firstName').length < 2) missing.push('firstName');
+    if (text('lastName').length < 2) missing.push('lastName');
+    if (!text('location')) missing.push('location');
+    if (!text('gender')) missing.push('gender');
+    if (!text('dateOfBirth')) missing.push('dateOfBirth');
+    if (!text('profilePhoto')) missing.push('profilePhoto');
+    if (text('bio').length < 20) missing.push('bio');
+    if (!text('travelerExperience')) missing.push('travelerExperience');
+    if (!text('travelStyle')) missing.push('travelStyle');
+    if (
+      !Array.isArray(profile.travelInterests) ||
+      profile.travelInterests.length < 2
+    ) {
+      missing.push('travelInterests');
+    }
+    if (
+      !Array.isArray(profile.languagesKnown) ||
+      profile.languagesKnown.length < 1
+    ) {
+      missing.push('languagesKnown');
+    }
+    return missing;
+  }
+
+  async updateOwnProfile(
+    authId: string,
+    updates: UpdateProfileDto,
+    requireComplete = false,
+  ) {
     const profile = await this.userModel.findOne({
       authId: this.toObjectId(authId),
     });
@@ -3463,11 +3971,22 @@ export class UserService {
 
     await this.removePreviousImageIfChanged(profile, nextPublicId);
 
+    const mergedProfile = {
+      ...(profile.toObject() as unknown as Record<string, unknown>),
+      ...sanitizedUpdates,
+    };
+    const missingFields = this.missingRequiredProfileFields(mergedProfile);
+    if (requireComplete && missingFields.length > 0) {
+      throw new BadRequestException(
+        `Complete these required profile fields: ${missingFields.join(', ')}`,
+      );
+    }
+
     const updatedProfile = await this.userModel.findByIdAndUpdate(
       profile._id,
       {
         ...sanitizedUpdates,
-        profileCompleted: true,
+        profileCompleted: missingFields.length === 0,
       },
       {
         new: true,
@@ -3750,6 +4269,17 @@ export class UserService {
                 address: '$photoVerificationRequests.address',
                 latitude: '$photoVerificationRequests.latitude',
                 longitude: '$photoVerificationRequests.longitude',
+                locationAccuracyMeters:
+                  '$photoVerificationRequests.locationAccuracyMeters',
+                locationCapturedAt:
+                  '$photoVerificationRequests.locationCapturedAt',
+                distanceFromPlaceMeters:
+                  '$photoVerificationRequests.distanceFromPlaceMeters',
+                allowedRadiusMeters:
+                  '$photoVerificationRequests.allowedRadiusMeters',
+                appealNote: '$photoVerificationRequests.appealNote',
+                appealedAt: '$photoVerificationRequests.appealedAt',
+                appealCount: '$photoVerificationRequests.appealCount',
               },
             },
           ],
@@ -3951,7 +4481,9 @@ export class UserService {
     const snapshot = this.resolveProgressionSnapshot(profile, levelUpRules);
     const auth = await this.authModel
       .findById(profile.authId)
-      .select('phoneNumber email role');
+      .select(
+        'phoneNumber email role emailVerifiedAt phoneVerifiedAt verificationRequired',
+      );
     const rankBadgeDefinitions = await this.getRankBadgeDefinitions();
     const unlockedRankBadges = this.getUnlockedRankBadges(
       snapshot.experienceLevel ?? ExperienceLevel.F,
@@ -3994,6 +4526,10 @@ export class UserService {
       phoneNumber: auth?.phoneNumber ?? null,
       email: auth?.email ?? null,
       role: auth?.role ?? null,
+      emailVerified: Boolean(auth?.emailVerifiedAt),
+      phoneVerified: Boolean(auth?.phoneVerifiedAt),
+      contactVerified: Boolean(auth?.emailVerifiedAt || auth?.phoneVerifiedAt),
+      verificationRequired: auth?.verificationRequired === true,
       totalXp: snapshot.totalXp,
       xp: snapshot.xp,
       level: snapshot.level,

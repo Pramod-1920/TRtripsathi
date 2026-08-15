@@ -12,6 +12,9 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common/pipes/validation.pipe';
 import { Connection } from 'mongoose';
 import { HttpExceptionFilter } from './http-exception.filter';
+import { StructuredLogger } from './observability/structured-logger';
+
+const structuredLogger = new StructuredLogger();
 
 function getPortFromEnv(): number {
   const envPort = process.env.PORT;
@@ -88,7 +91,7 @@ async function waitForMongoConnection(
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { logger: structuredLogger });
   const frontendUrls = getFrontendUrlsFromEnv();
 
   // Enable CORS first (before other middleware that may affect headers)
@@ -112,6 +115,8 @@ async function bootstrap() {
   // apply both limiters in sequence to auth endpoints
   app.use('/auth/login', minuteLimiter, hourLimiter);
   app.use('/auth/signup', minuteLimiter, hourLimiter);
+  app.use('/auth/password', minuteLimiter, hourLimiter);
+  app.use('/auth/verification', minuteLimiter, hourLimiter);
 
   // CSRF middleware for state-changing endpoints (double-submit cookie)
   app.use(csrfMiddleware);
@@ -161,4 +166,11 @@ async function bootstrap() {
 
   logMongoConnectionStatus(app);
 }
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  structuredLogger.fatal(
+    error instanceof Error ? error.message : String(error),
+    error instanceof Error ? error.stack : undefined,
+    'Bootstrap',
+  );
+  process.exitCode = 1;
+});

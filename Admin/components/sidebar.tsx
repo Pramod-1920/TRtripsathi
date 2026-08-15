@@ -18,6 +18,7 @@ import {
   FiMessageSquare,
   FiX,
   FiBell,
+  FiClipboard,
 } from 'react-icons/fi';
 import clsx from 'clsx';
 import { apiClient } from '@/lib/api';
@@ -56,6 +57,7 @@ export function Sidebar({ collapsed, mobileOpen, onCloseMobile }: SidebarProps) 
     { href: '/users', label: 'Users', icon: FiUsers },
     { href: '/photo-verification-queue', label: 'Photo Queue', icon: FiShield },
     { href: '/reports', label: 'Reports', icon: FiMessageSquare },
+    { href: '/audit', label: 'Audit History', icon: FiClipboard },
     { href: '/analytics', label: 'Analytics', icon: FiBarChart2 },
   ];
   const myItems = [

@@ -18,6 +18,7 @@ class ApiRateLimitException implements Exception {
 class ApiService {
   static late String baseUrl;
   static Map<String, dynamic>? _cachedProfile;
+  static final ValueNotifier<bool> isOffline = ValueNotifier<bool>(false);
 
   static Map<String, dynamic>? get cachedProfile => _cachedProfile == null
       ? null
@@ -93,6 +94,15 @@ class ApiService {
   static const _accessKey = 'jwt';
   static const _refreshKey = 'refresh';
   static const _identityKey = 'account_identity';
+  static const _profileCacheKey = 'offline_profile_cache';
+
+  static void _markOnline() {
+    if (isOffline.value) isOffline.value = false;
+  }
+
+  static void _markOffline() {
+    if (!isOffline.value) isOffline.value = true;
+  }
 
   static Future<bool> hasStoredAccessToken() async {
     try {
@@ -322,6 +332,8 @@ class ApiService {
     required String address,
     double? latitude,
     double? longitude,
+    double? locationAccuracyMeters,
+    DateTime? locationCapturedAt,
   }) async {
     final res = await _postWithAuth(
       Uri.parse('$baseUrl/user/photos/verification-requests'),
@@ -337,12 +349,32 @@ class ApiService {
         'address': address.trim(),
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
+        if (locationAccuracyMeters != null)
+          'locationAccuracyMeters': locationAccuracyMeters,
+        if (locationCapturedAt != null)
+          'locationCapturedAt': locationCapturedAt.toUtc().toIso8601String(),
       }),
     );
     if (res.statusCode == 200 || res.statusCode == 201) {
       return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
     }
     throw Exception(_errorMessage(res, 'Unable to submit place photo'));
+  }
+
+  static Future<void> appealPhotoVerification({
+    required String requestCode,
+    required String appealNote,
+  }) async {
+    final res = await _postWithAuth(
+      Uri.parse(
+        '$baseUrl/user/photos/verification-requests/${Uri.encodeComponent(requestCode)}/appeal',
+      ),
+      body: jsonEncode({'appealNote': appealNote.trim()}),
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_errorMessage(res, 'Unable to submit appeal'));
+    }
+    _cachedProfile = null;
   }
 
   static Future<Map<String, String>> uploadCampaignEvidence(
@@ -404,6 +436,71 @@ class ApiService {
     throw Exception(_errorMessage(res, 'Unable to sign in'));
   }
 
+  static Future<Map<String, dynamic>> forgotPassword(String identifier) async {
+    final normalized = identifier.trim().contains('@')
+        ? identifier.trim().toLowerCase()
+        : normalizePhoneNumber(identifier);
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/password/forgot'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'identifier': normalized}),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    if (res.statusCode == 429) throw _rateLimitException(res);
+    throw Exception(_errorMessage(res, 'Unable to request a reset code'));
+  }
+
+  static Future<void> resetPassword({
+    required String challengeId,
+    required String code,
+    required String password,
+  }) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/password/reset'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'challengeId': challengeId,
+            'code': code,
+            'password': password,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_errorMessage(res, 'Unable to reset password'));
+    }
+  }
+
+  static Future<Map<String, dynamic>> requestContactVerification(
+      String channel) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/auth/verification/request'),
+      body: jsonEncode({'channel': channel}),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    if (res.statusCode == 429) throw _rateLimitException(res);
+    throw Exception(_errorMessage(res, 'Unable to send verification code'));
+  }
+
+  static Future<void> confirmContactVerification({
+    required String challengeId,
+    required String code,
+  }) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/auth/verification/confirm'),
+      body: jsonEncode({'challengeId': challengeId, 'code': code}),
+    );
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_errorMessage(res, 'Unable to verify account'));
+    }
+  }
+
   static String _errorMessage(http.Response response, String fallback) {
     try {
       final decoded = jsonDecode(response.body);
@@ -428,7 +525,40 @@ class ApiService {
       return Map<String, dynamic>.from(_cachedProfile!);
     }
     final uri = Uri.parse('$baseUrl/user/profile');
-    final res = await _getWithAuth(uri);
+    http.Response res;
+    try {
+      res = await _getWithAuth(uri);
+    } on http.ClientException {
+      _markOffline();
+      final cached = await _storage.read(key: _profileCacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        final profile = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        profile['_offlineSnapshot'] = true;
+        _cachedProfile = profile;
+        return Map<String, dynamic>.from(profile);
+      }
+      rethrow;
+    } on SocketException {
+      _markOffline();
+      final cached = await _storage.read(key: _profileCacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        final profile = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        profile['_offlineSnapshot'] = true;
+        _cachedProfile = profile;
+        return Map<String, dynamic>.from(profile);
+      }
+      rethrow;
+    } on TimeoutException {
+      _markOffline();
+      final cached = await _storage.read(key: _profileCacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        final profile = Map<String, dynamic>.from(jsonDecode(cached) as Map);
+        profile['_offlineSnapshot'] = true;
+        _cachedProfile = profile;
+        return Map<String, dynamic>.from(profile);
+      }
+      rethrow;
+    }
     if (res.statusCode == 200) {
       final profile = _normalizeProfileResponse(
         jsonDecode(res.body) as Map<String, dynamic>,
@@ -436,6 +566,7 @@ class ApiService {
 
       _fillMissingIdentity(profile, await _readCachedAccountIdentity());
       _cachedProfile = Map<String, dynamic>.from(profile);
+      await _storage.write(key: _profileCacheKey, value: jsonEncode(profile));
       await _cacheAccountIdentity(profile);
 
       // Older servers may keep contact identity only under /auth/me. That
@@ -493,6 +624,16 @@ class ApiService {
     }
 
     throw Exception(_errorMessage(res, 'Unable to update profile'));
+  }
+
+  static Future<Map<String, dynamic>> completeProfile(
+      Map<String, dynamic> updates) async {
+    final res = await _patchWithAuth(
+      Uri.parse('$baseUrl/user/profile/complete'),
+      body: jsonEncode(_normalizeProfileUpdate(updates)),
+    );
+    if (res.statusCode == 200) return _readUpdatedProfile(res);
+    throw Exception(_errorMessage(res, 'Unable to complete profile'));
   }
 
   // ============ Reports & feedback endpoints ============
@@ -819,6 +960,10 @@ class ApiService {
       'email',
       'dateOfBirth',
       'age',
+      'verificationRequired',
+      'contactVerified',
+      'emailVerified',
+      'phoneVerified',
     ]) {
       if (!_isMissingIdentityValue(normalized[key])) {
         identity[key] = normalized[key];
@@ -827,6 +972,12 @@ class ApiService {
     if (identity.isNotEmpty) {
       await _storage.write(key: _identityKey, value: jsonEncode(identity));
     }
+  }
+
+  static Future<bool> requiresAccountVerification() async {
+    final identity = await _readCachedAccountIdentity();
+    return identity['verificationRequired'] == true &&
+        identity['contactVerified'] != true;
   }
 
   /// DELETE /user/profile - Delete own account
@@ -1341,12 +1492,12 @@ class ApiService {
   /// GET request with auth and refresh
   static Future<http.Response> _getWithAuth(Uri uri) async {
     final headers = await _getAuthHeaders();
-    final res = await http.get(uri, headers: headers);
+    final res = await _trackNetwork(() => http.get(uri, headers: headers));
     if (res.statusCode == 401) {
       final refreshed = await _attemptRefresh();
       if (refreshed) {
         final headers2 = await _getAuthHeaders();
-        return http.get(uri, headers: headers2);
+        return _trackNetwork(() => http.get(uri, headers: headers2));
       }
     }
     return res;
@@ -1355,12 +1506,14 @@ class ApiService {
   /// POST request with auth and refresh
   static Future<http.Response> _postWithAuth(Uri uri, {String? body}) async {
     final headers = await _getAuthHeaders();
-    final res = await http.post(uri, headers: headers, body: body);
+    final res =
+        await _trackNetwork(() => http.post(uri, headers: headers, body: body));
     if (res.statusCode == 401) {
       final refreshed = await _attemptRefresh();
       if (refreshed) {
         final headers2 = await _getAuthHeaders();
-        return http.post(uri, headers: headers2, body: body);
+        return _trackNetwork(
+            () => http.post(uri, headers: headers2, body: body));
       }
     }
     return res;
@@ -1369,12 +1522,14 @@ class ApiService {
   /// PATCH request with auth and refresh
   static Future<http.Response> _patchWithAuth(Uri uri, {String? body}) async {
     final headers = await _getAuthHeaders();
-    final res = await http.patch(uri, headers: headers, body: body);
+    final res = await _trackNetwork(
+        () => http.patch(uri, headers: headers, body: body));
     if (res.statusCode == 401) {
       final refreshed = await _attemptRefresh();
       if (refreshed) {
         final headers2 = await _getAuthHeaders();
-        return http.patch(uri, headers: headers2, body: body);
+        return _trackNetwork(
+            () => http.patch(uri, headers: headers2, body: body));
       }
     }
     return res;
@@ -1383,15 +1538,34 @@ class ApiService {
   /// DELETE request with auth and refresh
   static Future<http.Response> _deleteWithAuth(Uri uri) async {
     final headers = await _getAuthHeaders();
-    final res = await http.delete(uri, headers: headers);
+    final res = await _trackNetwork(() => http.delete(uri, headers: headers));
     if (res.statusCode == 401) {
       final refreshed = await _attemptRefresh();
       if (refreshed) {
         final headers2 = await _getAuthHeaders();
-        return http.delete(uri, headers: headers2);
+        return _trackNetwork(() => http.delete(uri, headers: headers2));
       }
     }
     return res;
+  }
+
+  static Future<http.Response> _trackNetwork(
+    Future<http.Response> Function() operation,
+  ) async {
+    try {
+      final response = await operation().timeout(const Duration(seconds: 15));
+      _markOnline();
+      return response;
+    } on http.ClientException {
+      _markOffline();
+      rethrow;
+    } on SocketException {
+      _markOffline();
+      rethrow;
+    } on TimeoutException {
+      _markOffline();
+      rethrow;
+    }
   }
 
   static Future<bool>? _refreshInFlight;

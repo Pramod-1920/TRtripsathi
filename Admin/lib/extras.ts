@@ -60,6 +60,9 @@ export type PlaceCatalogDistrictItem = {
     municipality: string;
     category?: string;
     subcategory?: string | null;
+    latitude?: number;
+    longitude?: number;
+    verificationRadiusMeters?: number;
   }>;
 };
 
@@ -78,6 +81,9 @@ export type PlaceTitleNode = {
   name: string;
   category?: string;
   subcategory?: string | null;
+  latitude?: number;
+  longitude?: number;
+  verificationRadiusMeters?: number;
   deleted?: boolean;
 };
 
@@ -136,6 +142,9 @@ export type PlacePatchOperation = {
   name?: string;
   category?: string;
   subcategory?: string | null;
+  latitude?: number;
+  longitude?: number;
+  verificationRadiusMeters?: number;
 };
 
 export type ActivityCategoryOption = {

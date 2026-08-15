@@ -174,8 +174,9 @@ export class ReportController {
   async assignReport(
     @Param('reportId') reportId: string,
     @Body() assignDto: AssignReportDto,
+    @CurrentUser('userId') actorId: string,
   ) {
-    return this.reportService.assignReport(reportId, assignDto);
+    return this.reportService.assignReport(reportId, assignDto, actorId);
   }
 
   /**
@@ -189,7 +190,8 @@ export class ReportController {
   async updateReportStatus(
     @Param('reportId') reportId: string,
     @Body() updateDto: UpdateReportStatusDto,
+    @CurrentUser('userId') actorId: string,
   ) {
-    return this.reportService.updateReportStatus(reportId, updateDto);
+    return this.reportService.updateReportStatus(reportId, updateDto, actorId);
   }
 }

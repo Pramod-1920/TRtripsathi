@@ -35,6 +35,10 @@ export type SafeUser = {
   district?: string | null;
   landmark?: string | null;
   experienceLevel?: string | null;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  verificationRequired: boolean;
+  contactVerified: boolean;
 };
 
 @Injectable()
@@ -78,6 +82,7 @@ export class AuthService {
               email,
               password: hashedPassword,
               role: Role.User,
+              verificationRequired: true,
             },
           ],
           { session },
@@ -228,6 +233,15 @@ export class AuthService {
     };
   }
 
+  async getCurrentUser(userId: string) {
+    const user = await this.authModel.findById(userId);
+    if (!user || user.isActive === false) {
+      throw new UnauthorizedException('Account is not available');
+    }
+    const profile = await this.getOrCreateProfile(userId);
+    return this.toSafeUser(user, profile);
+  }
+
   private async issueTokens(userId: string, phoneNumber: string, role: Role) {
     const accessSecret = this.configService
       .get<string>('JWT_ACCESS_SECRET')
@@ -363,6 +377,10 @@ export class AuthService {
     );
   }
 
+  hashNewPassword(password: string) {
+    return this.hashPassword(password);
+  }
+
   private async verifyPassword(password: string, user: Auth) {
     const material = this.passwordMaterial(password);
     let matches = await bcrypt.compare(material, user.password);
@@ -445,6 +463,10 @@ export class AuthService {
       district: profile?.district ?? null,
       landmark: profile?.landmark ?? null,
       experienceLevel: profile?.experienceLevel ?? null,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      phoneVerified: Boolean(user.phoneVerifiedAt),
+      verificationRequired: user.verificationRequired === true,
+      contactVerified: Boolean(user.emailVerifiedAt || user.phoneVerifiedAt),
     };
   }
 }

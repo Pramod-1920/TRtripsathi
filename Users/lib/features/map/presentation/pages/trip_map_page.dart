@@ -8,6 +8,7 @@ import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/map/domain/nepal_boundary.dart';
+import 'package:trtripsathi_mobile/features/map/domain/nepal_administrative_registry.dart';
 import 'package:trtripsathi_mobile/features/map/domain/nepal_district_boundaries.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/trip_details_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
@@ -242,17 +243,14 @@ class _TripMapScreenState extends State<TripMapScreen>
     };
     final provinceVisitCounts = <int, int>{};
     for (final province in provinceNames.keys) {
-      final districts = nepalDistrictBoundaries
-          .where((district) => district.province == province)
-          .toList(growable: false);
+      final districts = nepalDistrictsByProvince[province] ?? const <String>{};
       final complete = districts.every(
-        (district) => (districtVisitCounts[district.name] ?? 0) > 0,
+        (district) => (districtVisitCounts[district] ?? 0) > 0,
       );
       provinceVisitCounts[province] = complete
           ? districts.fold(
               0,
-              (total, district) =>
-                  total + (districtVisitCounts[district.name] ?? 0),
+              (total, district) => total + (districtVisitCounts[district] ?? 0),
             )
           : 0;
     }
@@ -537,15 +535,16 @@ class _TripMapScreenState extends State<TripMapScreen>
                     districtVisitCounts[_selectedDistrict!.name] ?? 0,
                 provinceCount:
                     provinceVisitCounts[_selectedDistrict!.province] ?? 0,
-                visitedDistricts: nepalDistrictBoundaries
-                    .where((district) =>
-                        district.province == _selectedDistrict!.province &&
-                        (districtVisitCounts[district.name] ?? 0) > 0)
-                    .length,
-                totalDistricts: nepalDistrictBoundaries
-                    .where((district) =>
-                        district.province == _selectedDistrict!.province)
-                    .length,
+                visitedDistricts:
+                    (nepalDistrictsByProvince[_selectedDistrict!.province] ??
+                            const <String>{})
+                        .where((district) =>
+                            (districtVisitCounts[district] ?? 0) > 0)
+                        .length,
+                totalDistricts:
+                    (nepalDistrictsByProvince[_selectedDistrict!.province] ??
+                            const <String>{})
+                        .length,
                 onClose: () => setState(() => _selectedDistrict = null),
               ),
             ),
@@ -595,7 +594,7 @@ class _TripMapScreenState extends State<TripMapScreen>
   }
 
   int _districtCount(String name) {
-    for (final alias in _districtAliases(name)) {
+    for (final alias in nepalDistrictAliases(name)) {
       final count = _visitCounts['district:$alias'];
       if (count != null) return count;
     }
@@ -1356,51 +1355,11 @@ String _placeKey(Object? value) => (value ?? '')
     .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
     .replaceAll(RegExp(r'^_+|_+$'), '');
 
-Set<String> _districtAliases(String name) {
-  final rawKey = _placeKey(name);
-  final key = rawKey
-      .replaceFirst(RegExp(r'^district_of_'), '')
-      .replaceFirst(RegExp(r'_district$'), '');
-  final aliases = <String>{rawKey, key};
-  aliases.addAll(switch (key) {
-    'kavrepalanchowk' => {'kavrepalanchok', 'kavre'},
-    'tanahu' => {'tanahun'},
-    'dhanusa' => {'dhanusha'},
-    'sindhupalchok' => {'sindhupalchowk'},
-    'chitawan' => {'chitwan'},
-    'tehrathum' => {'terhathum'},
-    'eastern_rukum' => {
-        'rukum_east',
-        'east_rukum',
-        'rukum_eastern_part',
-      },
-    'western_rukum' => {
-        'rukum_west',
-        'west_rukum',
-        'rukum_western_part',
-      },
-    'nawalpur' => {
-        'nawalparasi_east',
-        'east_nawalparasi',
-        'nawalparasi_east_of_bardaghat_susta',
-        'nawalparasi_eastern_part',
-      },
-    'parasi' => {
-        'nawalparasi_west',
-        'west_nawalparasi',
-        'nawalparasi_west_of_bardaghat_susta',
-        'nawalparasi_western_part',
-      },
-    _ => const <String>{},
-  });
-  return aliases;
-}
-
 LatLng? _districtCenter(Object? districtName) {
-  final targetAliases = _districtAliases((districtName ?? '').toString());
+  final targetAliases = nepalDistrictAliases((districtName ?? '').toString());
   if (targetAliases.every((value) => value.isEmpty)) return null;
   for (final district in nepalDistrictBoundaries) {
-    if (_districtAliases(district.name).any(targetAliases.contains)) {
+    if (nepalDistrictAliases(district.name).any(targetAliases.contains)) {
       return district.center;
     }
   }

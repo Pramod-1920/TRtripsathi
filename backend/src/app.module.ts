@@ -22,6 +22,8 @@ import { BadgeModule } from './badge/badge.module';
 import { MediaModule } from './media/media.module';
 import { ChatModule } from './chat/chat.module';
 import { RequestLoggerMiddleware } from './request-logger.middleware';
+import { ObservabilityModule } from './observability/observability.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { RequestLoggerMiddleware } from './request-logger.middleware';
       isGlobal: true,
     }),
     DatabaseModule,
+    ObservabilityModule,
+    AuditModule,
     CloudinaryModule,
     UserModule,
     AuthModule,

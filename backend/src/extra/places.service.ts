@@ -15,6 +15,9 @@ export type PlaceTitleNode = {
   name: string;
   category?: string;
   subcategory?: string | null;
+  latitude?: number;
+  longitude?: number;
+  verificationRadiusMeters?: number;
   deleted?: boolean;
 };
 
@@ -51,6 +54,9 @@ type CatalogDistrictItem = {
     municipality: string;
     category?: string;
     subcategory?: string | null;
+    latitude?: number;
+    longitude?: number;
+    verificationRadiusMeters?: number;
   }>;
 };
 
@@ -160,6 +166,20 @@ export class PlacesService {
                               place.subcategory.trim()
                                 ? place.subcategory.trim()
                                 : undefined,
+                            latitude:
+                              Number.isFinite(Number(place.latitude))
+                                ? Number(place.latitude)
+                                : undefined,
+                            longitude:
+                              Number.isFinite(Number(place.longitude))
+                                ? Number(place.longitude)
+                                : undefined,
+                            verificationRadiusMeters:
+                              Number.isFinite(
+                                Number(place.verificationRadiusMeters),
+                              )
+                                ? Number(place.verificationRadiusMeters)
+                                : undefined,
                             deleted: place.deleted === true ? true : undefined,
                           }))
                         : [],
@@ -200,6 +220,10 @@ export class PlacesService {
                       name: place.name,
                       category: place.category,
                       subcategory: place.subcategory,
+                      latitude: place.latitude,
+                      longitude: place.longitude,
+                      verificationRadiusMeters:
+                        place.verificationRadiusMeters,
                     })),
                 })),
             })),
@@ -305,6 +329,32 @@ export class PlacesService {
             if (place.subcategory?.trim() && !place.category?.trim()) {
               throw new BadRequestException(
                 `Place ${place.name} cannot have a subcategory without a category`,
+              );
+            }
+            const hasLatitude = Number.isFinite(place.latitude);
+            const hasLongitude = Number.isFinite(place.longitude);
+            if (hasLatitude !== hasLongitude) {
+              throw new BadRequestException(
+                `Place ${place.name} must include both latitude and longitude`,
+              );
+            }
+            if (hasLatitude && (place.latitude! < -90 || place.latitude! > 90)) {
+              throw new BadRequestException(`Invalid latitude for ${place.name}`);
+            }
+            if (
+              hasLongitude &&
+              (place.longitude! < -180 || place.longitude! > 180)
+            ) {
+              throw new BadRequestException(`Invalid longitude for ${place.name}`);
+            }
+            if (
+              place.verificationRadiusMeters !== undefined &&
+              (!Number.isInteger(place.verificationRadiusMeters) ||
+                place.verificationRadiusMeters < 50 ||
+                place.verificationRadiusMeters > 10000)
+            ) {
+              throw new BadRequestException(
+                `Verification radius for ${place.name} must be 50-10000 metres`,
               );
             }
             const placeNameKey = normalizeName(place.name);
@@ -486,11 +536,23 @@ export class PlacesService {
             'Place add operation requires an activity category',
           );
         }
+        if (
+          !Number.isFinite(operation.latitude) ||
+          !Number.isFinite(operation.longitude)
+        ) {
+          throw new BadRequestException(
+            'Place add operation requires trusted latitude and longitude',
+          );
+        }
         parent.municipality.places.push({
           id: this.generateUniqueNodeId(hierarchy, 'place', name),
           name,
           category,
           subcategory,
+          latitude: operation.latitude,
+          longitude: operation.longitude,
+          verificationRadiusMeters:
+            operation.verificationRadiusMeters ?? 500,
         });
         return;
       }
@@ -616,6 +678,16 @@ export class PlacesService {
       }
       if (operation.subcategory !== undefined) {
         node.place.subcategory = operation.subcategory?.trim() || null;
+      }
+      if (operation.latitude !== undefined) {
+        node.place.latitude = operation.latitude;
+      }
+      if (operation.longitude !== undefined) {
+        node.place.longitude = operation.longitude;
+      }
+      if (operation.verificationRadiusMeters !== undefined) {
+        node.place.verificationRadiusMeters =
+          operation.verificationRadiusMeters;
       }
       return;
     }
@@ -827,6 +899,9 @@ export class PlacesService {
             municipality: municipality.name,
             category: place.category,
             subcategory: place.subcategory,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            verificationRadiusMeters: place.verificationRadiusMeters,
           })),
         );
         return {

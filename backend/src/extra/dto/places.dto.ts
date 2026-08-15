@@ -4,6 +4,11 @@ import {
   IsBoolean,
   IsIn,
   IsNotEmpty,
+  IsLatitude,
+  IsLongitude,
+  IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   ValidateNested,
@@ -25,6 +30,20 @@ export class PlaceTitleDto {
   @IsString()
   @IsOptional()
   subcategory?: string | null;
+
+  @IsLatitude()
+  @IsOptional()
+  latitude?: number;
+
+  @IsLongitude()
+  @IsOptional()
+  longitude?: number;
+
+  @IsInt()
+  @Min(50)
+  @Max(10000)
+  @IsOptional()
+  verificationRadiusMeters?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -125,6 +144,20 @@ export class PlaceOperationDto {
   @IsString()
   @IsOptional()
   subcategory?: string | null;
+
+  @IsLatitude()
+  @IsOptional()
+  latitude?: number;
+
+  @IsLongitude()
+  @IsOptional()
+  longitude?: number;
+
+  @IsInt()
+  @Min(50)
+  @Max(10000)
+  @IsOptional()
+  verificationRadiusMeters?: number;
 }
 
 export class PatchPlacesDto {

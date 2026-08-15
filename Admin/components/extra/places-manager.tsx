@@ -40,6 +40,9 @@ type TreeNodeRef = {
   districtId?: string;
   category?: string;
   subcategory?: string | null;
+  latitude?: number;
+  longitude?: number;
+  verificationRadiusMeters?: number;
 };
 
 type ToastItem = {
@@ -267,6 +270,9 @@ export function PlacesManager() {
   const [addName, setAddName] = useState("");
   const [addCategory, setAddCategory] = useState("");
   const [addSubcategory, setAddSubcategory] = useState("");
+  const [addLatitude, setAddLatitude] = useState("");
+  const [addLongitude, setAddLongitude] = useState("");
+  const [addRadius, setAddRadius] = useState("500");
   const [activityCategories, setActivityCategories] = useState<
     ActivityCategoryOption[]
   >([]);
@@ -274,6 +280,9 @@ export function PlacesManager() {
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
+  const [editLatitude, setEditLatitude] = useState("");
+  const [editLongitude, setEditLongitude] = useState("");
+  const [editRadius, setEditRadius] = useState("500");
   const [inlineError, setInlineError] = useState("");
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState("");
@@ -368,6 +377,9 @@ export function PlacesManager() {
                 name: place.name,
                 category: place.category,
                 subcategory: place.subcategory,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                verificationRadiusMeters: place.verificationRadiusMeters,
                 deleted: place.deleted,
                 provinceId: province.id,
                 districtId: district.id,
@@ -391,11 +403,19 @@ export function PlacesManager() {
     setEditName(selectedResolved.name);
     setEditCategory(selectedResolved.category ?? "");
     setEditSubcategory(selectedResolved.subcategory ?? "");
+    setEditLatitude(selectedResolved.latitude?.toString() ?? "");
+    setEditLongitude(selectedResolved.longitude?.toString() ?? "");
+    setEditRadius(
+      selectedResolved.verificationRadiusMeters?.toString() ?? "500",
+    );
   }, [
     selectedResolved?.id,
     selectedResolved?.name,
     selectedResolved?.category,
     selectedResolved?.subcategory,
+    selectedResolved?.latitude,
+    selectedResolved?.longitude,
+    selectedResolved?.verificationRadiusMeters,
     selectedResolved?.deleted,
   ]);
 
@@ -626,6 +646,9 @@ export function PlacesManager() {
     setAddName("");
     setAddCategory("");
     setAddSubcategory("");
+    setAddLatitude("");
+    setAddLongitude("");
+    setAddRadius("500");
     setInlineError("");
   };
   useEffect(() => {
@@ -790,6 +813,26 @@ export function PlacesManager() {
       setInlineError("Choose an activity category for this place.");
       return;
     }
+    const latitude = Number(editLatitude);
+    const longitude = Number(editLongitude);
+    const radius = Number(editRadius);
+    if (
+      selectedNode.type === "place" &&
+      (!Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180 ||
+        !Number.isInteger(radius) ||
+        radius < 50 ||
+        radius > 10000)
+    ) {
+      setInlineError(
+        "Enter trusted latitude/longitude and a radius from 50 to 10,000 metres.",
+      );
+      return;
+    }
 
     const lower = name.toLowerCase();
     let duplicate = false;
@@ -858,6 +901,9 @@ export function PlacesManager() {
           ? {
               category: editCategory,
               subcategory: editSubcategory || null,
+              latitude,
+              longitude,
+              verificationRadiusMeters: radius,
             }
           : {}),
       },
@@ -921,6 +967,26 @@ export function PlacesManager() {
       setInlineError("Choose an activity category for this place.");
       return;
     }
+    const latitude = Number(addLatitude);
+    const longitude = Number(addLongitude);
+    const radius = Number(addRadius);
+    if (
+      addDialog.type === "place" &&
+      (!Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180 ||
+        !Number.isInteger(radius) ||
+        radius < 50 ||
+        radius > 10000)
+    ) {
+      setInlineError(
+        "Enter trusted latitude/longitude and a radius from 50 to 10,000 metres.",
+      );
+      return;
+    }
 
     const isDuplicate = hierarchy.provinces.some((province) => {
       if (addDialog.type === "district" && province.id === addDialog.parentId) {
@@ -977,6 +1043,9 @@ export function PlacesManager() {
             ? {
                 category: addCategory,
                 subcategory: addSubcategory || null,
+                latitude,
+                longitude,
+                verificationRadiusMeters: radius,
               }
             : {}),
         },
@@ -987,6 +1056,9 @@ export function PlacesManager() {
       setAddName("");
       setAddCategory("");
       setAddSubcategory("");
+      setAddLatitude("");
+      setAddLongitude("");
+      setAddRadius("500");
       const label =
         addDialog.type === "district"
           ? "District"
@@ -1590,6 +1662,43 @@ export function PlacesManager() {
                           ))}
                         </select>
                       </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Trusted latitude
+                        <input
+                          type="number"
+                          step="any"
+                          value={editLatitude}
+                          onChange={(event) => setEditLatitude(event.target.value)}
+                          disabled={busy}
+                          placeholder="27.7104"
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600">
+                        Trusted longitude
+                        <input
+                          type="number"
+                          step="any"
+                          value={editLongitude}
+                          onChange={(event) => setEditLongitude(event.target.value)}
+                          disabled={busy}
+                          placeholder="85.3488"
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-slate-600 sm:col-span-2">
+                        Verification radius (metres)
+                        <input
+                          type="number"
+                          min={50}
+                          max={10000}
+                          step={1}
+                          value={editRadius}
+                          onChange={(event) => setEditRadius(event.target.value)}
+                          disabled={busy}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </label>
                     </div>
                   )}
                   <button
@@ -1936,6 +2045,43 @@ export function PlacesManager() {
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                  Trusted latitude
+                  <input
+                    type="number"
+                    step="any"
+                    value={addLatitude}
+                    onChange={(event) => setAddLatitude(event.target.value)}
+                    disabled={busy}
+                    placeholder="27.7104"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                  Trusted longitude
+                  <input
+                    type="number"
+                    step="any"
+                    value={addLongitude}
+                    onChange={(event) => setAddLongitude(event.target.value)}
+                    disabled={busy}
+                    placeholder="85.3488"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-600 sm:col-span-2">
+                  Verification radius (metres)
+                  <input
+                    type="number"
+                    min={50}
+                    max={10000}
+                    step={1}
+                    value={addRadius}
+                    onChange={(event) => setAddRadius(event.target.value)}
+                    disabled={busy}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </label>
               </div>
             )}

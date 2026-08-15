@@ -1,45 +1,52 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
+import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
+import { NextFunction, Request, Response } from 'express';
+import { AlertService } from './observability/alert.service';
+import { MetricsService } from './observability/metrics.service';
 
 @Injectable()
 export class RequestLoggerMiddleware implements NestMiddleware {
   private readonly logger = new Logger('HTTP');
 
+  constructor(
+    private readonly metrics: MetricsService,
+    private readonly alerts: AlertService,
+  ) {}
+
   use(req: Request, res: Response, next: NextFunction) {
     const { method, originalUrl, ip } = req;
+    const path = originalUrl.split('?')[0];
     const start = Date.now();
-
-    // Track when response is sent
+    this.metrics.beginRequest();
     res.on('finish', () => {
-      const duration = Date.now() - start;
+      const durationMs = Date.now() - start;
       const statusCode = res.statusCode;
-      
-      // Determine emoji based on status code
-      let statusEmoji = '✅';
-      if (statusCode >= 500) statusEmoji = '🔴';
-      else if (statusCode >= 400) statusEmoji = '🟡';
-      else if (statusCode >= 300) statusEmoji = '🔵';
-
-      // Main log message
-      this.logger.log(
-        `${statusEmoji} ${method.padEnd(6)} ${statusCode} ${duration.toString().padStart(4)}ms ${originalUrl}`
-      );
-
-      // Warn on slow requests (> 1 second)
-      if (duration > 1000) {
-        this.logger.warn(
-          `🐢 SLOW REQUEST: ${method} ${originalUrl} took ${duration}ms from IP: ${ip}`
-        );
-      }
-
-      // Log errors with details
-      if (statusCode >= 500) {
-        this.logger.error(
-          `⚠️  SERVER ERROR: ${method} ${originalUrl} returned ${statusCode}`
-        );
-      }
+      this.metrics.finishRequest(statusCode, durationMs);
+      this.alerts.recordStatus(statusCode, { method, path, durationMs });
+      this.logger.log({
+        event: 'http_request',
+        method,
+        path,
+        statusCode,
+        durationMs,
+        ip,
+      });
+      if (durationMs > 1000)
+        this.logger.warn({
+          event: 'slow_request',
+          method,
+          path,
+          durationMs,
+          ip,
+        });
+      if (statusCode >= 500)
+        this.logger.error({
+          event: 'server_error',
+          method,
+          path,
+          statusCode,
+          durationMs,
+        });
     });
-
     next();
   }
 }

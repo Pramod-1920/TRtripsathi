@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/signup_page.dart';
+import 'package:trtripsathi_mobile/features/auth/presentation/pages/password_recovery_page.dart';
+import 'package:trtripsathi_mobile/features/auth/presentation/pages/account_verification_page.dart';
 import 'package:trtripsathi_mobile/features/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:trtripsathi_mobile/features/onboarding/presentation/pages/intro_page.dart';
 import 'package:trtripsathi_mobile/features/onboarding/presentation/pages/profile_setup_page.dart';
@@ -17,6 +19,8 @@ abstract final class AppRouter {
               : null,
         ),
       RouteNames.signup => const SignupScreen(),
+      RouteNames.passwordRecovery => const PasswordRecoveryPage(),
+      RouteNames.accountVerification => const AccountVerificationPage(),
       RouteNames.onboarding => const IntroOnboardingScreen(),
       RouteNames.profileSetup => const ProfileSetupScreen(),
       RouteNames.profile => const ProfileScreen(),

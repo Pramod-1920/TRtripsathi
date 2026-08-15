@@ -34,6 +34,7 @@ import { TriggerXpEventDto } from './dto/trigger-xp-event.dto';
 import { TriggerAchievementEventDto } from './dto/trigger-achievement-event.dto';
 import { CreatePhotoVerificationRequestDto } from './dto/create-photo-verification-request.dto';
 import { ReviewPhotoVerificationRequestDto } from './dto/review-photo-verification-request.dto';
+import { AppealPhotoVerificationDto } from './dto/appeal-photo-verification.dto';
 import { UserService } from './user.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -152,6 +153,34 @@ export class UserController {
     @Body() body: CreatePhotoVerificationRequestDto,
   ) {
     return this.userService.createPhotoVerificationRequest(authId, body);
+  }
+
+  @Post('photos/verification-requests/:requestCode/appeal')
+  @ApiOperation({ summary: 'Appeal one rejected photo-verification decision' })
+  @ApiBody({ type: AppealPhotoVerificationDto })
+  @ApiOkResponse({ description: 'Appeal returned to the review queue' })
+  appealPhotoVerificationRequest(
+    @GetCurrentUser('userId') authId: string,
+    @Param('requestCode') requestCode: string,
+    @Body() body: AppealPhotoVerificationDto,
+  ) {
+    return this.userService.appealPhotoVerificationRequest(
+      authId,
+      requestCode,
+      body.appealNote,
+    );
+  }
+
+  @Patch('profile/complete')
+  @ApiOperation({
+    summary: 'Complete onboarding with backend-enforced required fields',
+  })
+  @ApiOkResponse({ description: 'Profile completed successfully' })
+  completeOwnProfile(
+    @GetCurrentUser('userId') authId: string,
+    @Body() body: UpdateProfileDto,
+  ) {
+    return this.userService.updateOwnProfile(authId, body, true);
   }
 
   @Get('search')
