@@ -33,6 +33,7 @@ import { SignupDto } from './dto/signup.dto';
 import {
   ConfirmAuthCodeDto,
   ForgotPasswordDto,
+  ResendAuthCodeDto,
   RequestContactVerificationDto,
   ResetPasswordDto,
 } from './dto/account-security.dto';
@@ -87,6 +88,15 @@ export class AuthController {
   @ApiOperation({ summary: 'Request a password-reset code' })
   forgotPassword(@Body() body: ForgotPasswordDto, @Req() request: Request) {
     return this.accountSecurity.forgotPassword(body.identifier, request.ip);
+  }
+
+  @Post('password/resend')
+  @ApiOperation({ summary: 'Resend a password-reset code after its cooldown' })
+  resendPasswordCode(@Body() body: ResendAuthCodeDto, @Req() request: Request) {
+    return this.accountSecurity.resendPasswordReset(
+      body.challengeId,
+      request.ip,
+    );
   }
 
   @Post('password/reset')

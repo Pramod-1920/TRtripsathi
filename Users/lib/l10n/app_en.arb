@@ -1,0 +1,13 @@
+{
+  "@@locale": "en",
+  "appName": "Trip Sathi",
+  "offline": "Offline — showing saved information",
+  "changeLanguage": "Change language",
+  "retry": "Retry",
+  "home": "Home",
+  "trips": "Trips",
+  "campaigns": "Campaigns",
+  "chat": "Chat",
+  "map": "Map",
+  "profile": "Profile"
+}

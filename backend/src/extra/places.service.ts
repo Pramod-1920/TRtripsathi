@@ -7,7 +7,11 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ExtraCategory } from './constants/extra-category.enum';
-import { BulkSeedPlacesDto, PlaceOperationDto } from './dto/places.dto';
+import {
+  BackfillPlaceTrustDto,
+  BulkSeedPlacesDto,
+  PlaceOperationDto,
+} from './dto/places.dto';
 import { ExtraItem } from './schemas/extra.schema';
 
 export type PlaceTitleNode = {
@@ -166,20 +170,17 @@ export class PlacesService {
                               place.subcategory.trim()
                                 ? place.subcategory.trim()
                                 : undefined,
-                            latitude:
-                              Number.isFinite(Number(place.latitude))
-                                ? Number(place.latitude)
-                                : undefined,
-                            longitude:
-                              Number.isFinite(Number(place.longitude))
-                                ? Number(place.longitude)
-                                : undefined,
-                            verificationRadiusMeters:
-                              Number.isFinite(
-                                Number(place.verificationRadiusMeters),
-                              )
-                                ? Number(place.verificationRadiusMeters)
-                                : undefined,
+                            latitude: Number.isFinite(Number(place.latitude))
+                              ? Number(place.latitude)
+                              : undefined,
+                            longitude: Number.isFinite(Number(place.longitude))
+                              ? Number(place.longitude)
+                              : undefined,
+                            verificationRadiusMeters: Number.isFinite(
+                              Number(place.verificationRadiusMeters),
+                            )
+                              ? Number(place.verificationRadiusMeters)
+                              : undefined,
                             deleted: place.deleted === true ? true : undefined,
                           }))
                         : [],
@@ -222,8 +223,7 @@ export class PlacesService {
                       subcategory: place.subcategory,
                       latitude: place.latitude,
                       longitude: place.longitude,
-                      verificationRadiusMeters:
-                        place.verificationRadiusMeters,
+                      verificationRadiusMeters: place.verificationRadiusMeters,
                     })),
                 })),
             })),
@@ -338,14 +338,21 @@ export class PlacesService {
                 `Place ${place.name} must include both latitude and longitude`,
               );
             }
-            if (hasLatitude && (place.latitude! < -90 || place.latitude! > 90)) {
-              throw new BadRequestException(`Invalid latitude for ${place.name}`);
+            if (
+              hasLatitude &&
+              (place.latitude! < -90 || place.latitude! > 90)
+            ) {
+              throw new BadRequestException(
+                `Invalid latitude for ${place.name}`,
+              );
             }
             if (
               hasLongitude &&
               (place.longitude! < -180 || place.longitude! > 180)
             ) {
-              throw new BadRequestException(`Invalid longitude for ${place.name}`);
+              throw new BadRequestException(
+                `Invalid longitude for ${place.name}`,
+              );
             }
             if (
               place.verificationRadiusMeters !== undefined &&
@@ -551,8 +558,7 @@ export class PlacesService {
           subcategory,
           latitude: operation.latitude,
           longitude: operation.longitude,
-          verificationRadiusMeters:
-            operation.verificationRadiusMeters ?? 500,
+          verificationRadiusMeters: operation.verificationRadiusMeters ?? 500,
         });
         return;
       }
@@ -887,6 +893,110 @@ export class PlacesService {
     this.invalidateHierarchyCache();
 
     return this.getHierarchy({ includeDeleted: true });
+  }
+
+  async backfillTrustedCoordinates(payload: BackfillPlaceTrustDto) {
+    if (!Array.isArray(payload.entries) || payload.entries.length < 1) {
+      throw new BadRequestException('entries must include at least one place');
+    }
+    if (payload.entries.length > 1000) {
+      throw new BadRequestException(
+        'A backfill request supports up to 1000 places',
+      );
+    }
+
+    const document = await this.findHierarchyDocument();
+    if (!document) {
+      throw new BadRequestException('Places hierarchy has not been created');
+    }
+    const working = this.cloneHierarchy(
+      this.parseHierarchyValue(document.value),
+    );
+    const seen = new Set<string>();
+    const changes = payload.entries.map((entry, index) => {
+      const placeId = String(entry.placeId ?? '').trim();
+      if (!placeId) {
+        throw new BadRequestException(`Entry ${index + 1} requires placeId`);
+      }
+      if (seen.has(placeId)) {
+        throw new BadRequestException(
+          `Duplicate placeId in backfill: ${placeId}`,
+        );
+      }
+      seen.add(placeId);
+      if (
+        !Number.isFinite(entry.latitude) ||
+        entry.latitude < -90 ||
+        entry.latitude > 90 ||
+        !Number.isFinite(entry.longitude) ||
+        entry.longitude < -180 ||
+        entry.longitude > 180
+      ) {
+        throw new BadRequestException(`Invalid coordinates for ${placeId}`);
+      }
+      const radius = entry.verificationRadiusMeters ?? 500;
+      if (!Number.isInteger(radius) || radius < 50 || radius > 10000) {
+        throw new BadRequestException(
+          `Verification radius for ${placeId} must be 50-10000 metres`,
+        );
+      }
+
+      const node = this.findNode(working, placeId);
+      if (!node || node.type !== 'place') {
+        throw new BadRequestException(`Place not found: ${placeId}`);
+      }
+      const before = {
+        latitude: node.place.latitude ?? null,
+        longitude: node.place.longitude ?? null,
+        verificationRadiusMeters: node.place.verificationRadiusMeters ?? null,
+      };
+      const after = {
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+        verificationRadiusMeters: radius,
+      };
+      const changed =
+        before.latitude !== after.latitude ||
+        before.longitude !== after.longitude ||
+        before.verificationRadiusMeters !== after.verificationRadiusMeters;
+
+      node.place.latitude = after.latitude;
+      node.place.longitude = after.longitude;
+      node.place.verificationRadiusMeters = after.verificationRadiusMeters;
+      return {
+        placeId,
+        place: node.place.name,
+        municipality: node.municipality.name,
+        district: node.district.name,
+        province: node.province.name,
+        deleted: node.place.deleted === true,
+        changed,
+        before,
+        after,
+      };
+    });
+
+    this.validateHierarchy(working);
+    const dryRun = payload.dryRun !== false;
+    if (!dryRun) {
+      document.value = JSON.stringify(working);
+      document.category = ExtraCategory.Places;
+      document.name = PLACE_HIERARCHY_NAME;
+      document.enabled = true;
+      await document.save();
+      this.invalidateHierarchyCache();
+    }
+
+    return {
+      dryRun,
+      applied: !dryRun,
+      summary: {
+        requested: changes.length,
+        changed: changes.filter((change) => change.changed).length,
+        unchanged: changes.filter((change) => !change.changed).length,
+      },
+      changes,
+    };
   }
 
   async getCatalog(): Promise<{ source: 'extras'; items: CatalogItem[] }> {

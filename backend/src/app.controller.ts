@@ -10,6 +10,7 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Connection } from 'mongoose';
 import { AppService } from './app.service';
 import { MetricsService } from './observability/metrics.service';
+import { RedisService } from './redis/redis.service';
 import type { Response } from 'express';
 
 @ApiTags('App')
@@ -19,6 +20,7 @@ export class AppController {
     private readonly appService: AppService,
     @InjectConnection() private readonly connection: Connection,
     private readonly metrics: MetricsService,
+    private readonly redis: RedisService,
   ) {}
 
   @Get()
@@ -47,8 +49,13 @@ export class AppController {
   @ApiOkResponse({
     description: 'Returns dependency readiness and HTTP 503 when unavailable',
   })
-  getReadiness(@Res({ passthrough: true }) response: Response) {
-    const payload = this.healthPayload();
+  async getReadiness(@Res({ passthrough: true }) response: Response) {
+    const redis = await this.redis.health();
+    const payload = {
+      ...this.healthPayload(),
+      redis,
+    };
+    if (!redis.connected) payload.status = 'degraded';
     if (payload.status !== 'ok') response.status(503);
     return payload;
   }
@@ -58,8 +65,8 @@ export class AppController {
   getMetrics(@Headers('x-monitoring-token') token?: string) {
     const expected = process.env.MONITORING_TOKEN?.trim();
     if (
-      process.env.NODE_ENV === 'production' &&
-      (!expected || token !== expected)
+      (expected && token !== expected) ||
+      (!expected && process.env.NODE_ENV === 'production')
     ) {
       throw new UnauthorizedException('Invalid monitoring token');
     }

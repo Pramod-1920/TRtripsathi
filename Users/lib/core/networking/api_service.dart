@@ -454,6 +454,22 @@ class ApiService {
     throw Exception(_errorMessage(res, 'Unable to request a reset code'));
   }
 
+  static Future<Map<String, dynamic>> resendPasswordCode(
+      String challengeId) async {
+    final res = await http
+        .post(
+          Uri.parse('$baseUrl/auth/password/resend'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'challengeId': challengeId}),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    if (res.statusCode == 429) throw _rateLimitException(res);
+    throw Exception(_errorMessage(res, 'Unable to resend the reset code'));
+  }
+
   static Future<void> resetPassword({
     required String challengeId,
     required String code,

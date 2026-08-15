@@ -139,9 +139,12 @@ User schema includes:
 - `POST /auth/verification/request` (authenticated): `{ "channel": "email" }` or `{ "channel": "sms" }`
 - `POST /auth/verification/confirm` (authenticated): `{ "challengeId": "...", "code": "123456" }`
 - `POST /auth/password/forgot`: `{ "identifier": "email-or-phone" }`; always returns the same response shape
+- `POST /auth/password/resend`: `{ "challengeId": "..." }`; replaces a valid password-reset challenge after the 60-second cooldown
 - `POST /auth/password/reset`: `{ "challengeId": "...", "code": "123456", "password": "12+ characters" }`
 
-Codes contain exactly six digits and expire after 3 minutes. If `email` and `email_app_password` are configured, email codes use authenticated Gmail SMTP. Resend remains the fallback when those SMTP credentials are absent.
+Codes contain exactly six digits and expire after 3 minutes. Each code permits five attempts, requests are limited to five per account and purpose per hour, and replacement codes have a 60-second cooldown. Password reset revokes every refresh session and rejects a code if its registered destination changed after issuance.
+
+If `email` and `email_app_password` are configured, email codes use authenticated SMTP. The Resend email API is the delivery-provider fallback when SMTP credentials are absent and `RESEND_API_KEY` plus `AUTH_EMAIL_FROM` are configured.
 
 Set `AUTH_OTP_TEST_MODE=true` only in local/test environments to return a debug code without contacting a provider. Never enable it in production.
 

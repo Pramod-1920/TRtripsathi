@@ -51,8 +51,10 @@ export class AccountSecurityService {
 
   private normalizePhone(value: string) {
     let digits = value.replace(/\D/g, '');
-    if (digits.startsWith('977') && digits.length === 13) digits = digits.slice(3);
-    if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+    if (digits.startsWith('977') && digits.length === 13)
+      digits = digits.slice(3);
+    if (digits.startsWith('0') && digits.length === 11)
+      digits = digits.slice(1);
     return digits;
   }
 
@@ -75,6 +77,22 @@ export class AccountSecurityService {
       return `${name.slice(0, 2)}***@${domain}`;
     }
     return `+977******${destination.slice(-4)}`;
+  }
+
+  private recoveryResponse(challengeId = new Types.ObjectId().toString()) {
+    return {
+      message:
+        'If the security request is valid, a code has been sent to the registered contact.',
+      challengeId,
+      expiresInSeconds: CODE_TTL_MS / 1000,
+      resendAfterSeconds: RESEND_COOLDOWN_MS / 1000,
+    };
+  }
+
+  private async padEnumerationSafeResponse(startedAt: number) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, 400 - (Date.now() - startedAt))),
+    );
   }
 
   private async enforceRequestLimits(
@@ -258,18 +276,9 @@ export class AccountSecurityService {
             isActive: { $ne: false },
           },
     );
-    const generic = {
-      message:
-        'If an active account matches, a security code has been sent to its registered contact.',
-      // Always return an opaque identifier so callers cannot infer whether an
-      // account exists by comparing response shapes.
-      challengeId: new Types.ObjectId().toString(),
-      expiresInSeconds: CODE_TTL_MS / 1000,
-    };
+    const generic = this.recoveryResponse();
     if (!user) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.max(0, 400 - (Date.now() - startedAt))),
-      );
+      await this.padEnumerationSafeResponse(startedAt);
       return generic;
     }
     // When an account has an email address, recovery requested with either
@@ -290,23 +299,69 @@ export class AccountSecurityService {
     }
   }
 
-  async resetPassword(
-    challengeId: string,
-    code: string,
-    passwordHash: string,
-  ) {
+  async resendPasswordReset(challengeId: string, requestIp?: string) {
+    const startedAt = Date.now();
+    const generic = this.recoveryResponse();
+    if (!Types.ObjectId.isValid(challengeId)) {
+      await this.padEnumerationSafeResponse(startedAt);
+      return generic;
+    }
+    const challenge = await this.challengeModel.findById(challengeId).lean();
+    if (
+      !challenge ||
+      challenge.consumedAt ||
+      challenge.purpose !== 'reset_password'
+    ) {
+      await this.padEnumerationSafeResponse(startedAt);
+      return generic;
+    }
+    const user = await this.authModel.findById(challenge.authId);
+    let destinationStillCurrent = false;
+    try {
+      destinationStillCurrent = Boolean(
+        user &&
+        user.isActive !== false &&
+        this.digest(this.destination(user, challenge.channel)) ===
+          challenge.destinationHash,
+      );
+    } catch {
+      destinationStillCurrent = false;
+    }
+    if (!user || !destinationStillCurrent) {
+      await this.padEnumerationSafeResponse(startedAt);
+      return generic;
+    }
+
+    const replacement = await this.createChallenge(
+      user,
+      'reset_password',
+      challenge.channel,
+      requestIp,
+    );
+    return this.recoveryResponse(replacement.challengeId);
+  }
+
+  async resetPassword(challengeId: string, code: string, passwordHash: string) {
     const challenge = await this.consumeChallenge(challengeId, code, [
       'reset_password',
     ]);
     const user = await this.authModel.findById(challenge.authId);
-    const stillCurrent = Boolean(
-      user &&
+    let stillCurrent = false;
+    try {
+      stillCurrent = Boolean(
+        user &&
+        user.isActive !== false &&
         this.digest(this.destination(user, challenge.channel)) ===
           challenge.destinationHash,
-    );
-    const verificationField = !stillCurrent
-      ? {}
-      : challenge.channel === 'email'
+      );
+    } catch {
+      stillCurrent = false;
+    }
+    if (!user || !stillCurrent) {
+      throw new BadRequestException('Invalid or expired security code');
+    }
+    const verificationField =
+      challenge.channel === 'email'
         ? { emailVerifiedAt: new Date(), verificationRequired: false }
         : { phoneVerifiedAt: new Date(), verificationRequired: false };
     await this.authModel.findByIdAndUpdate(challenge.authId, {

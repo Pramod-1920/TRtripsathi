@@ -31,8 +31,19 @@ export class ForgotPasswordDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(254)
-  @Transform(({ value }) => String(value ?? '').trim().toLowerCase())
+  @Transform(({ value }) =>
+    String(value ?? '')
+      .trim()
+      .toLowerCase(),
+  )
   identifier!: string;
+}
+
+export class ResendAuthCodeDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  challengeId!: string;
 }
 
 export class ResetPasswordDto extends ConfirmAuthCodeDto {

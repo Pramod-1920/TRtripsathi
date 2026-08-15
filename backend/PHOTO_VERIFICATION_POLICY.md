@@ -13,6 +13,30 @@ This policy applies to standalone catalog-place evidence. Campaign evidence cont
 - Evidence must be an HTTPS image in the configured TripSathi Cloudinary account and no larger than 12 MB.
 - The backend calculates a SHA-256 fingerprint of the downloaded image. An exact image already pending or approved cannot be reused. This is exact-byte detection, not perceptual-similarity detection.
 
+## Trusted-coordinate backfill
+
+- Existing catalog places without coordinates remain fail-closed and cannot accept standalone evidence.
+- Admins can preview coordinate/radius changes with `POST /extra/places/trust-backfill`. The request defaults to `dryRun: true`; previewing never creates or changes hierarchy data.
+- Each entry contains `placeId`, `latitude`, `longitude`, and an optional `verificationRadiusMeters` between 50 and 10,000. The default radius is 500 metres.
+- After reviewing every returned before/after value, an admin may resend the same validated batch with `dryRun: false`. The backend validates the full batch and saves the hierarchy once.
+- Geocoding may suggest coordinates, but a human must confirm them before the apply request. Production radii must be field-tested before enabling evidence for a place.
+
+Example preview body:
+
+```json
+{
+  "dryRun": true,
+  "entries": [
+    {
+      "placeId": "place_pashupatinath",
+      "latitude": 27.7104,
+      "longitude": 85.3488,
+      "verificationRadiusMeters": 500
+    }
+  ]
+}
+```
+
 ## EXIF and privacy
 
 EXIF is not treated as proof of presence: metadata can be missing, rewritten, or forged, and image upload services may strip it. TripSathi uses the fresh app-provided GPS fix and trusted catalog coordinate for the server geofence. Moderators should not reject an otherwise valid image merely because EXIF is absent. Uploaded images must not contain private documents, home addresses, or unrelated people without consent.
@@ -22,7 +46,10 @@ EXIF is not treated as proof of presence: metadata can be missing, rewritten, or
 - Admin approval rechecks that the place is active and that the stored GPS remains inside its current trusted radius.
 - A rejection must include a useful reason. Examples include wrong landmark, unclear/irrelevant image, unsafe/private content, or evidence that cannot be matched to the place.
 - A user gets one appeal of a rejected request and must explain why it should be reviewed again. After that decision, the user must submit new evidence.
+- The rejected-to-pending appeal transition and appeal counter update occur atomically. Concurrent appeal requests can produce only one successful transition.
+- An appeal reuses its original request, photo URL, and evidence hash. It is not a new upload, so its own hash is preserved without bypassing duplicate checks against other submissions.
 - Approval and rejection actions are audited. Staff must not approve their own evidence; Admin/Moderator accounts cannot create user evidence requests.
+- Appeal submissions are restricted to the User role and are recorded in audit history.
 
 ## XP and idempotency
 

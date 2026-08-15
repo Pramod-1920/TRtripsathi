@@ -156,19 +156,27 @@ export class UserController {
   }
 
   @Post('photos/verification-requests/:requestCode/appeal')
+  @UseGuards(RolesGuard)
+  @Roles(Role.User)
   @ApiOperation({ summary: 'Appeal one rejected photo-verification decision' })
   @ApiBody({ type: AppealPhotoVerificationDto })
   @ApiOkResponse({ description: 'Appeal returned to the review queue' })
-  appealPhotoVerificationRequest(
+  async appealPhotoVerificationRequest(
     @GetCurrentUser('userId') authId: string,
     @Param('requestCode') requestCode: string,
     @Body() body: AppealPhotoVerificationDto,
   ) {
-    return this.userService.appealPhotoVerificationRequest(
+    const result = await this.userService.appealPhotoVerificationRequest(
       authId,
       requestCode,
       body.appealNote,
     );
+    await this.audit.logEvent({
+      type: 'user.appeal_photo_verification',
+      actorId: authId,
+      requestCode,
+    });
+    return result;
   }
 
   @Patch('profile/complete')

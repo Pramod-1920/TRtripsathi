@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
   IsIn,
   IsNotEmpty,
@@ -165,4 +167,35 @@ export class PatchPlacesDto {
   @ValidateNested({ each: true })
   @Type(() => PlaceOperationDto)
   operations!: PlaceOperationDto[];
+}
+
+export class TrustedPlaceCoordinateDto {
+  @IsString()
+  @IsNotEmpty()
+  placeId!: string;
+
+  @IsLatitude()
+  latitude!: number;
+
+  @IsLongitude()
+  longitude!: number;
+
+  @IsInt()
+  @Min(50)
+  @Max(10000)
+  @IsOptional()
+  verificationRadiusMeters?: number;
+}
+
+export class BackfillPlaceTrustDto {
+  @IsBoolean()
+  @IsOptional()
+  dryRun = true;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => TrustedPlaceCoordinateDto)
+  entries!: TrustedPlaceCoordinateDto[];
 }

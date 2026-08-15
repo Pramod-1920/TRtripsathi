@@ -24,6 +24,7 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
   bool _hidePassword = true;
   Timer? _expiryTimer;
   int _secondsRemaining = 0;
+  int _resendSecondsRemaining = 0;
 
   @override
   void dispose() {
@@ -34,15 +35,21 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
     super.dispose();
   }
 
-  void _startExpiryCountdown(int seconds) {
+  void _startCountdowns(int expirySeconds, int resendSeconds) {
     _expiryTimer?.cancel();
-    _secondsRemaining = seconds;
+    _secondsRemaining = expirySeconds;
+    _resendSecondsRemaining = resendSeconds;
     _expiryTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || _secondsRemaining <= 1) {
+      if (!mounted) {
         timer.cancel();
-        if (mounted) setState(() => _secondsRemaining = 0);
-      } else {
-        setState(() => _secondsRemaining -= 1);
+        return;
+      }
+      setState(() {
+        if (_secondsRemaining > 0) _secondsRemaining -= 1;
+        if (_resendSecondsRemaining > 0) _resendSecondsRemaining -= 1;
+      });
+      if (_secondsRemaining <= 0 && _resendSecondsRemaining <= 0) {
+        timer.cancel();
       }
     });
   }
@@ -57,8 +64,34 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
       final result = await ApiService.forgotPassword(_identifier.text);
       if (!mounted) return;
       setState(() => _challengeId = result['challengeId']?.toString());
-      _startExpiryCountdown(
-          (result['expiresInSeconds'] as num?)?.toInt() ?? 180);
+      _startCountdowns(
+        (result['expiresInSeconds'] as num?)?.toInt() ?? 180,
+        (result['resendAfterSeconds'] as num?)?.toInt() ?? 60,
+      );
+    } catch (error) {
+      if (mounted) setState(() => _error = ApiService.readableError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resendCode() async {
+    if (_challengeId == null || _busy || _resendSecondsRemaining > 0) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final result = await ApiService.resendPasswordCode(_challengeId!);
+      if (!mounted) return;
+      setState(() {
+        _challengeId = result['challengeId']?.toString();
+        _code.clear();
+      });
+      _startCountdowns(
+        (result['expiresInSeconds'] as num?)?.toInt() ?? 180,
+        (result['resendAfterSeconds'] as num?)?.toInt() ?? 60,
+      );
     } catch (error) {
       if (mounted) setState(() => _error = ApiService.readableError(error));
     } finally {
@@ -191,7 +224,16 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
                         ? 'Send reset code'
                         : 'Change password')),
               ),
-              if (_challengeId != null)
+              if (_challengeId != null) ...[
+                TextButton(
+                  onPressed:
+                      _busy || _resendSecondsRemaining > 0 ? null : _resendCode,
+                  child: Text(
+                    _resendSecondsRemaining > 0
+                        ? 'Resend code in ${_resendSecondsRemaining}s'
+                        : 'Resend code',
+                  ),
+                ),
                 TextButton(
                   onPressed: _busy
                       ? null
@@ -199,11 +241,13 @@ class _PasswordRecoveryPageState extends State<PasswordRecoveryPage> {
                             _challengeId = null;
                             _expiryTimer?.cancel();
                             _secondsRemaining = 0;
+                            _resendSecondsRemaining = 0;
                             _code.clear();
                             _error = null;
                           }),
                   child: const Text('Use a different account'),
                 ),
+              ],
             ],
           ),
         ),

@@ -24,9 +24,9 @@ This README covers all three applications. It describes code present in the repo
 
 | Application | Current state | Last verified |
 | --- | --- | --- |
-| Backend | Compiles successfully; production entry point is `dist/src/main.js` | `npm run build` and 11/11 tests, 2026-08-16 |
-| Admin | Compiles and generates all current routes successfully | `npm run build`, 2026-08-15 |
-| Flutter | Static analysis passes with no issues | `flutter analyze`, 2026-08-15 |
+| Backend | Compiles successfully; production entry point is `dist/src/main.js` | `npm run build` and 46/46 tests, 2026-08-16 |
+| Admin | Compiles and generates all current routes successfully | `npm run build`, 2026-08-16 |
+| Flutter | Static analysis and 17/17 tests pass | `flutter analyze` and `flutter test`, 2026-08-16 |
 
 The latest work is implemented in source. A production server still needs the latest revision pulled, rebuilt, restarted, and smoke-tested before the feature should be called deployed.
 
@@ -47,6 +47,8 @@ The latest work is implemented in source. A production server still needs the la
 - Added approved-place display on the map. Admin-approved place evidence contributes to district visit counts and appears as a completed place; duplicate pending or approved evidence for the same catalog place is rejected.
 - Validated the district completion registry against Nepal's National Statistics Office structure: 77 unique districts grouped 14/8/13/11/12/10/9 across the seven provinces. Added automated registry, boundary, coordinate, geometry, and spelling-alias tests. Official/common variants such as Sirah/Siraha, Kavreplanchok/Kavrepalanchowk, Nawalparasi East/Nawalpur, and Rukum East/Eastern Rukum now resolve consistently.
 - Added forgot-password recovery by registered email or Nepal phone, six-digit expiring codes, password reset, and email/SMS verification for new accounts. Responses avoid account enumeration and successful reset revokes existing refresh sessions.
+- Added explicit password-code resend through `POST /auth/password/resend` and a 60-second Flutter resend countdown. Resending retains opaque responses and always routes through the account's current registered contact.
+- Password reset now fails closed if the account's registered recovery destination changed after code issuance. Boundary tests cover expiry, fifth-attempt lockout, cooldown, public response parity, five-per-hour limiting, contact changes, and complete refresh-session revocation.
 - Added backend-enforced onboarding completion. Flutter mirrors validation for UX, while `PATCH /user/profile/complete` is the source of truth for identity, profile photo, biography, traveler preferences, interests, and languages.
 
 ### Report, feedback, and moderation work
@@ -82,15 +84,18 @@ The latest work is implemented in source. A production server still needs the la
 - Added visited-place persistence with normalized district/province codes, visit counts, campaign-source idempotency, user summary responses, and Admin add/remove support.
 - Campaign completion verification records district/province visits and feeds XP, exploration, achievement, and map progress.
 - Standalone evidence is checked against the active catalog, a fresh GPS timestamp/accuracy, a server-calculated Haversine geofence, the configured Cloudinary account, size/type limits, and exact SHA-256 duplicate fingerprints before review.
+- Extracted the Haversine calculation into a validated shared utility and added focused tests for known distances, inside/outside-radius submissions, missing trusted coordinates, exact-image duplicates, and approval concurrency.
+- Added admin-only `POST /extra/places/trust-backfill` for existing-place coordinates/radii. It defaults to `dryRun: true`, validates the complete batch, previews before/after values, and performs one hierarchy save only when explicitly applied.
 - Standalone approval awards a fixed 40 XP once per canonical District + Municipality + Place using an atomic ledger context key. It records idempotent district/province visits; campaign evidence continues to use configured solo/group XP events.
 - Added one user appeal per rejected photo request. Rejections require an actionable reason and approval revalidates current catalog coordinates/radius.
+- Made photo appeals an atomic rejected-to-pending transition restricted to the User role. Concurrent requests allow one winner, retain the original evidence/hash, enforce the one-appeal limit, and create an audit event.
 - Added campaign GPS support using a GeoJSON `Point` and sparse `2dsphere` index.
 - Fixed Mongoose startup failure `Invalid value for schema path locationGps.default` by defining `CampaignLocationGps` as an explicit nested schema.
 - Added scheduled campaign lifecycle housekeeping and server/client filtering so expired campaigns do not remain in active discovery.
 - Added user push-token storage, database notifications, FCM multicast delivery, and invalid-token cleanup.
-- Added Phase 4 observability: newline-delimited JSON logs with secret-field redaction, separate liveness and dependency-readiness endpoints, protected bounded process/HTTP metrics, consecutive-5xx webhook alerts, and a single combined PM2 log file.
-- Added searchable Admin audit history. Report status/assignment, place hierarchy changes, photo-verification decisions, campaign moderation, and existing sensitive Admin actions are recorded with timestamps and actor identifiers in MongoDB, mirrored to append-only JSONL, and optionally shipped to S3. Existing JSONL history is imported idempotently at startup.
-- Added Flutter English/Nepali localization foundations with a persisted language switch, screen-reader live offline announcements, explicit request timeouts/network state, and encrypted last-profile fallback for read-only offline display.
+- Added Phase 4 observability: newline-delimited JSON logs with secret-field redaction, separate liveness and MongoDB/optional-Redis dependency readiness, protected bounded process/HTTP metrics, consecutive-5xx webhook alerts, and a single combined PM2 log file.
+- Added searchable Admin audit history. Report status/assignment, place hierarchy changes, photo-verification decisions, campaign moderation, and sensitive Admin actions are recorded with timestamps plus normalized actor/entity identifiers in MongoDB, mirrored to append-only JSONL, and optionally shipped to S3. The authorized Admin page filters by action, actor, entity, and date range.
+- Added generated Flutter ARB localization for English and Nepali shell/navigation strings with a persisted language switch, screen-reader live offline announcements, explicit request timeouts/network state, and encrypted last-profile fallback for read-only offline display.
 - Added a Firebase Admin compatibility adapter so messaging can work with supported modular or legacy package exports instead of failing on unavailable `firebase-admin/app` or `firebase-admin/messaging` TypeScript paths.
 - Added unified Admin notification APIs at `GET /admin/notifications` and `PATCH /admin/notifications/read`.
 - Corrected the production start path to `node --enable-source-maps dist/src/main.js`, matching the Nest build output and improving PM2 stack traces.
@@ -107,7 +112,7 @@ The latest work is implemented in source. A production server still needs the la
 | 2026-08-09 | Production backend URL configuration, Flutter secure/network integration, campaign journey organization, user progression, XP, visits, and badge management |
 | 2026-08-12 | Campaign creation/lifecycle improvements, trip detail screen, campaign/trip card interaction, and user journey updates |
 | 2026-08-15 | Feedback/report rules, live status/FCM/Admin notifications, expired-campaign filtering, Nepal map/coverage, trusted Places, secure verification/recovery, backend profile completion, GPS geofencing, duplicate checks, appeals, standalone XP idempotency, compatibility fixes, and PM2 correction |
-| 2026-08-16 | Ledger-backed XP idempotency, recoverable award reservations, atomic photo-review transitions, and concurrency regression coverage |
+| 2026-08-16 | Ledger-backed XP idempotency, atomic photo reviews/appeals, trusted-coordinate backfill/geofence coverage, hardened OTP recovery, dependency-aware health/metrics tests, filterable audit history, and generated English/Nepali ARB localization |
 
 ## Important behavior decisions
 
@@ -707,7 +712,7 @@ Monitoring endpoints:
 # Process is alive; does not depend on MongoDB.
 curl -i http://127.0.0.1:8080/health/live
 
-# Dependency readiness; returns HTTP 503 while MongoDB is unavailable.
+# Dependency readiness; returns HTTP 503 while MongoDB or configured Redis is unavailable.
 curl -i http://127.0.0.1:8080/health/ready
 
 # Bounded request, latency, error, uptime, and memory metrics.

@@ -22,6 +22,7 @@ import { User } from './schemas/user.schema';
 import { PlacesService } from '../extra/places.service';
 import { VisitedPlaceService } from '../visited-place/visited-place.service';
 import { XpLedgerService } from '../xp-ledger/xp-ledger.service';
+import { haversineDistanceMeters } from '../common/geo.util';
 
 const REMOVED_XP_EVENT_KEYS = new Set([
   'daily_streak',
@@ -3022,25 +3023,6 @@ export class UserService {
     };
   }
 
-  private haversineMeters(
-    firstLatitude: number,
-    firstLongitude: number,
-    secondLatitude: number,
-    secondLongitude: number,
-  ) {
-    const radians = (degrees: number) => (degrees * Math.PI) / 180;
-    const latitudeDelta = radians(secondLatitude - firstLatitude);
-    const longitudeDelta = radians(secondLongitude - firstLongitude);
-    const firstLat = radians(firstLatitude);
-    const secondLat = radians(secondLatitude);
-    const value =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(firstLat) *
-        Math.cos(secondLat) *
-        Math.sin(longitudeDelta / 2) ** 2;
-    return 6_371_000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
-  }
-
   private async hashTrustedEvidenceImage(rawUrl: string) {
     let url: URL;
     try {
@@ -3131,11 +3113,9 @@ export class UserService {
       );
     }
     const radius = place.verificationRadiusMeters ?? 500;
-    const distance = this.haversineMeters(
-      request.latitude,
-      request.longitude,
-      place.latitude!,
-      place.longitude!,
+    const distance = haversineDistanceMeters(
+      { latitude: request.latitude, longitude: request.longitude },
+      { latitude: place.latitude!, longitude: place.longitude! },
     );
     if (distance > radius) {
       throw new BadRequestException(
@@ -3391,11 +3371,15 @@ export class UserService {
 
     const distanceFromPlaceMeters =
       placeSelection && payload.latitude != null
-        ? this.haversineMeters(
-            payload.latitude,
-            payload.longitude!,
-            placeSelection.latitude,
-            placeSelection.longitude,
+        ? haversineDistanceMeters(
+            {
+              latitude: payload.latitude,
+              longitude: payload.longitude!,
+            },
+            {
+              latitude: placeSelection.latitude,
+              longitude: placeSelection.longitude,
+            },
           )
         : null;
     if (
@@ -3634,45 +3618,79 @@ export class UserService {
     requestCode: string,
     appealNote: string,
   ) {
+    const normalizedRequestCode = requestCode.trim();
+    const updated = await this.userModel.findOneAndUpdate(
+      {
+        authId: this.toObjectId(authId),
+        photoVerificationRequests: {
+          $elemMatch: {
+            requestCode: normalizedRequestCode,
+            status: 'rejected',
+            $or: [
+              { appealCount: { $exists: false } },
+              { appealCount: { $lt: 1 } },
+            ],
+          },
+        },
+      },
+      {
+        $set: {
+          'photoVerificationRequests.$[request].status': 'pending',
+          'photoVerificationRequests.$[request].appealNote': appealNote.trim(),
+          'photoVerificationRequests.$[request].appealedAt': new Date(),
+        },
+        $inc: { 'photoVerificationRequests.$[request].appealCount': 1 },
+        $unset: {
+          'photoVerificationRequests.$[request].reviewedAt': '',
+          'photoVerificationRequests.$[request].reviewedByAuthId': '',
+        },
+      },
+      {
+        arrayFilters: [
+          {
+            'request.requestCode': normalizedRequestCode,
+            'request.status': 'rejected',
+          },
+        ],
+        new: true,
+        runValidators: true,
+      },
+    );
+    if (updated) {
+      const appealedRequest = (updated.photoVerificationRequests ?? []).find(
+        (entry) => entry.requestCode === normalizedRequestCode,
+      );
+      if (!appealedRequest) {
+        throw new NotFoundException('Photo verification request not found');
+      }
+      return {
+        message: 'Appeal submitted for a second review',
+        request: appealedRequest,
+      };
+    }
+
     const profile = await this.userModel.findOne({
       authId: this.toObjectId(authId),
     });
     if (!profile) throw new NotFoundException('Profile not found');
-
-    const requests = [...(profile.photoVerificationRequests ?? [])];
-    const index = requests.findIndex(
-      (entry) => entry.requestCode === requestCode,
+    const existing = (profile.photoVerificationRequests ?? []).find(
+      (entry) => entry.requestCode === normalizedRequestCode,
     );
-    if (index < 0) {
+    if (!existing) {
       throw new NotFoundException('Photo verification request not found');
     }
-    if (requests[index].status !== 'rejected') {
-      throw new BadRequestException('Only a rejected request can be appealed');
-    }
-    if ((requests[index].appealCount ?? 0) >= 1) {
+    if ((existing.appealCount ?? 0) >= 1) {
       throw new BadRequestException(
         'This decision has already been appealed. Submit new evidence instead.',
       );
     }
+    if (existing.status !== 'rejected') {
+      throw new BadRequestException('Only a rejected request can be appealed');
+    }
 
-    requests[index] = {
-      ...requests[index],
-      status: 'pending',
-      appealNote: appealNote.trim(),
-      appealedAt: new Date(),
-      appealCount: (requests[index].appealCount ?? 0) + 1,
-      reviewedAt: undefined,
-      reviewedByAuthId: undefined,
-    };
-    await this.userModel.findByIdAndUpdate(
-      profile._id,
-      { photoVerificationRequests: requests },
-      { runValidators: true },
+    throw new BadRequestException(
+      'The request changed while the appeal was submitted. Refresh and try again.',
     );
-    return {
-      message: 'Appeal submitted for a second review',
-      request: requests[index],
-    };
   }
 
   async applyReferralCompletionAwardForUser(completedAuthId: string) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
+import 'package:trtripsathi_mobile/l10n/generated/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/chat/presentation/pages/chat_page.dart';
@@ -107,6 +108,18 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     _ensurePageSlots();
+    final strings = AppLocalizations.of(context);
+    final labels = [
+      strings.home,
+      strings.trips,
+      strings.campaigns,
+      strings.chat,
+      strings.map,
+    ];
+    final localizedDestinations = List.generate(
+      _destinations.length,
+      (index) => _destinations[index].withLabel(labels[index]),
+    );
     final pageCurve = CurvedAnimation(
       parent: _pageAnimation,
       curve: Curves.easeOutCubic,
@@ -129,7 +142,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       ),
       bottomNavigationBar: _HomeBottomNavigationBar(
-        destinations: _destinations,
+        destinations: localizedDestinations,
         selectedIndex: _selectedIndex,
         onSelected: _selectPage,
       ),
@@ -189,10 +202,10 @@ class _HomeTabState extends State<_HomeTab> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 68,
-        title: Text(AppStrings.of(context).appName),
+        title: Text(AppLocalizations.of(context).appName),
         actions: [
           IconButton(
-            tooltip: AppStrings.of(context).changeLanguage,
+            tooltip: AppLocalizations.of(context).changeLanguage,
             onPressed: () => context.read<AppLocaleController>().toggle(),
             icon: const Icon(Icons.translate_rounded),
           ),
@@ -502,6 +515,13 @@ class _NavigationDestination {
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  _NavigationDestination withLabel(String localizedLabel) =>
+      _NavigationDestination(
+        label: localizedLabel,
+        icon: icon,
+        selectedIcon: selectedIcon,
+      );
 }
 
 class _HeroCard extends StatelessWidget {

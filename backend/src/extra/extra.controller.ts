@@ -24,7 +24,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/constants/roles.enum';
 import { CreateExtraDto } from './dto/create-extra.dto';
-import { BulkSeedPlacesDto, PatchPlacesDto } from './dto/places.dto';
+import {
+  BackfillPlaceTrustDto,
+  BulkSeedPlacesDto,
+  PatchPlacesDto,
+} from './dto/places.dto';
 import { UpdateExtraDto } from './dto/update-extra.dto';
 import { ExtraCategory } from './constants/extra-category.enum';
 import { ExtraService } from './extra.service';
@@ -161,6 +165,34 @@ export class ExtraController {
       actorId,
       operationCount: dto.operations.length,
       operations: dto.operations.map((operation) => operation.type),
+    });
+    return result;
+  }
+
+  @Post('places/trust-backfill')
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.Admin)
+  @ApiOperation({
+    summary:
+      'Admin: preview or apply trusted coordinates to existing catalog places',
+  })
+  @ApiBody({ type: BackfillPlaceTrustDto })
+  @ApiOkResponse({
+    description: 'Backfill previewed or atomically applied successfully',
+  })
+  async backfillPlaceTrust(
+    @Body() dto: BackfillPlaceTrustDto,
+    @CurrentUser('userId') actorId: string,
+  ) {
+    const result = await this.placesService.backfillTrustedCoordinates(dto);
+    await this.audit.logEvent({
+      type: result.dryRun
+        ? 'places.trust_backfill_previewed'
+        : 'places.trust_backfilled',
+      actorId,
+      requested: result.summary.requested,
+      changed: result.summary.changed,
     });
     return result;
   }

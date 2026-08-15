@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trtripsathi_mobile/app/app_router.dart';
@@ -10,6 +9,7 @@ import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
+import 'package:trtripsathi_mobile/l10n/generated/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/achievements/presentation/providers/achievements_provider.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/pages/account_verification_page.dart';
@@ -150,13 +150,8 @@ class _TripSathiAppState extends State<TripSathiApp> {
           navigatorKey: TripSathiApp.navigatorKey,
           title: 'Yatri',
           locale: localeController.locale,
-          supportedLocales: AppStrings.supportedLocales,
-          localizationsDelegates: const [
-            AppStrings.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           themeMode: ThemeMode.light,
           theme: AppTheme.light(),
           builder: (context, child) => ColoredBox(
@@ -181,7 +176,7 @@ class _TripSathiAppState extends State<TripSathiApp> {
                                 vertical: 8,
                               ),
                               child: Text(
-                                AppStrings.of(context).offline,
+                                AppLocalizations.of(context).offline,
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,

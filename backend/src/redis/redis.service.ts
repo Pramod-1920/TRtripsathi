@@ -36,4 +36,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   getClient(): any | null {
     return this.client;
   }
+
+  async health() {
+    const configured = Boolean(process.env.REDIS_URL?.trim());
+    if (!configured) return { configured: false, connected: true };
+    if (!this.client) return { configured: true, connected: false };
+
+    try {
+      const pong = await this.client.ping();
+      return { configured: true, connected: pong === 'PONG' };
+    } catch {
+      return { configured: true, connected: false };
+    }
+  }
 }

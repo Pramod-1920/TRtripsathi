@@ -9,6 +9,18 @@ import { AuditEvent } from './audit-event.schema';
 const LOG_DIR = path.join(process.cwd(), 'logs');
 const AUDIT_LOG = path.join(LOG_DIR, 'audit.log');
 
+export type AuditListOptions = {
+  page?: number;
+  limit?: number;
+  type?: string;
+  action?: string;
+  actorId?: string;
+  entityType?: string;
+  entityId?: string;
+  from?: string;
+  to?: string;
+};
+
 @Injectable()
 export class AuditService implements OnModuleInit {
   private s3Client: any = null;
@@ -103,12 +115,11 @@ export class AuditService implements OnModuleInit {
     }
   }
 
-  async listEvents(options: { page?: number; limit?: number; type?: string }) {
+  async listEvents(options: AuditListOptions) {
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(100, Math.max(1, options.limit ?? 50));
     try {
-      const escaped = options.type?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const filter = escaped ? { type: { $regex: `^${escaped}` } } : {};
+      const filter = this.buildFilter(options);
       const [records, total] = await Promise.all([
         this.auditModel
           .find(filter)
@@ -124,6 +135,8 @@ export class AuditService implements OnModuleInit {
           timestamp: record.timestamp,
           type: record.type,
           actorId: record.actorId,
+          entityType: record.entityType,
+          entityId: record.entityId,
           ...(record.details ?? {}),
         })),
         total,
@@ -131,23 +144,87 @@ export class AuditService implements OnModuleInit {
         limit,
       };
     } catch {
-      return this.listFileEvents(page, limit, options.type);
+      return this.listFileEvents(page, limit, options);
     }
   }
 
   private normalize(event: Record<string, unknown>, fallbackId?: string) {
-    const { eventId, timestamp, type, actorId, adminId, userId, ...details } =
-      event;
+    const {
+      eventId,
+      timestamp,
+      type,
+      actorId,
+      adminId,
+      userId,
+      entityType,
+      entityId,
+      ...details
+    } = event;
+    const normalizedType = String(type ?? 'unknown');
     return {
       eventId: String(eventId ?? fallbackId ?? crypto.randomUUID()),
-      type: String(type ?? 'unknown'),
+      type: normalizedType,
       actorId: String(actorId ?? adminId ?? userId ?? '') || undefined,
+      entityType: this.inferEntityType(entityType, normalizedType, details),
+      entityId: this.inferEntityId(entityId, details),
       details,
       timestamp: new Date(String(timestamp ?? new Date().toISOString())),
     };
   }
 
-  private async listFileEvents(page: number, limit: number, type?: string) {
+  private buildFilter(options: AuditListOptions) {
+    const filter: Record<string, unknown> = {};
+    const action = options.action ?? options.type;
+    if (action) {
+      const escaped = action.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.type = { $regex: `^${escaped}`, $options: 'i' };
+    }
+    if (options.actorId) filter.actorId = options.actorId;
+    if (options.entityType) filter.entityType = options.entityType;
+    if (options.entityId) filter.entityId = options.entityId;
+
+    const from = options.from ? new Date(options.from) : undefined;
+    const to = options.to ? new Date(options.to) : undefined;
+    const timestamp: Record<string, Date> = {};
+    if (from && !Number.isNaN(from.getTime())) timestamp.$gte = from;
+    if (to && !Number.isNaN(to.getTime())) timestamp.$lte = to;
+    if (Object.keys(timestamp).length) filter.timestamp = timestamp;
+    return filter;
+  }
+
+  private inferEntityId(explicit: unknown, details: Record<string, unknown>) {
+    const value =
+      explicit ??
+      details.profileId ??
+      details.requestCode ??
+      details.reportId ??
+      details.campaignId ??
+      details.campaignCode ??
+      details.placeId ??
+      details.tripId;
+    return String(value ?? '') || undefined;
+  }
+
+  private inferEntityType(
+    explicit: unknown,
+    eventType: string,
+    details: Record<string, unknown>,
+  ) {
+    if (explicit) return String(explicit);
+    if (details.reportId) return 'report';
+    if (details.requestCode) return 'photo_verification';
+    if (details.profileId) return 'profile';
+    if (details.campaignId || details.campaignCode) return 'campaign';
+    if (details.placeId) return 'place';
+    if (details.tripId) return 'trip';
+    return eventType.split('.')[0] || undefined;
+  }
+
+  private async listFileEvents(
+    page: number,
+    limit: number,
+    options: AuditListOptions,
+  ) {
     let lines: string[] = [];
     try {
       lines = (await fs.promises.readFile(AUDIT_LOG, 'utf8'))
@@ -162,7 +239,23 @@ export class AuditService implements OnModuleInit {
           return [];
         }
       })
-      .filter((event) => !type || String(event.type ?? '').startsWith(type))
+      .filter((event) => {
+        const normalized = this.normalize(event);
+        const action = options.action ?? options.type;
+        const eventTime = normalized.timestamp.getTime();
+        const from = options.from ? new Date(options.from).getTime() : NaN;
+        const to = options.to ? new Date(options.to).getTime() : NaN;
+        return (
+          (!action ||
+            normalized.type.toLowerCase().startsWith(action.toLowerCase())) &&
+          (!options.actorId || normalized.actorId === options.actorId) &&
+          (!options.entityType ||
+            normalized.entityType === options.entityType) &&
+          (!options.entityId || normalized.entityId === options.entityId) &&
+          (Number.isNaN(from) || eventTime >= from) &&
+          (Number.isNaN(to) || eventTime <= to)
+        );
+      })
       .reverse();
     const start = (page - 1) * limit;
     return {

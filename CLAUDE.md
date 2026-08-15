@@ -100,10 +100,12 @@ Important report rule: only a `User` may create a complaint/report. Admins and m
 - OTPs are exactly six numeric digits.
 - An OTP expires after three minutes.
 - Resend has a 60-second cooldown.
+- Password recovery exposes `POST /auth/password/resend` using the opaque challenge ID; Flutter disables resend during the cooldown and adopts the replacement challenge after a successful resend.
 - Verification is attempt-limited, currently five attempts per code.
 - Requests are rate-limited per account and purpose, currently five per hour.
 - Recovery responses are enumeration-safe and do not reveal whether an account exists.
 - Resetting a password invalidates existing refresh sessions/tokens.
+- Reset also fails if the registered recovery email/phone changed after the code was issued; the old challenge is consumed without changing the password.
 - OTP delivery uses the registered contact resolved by the backend, not an arbitrary destination supplied for delivery.
 - New account/contact verification flows exist for email and phone where applicable.
 - Legacy accounts have an explicit migration/verification state rather than silently being treated as newly verified.
@@ -126,6 +128,7 @@ Important report rule: only a `User` may create a complaint/report. Admins and m
 - Exact duplicate images are detected with a SHA-256 content fingerprint.
 - A rejected submission requires a meaningful reason.
 - A rejected item has a controlled appeal path; it is not an unlimited resubmission loophole.
+- Photo appeals atomically transition the same rejected request back to pending exactly once, preserve its original evidence/hash, require the User role, and are audited.
 - Approval is idempotent: retrying or concurrently submitting the same approval cannot award XP twice.
 
 #### XP rules
@@ -197,6 +200,7 @@ Important report rule: only a `User` may create a complaint/report. Admins and m
 - Place records support category and subcategory selection.
 - Place records support trusted coordinates and a verification radius.
 - Weather/geocoding helpers can assist administration, but saved trusted coordinates remain an administrative decision.
+- Existing-place trust metadata can be previewed or atomically applied through admin-only `POST /extra/places/trust-backfill`; preview mode is the default and does not write.
 - API/UI normalization handles older hierarchy records where arrays such as `places` are absent, preventing `.length` errors.
 - Existing production place records may still require metadata backfill.
 
@@ -233,9 +237,9 @@ Important report rule: only a `User` may create a complaint/report. Admins and m
 
 - `GET /health` provides an overall health response.
 - `GET /health/live` is the liveness endpoint.
-- `GET /health/ready` checks readiness and returns HTTP 503 when MongoDB is not ready.
+- `GET /health/ready` checks MongoDB and optional configured Redis, returning HTTP 503 when a required dependency is not ready.
 - `GET /health/metrics` exposes application metrics.
-- Production metrics access is protected with an `x-monitoring-token` header.
+- Metrics access is protected with an `x-monitoring-token` whenever `MONITORING_TOKEN` is configured; production fails closed if it is missing.
 - Metrics and alert services are grouped in the observability module.
 - Alert webhooks support configurable 5xx thresholds and cooldowns.
 - Expected environment names include `MONITORING_TOKEN`, `ALERT_WEBHOOK_URL`, `ALERT_5XX_THRESHOLD`, and `ALERT_COOLDOWN_MS`.
@@ -248,14 +252,15 @@ Important report rule: only a `User` may create a complaint/report. Admins and m
 - Optional external/S3 mirroring remains supported where configured.
 - Report status/assignment changes and place patch/bulk changes produce explicit audit events.
 - Existing campaign, photo verification, and administrative actions also feed audit history where wired.
-- Admins/moderators can query `GET /audit/events`.
-- The Admin application includes a searchable `/audit` page and sidebar entry.
+- Admins/moderators can query `GET /audit/events`; user accounts are rejected by the existing JWT/role guards.
+- Audit events normalize actor, entity type, and entity ID and can be filtered by action prefix, actor, entity, and date range.
+- The Admin application includes a filterable `/audit` page and sidebar entry.
 
 #### Accessibility, localization, and offline behavior
 
 - The Flutter application has a persisted English/Nepali language preference.
 - A language control is available from the Dashboard.
-- Core application shell strings have localization support.
+- Core application shell/navigation strings use generated English and Nepali ARB resources under `Users/lib/l10n/`.
 - Full feature-by-feature translation is not complete.
 - Offline/connectivity state is tracked and exposed with a live semantic banner.
 - Network calls involved in authentication use bounded timeouts, currently 15 seconds.
@@ -413,10 +418,10 @@ Use HTTPS for release builds and real devices.
 At the end of the Phase 4 work:
 
 - Backend TypeScript/Nest build passed.
-- Backend tests passed: 11/11 across 6 suites, including concurrent XP-award and photo-approval regression coverage.
+- Backend tests passed: 46/46 across 13 suites, including OTP security boundaries, geofence, evidence duplicate, trusted-coordinate backfill, concurrent XP/photo-approval, appeal-state, readiness failure, protected metrics, and audit authorization/filter coverage.
 - Admin production build passed and included `/audit`.
 - Flutter analyzer reported no issues.
-- Flutter tests passed: 15/15.
+- Flutter tests passed: 17/17, including generated English/Nepali resources and persisted locale selection.
 
 These results prove the checked-out source built and passed its local suite at that time. They do not prove that the latest revision is deployed, that external providers are correctly configured, or that production data has been migrated/backfilled.
 

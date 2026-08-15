@@ -20,11 +20,23 @@ export class AuditController {
     @Query('page') page = '1',
     @Query('limit') limit = '50',
     @Query('type') type?: string,
+    @Query('action') action?: string,
+    @Query('actorId') actorId?: string,
+    @Query('entityType') entityType?: string,
+    @Query('entityId') entityId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.audit.listEvents({
       page: Number(page),
       limit: Number(limit),
       type: type?.trim() || undefined,
+      action: action?.trim() || undefined,
+      actorId: actorId?.trim() || undefined,
+      entityType: entityType?.trim() || undefined,
+      entityId: entityId?.trim() || undefined,
+      from: from?.trim() || undefined,
+      to: to?.trim() || undefined,
     });
   }
 }
