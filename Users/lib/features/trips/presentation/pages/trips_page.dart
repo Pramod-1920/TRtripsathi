@@ -13,7 +13,9 @@ import 'package:trtripsathi_mobile/features/trips/presentation/pages/trip_detail
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
 
 class TripsListScreen extends StatefulWidget {
-  const TripsListScreen({super.key});
+  const TripsListScreen({this.initialFilter = 0, super.key});
+
+  final int initialFilter;
 
   @override
   State<TripsListScreen> createState() => _TripsListScreenState();
@@ -22,12 +24,13 @@ class TripsListScreen extends StatefulWidget {
 class _TripsListScreenState extends State<TripsListScreen> {
   late TripsProvider _tripsProvider;
   late CampaignsProvider _campaignsProvider;
-  int _myTripsFilter = 0;
+  late int _myTripsFilter;
   String? _decidingCampaignId;
 
   @override
   void initState() {
     super.initState();
+    _myTripsFilter = widget.initialFilter.clamp(0, 2);
     _tripsProvider = context.read<TripsProvider>();
     _campaignsProvider = context.read<CampaignsProvider>();
     if (!_tripsProvider.hasLoaded) _tripsProvider.loadTrips();

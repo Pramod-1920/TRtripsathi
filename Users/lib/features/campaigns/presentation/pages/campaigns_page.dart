@@ -7,7 +7,9 @@ import 'package:trtripsathi_mobile/features/campaigns/domain/campaign_lifecycle.
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 
 class CampaignsListScreen extends StatefulWidget {
-  const CampaignsListScreen({super.key});
+  const CampaignsListScreen({this.openPrivateFinder = false, super.key});
+
+  final bool openPrivateFinder;
 
   @override
   State<CampaignsListScreen> createState() => _CampaignsListScreenState();
@@ -43,6 +45,11 @@ class _CampaignsListScreenState extends State<CampaignsListScreen> {
     _campaignsProvider = context.read<CampaignsProvider>();
     _campaignsProvider.loadCampaigns();
     _loadIdentity();
+    if (widget.openPrivateFinder) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _findPrivateCampaign();
+      });
+    }
   }
 
   Future<void> _loadIdentity() async {

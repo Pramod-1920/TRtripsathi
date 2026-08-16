@@ -6,11 +6,13 @@ import 'package:trtripsathi_mobile/core/widgets/rank_badge_icon.dart';
 import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
 import 'package:trtripsathi_mobile/l10n/generated/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
+import 'package:trtripsathi_mobile/features/campaigns/domain/campaign_lifecycle.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 import 'package:trtripsathi_mobile/features/chat/presentation/pages/chat_page.dart';
 import 'package:trtripsathi_mobile/features/map/presentation/pages/trip_map_page.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/profile_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/trips_page.dart';
+import 'package:trtripsathi_mobile/features/trips/presentation/pages/create_trip_wizard.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -73,7 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _resetPageSlots() {
     _pages = <Widget?>[
-      _HomeTab(onSelectPage: _selectPage),
+      _HomeTab(onSelectPage: _selectPage, onOpenTrips: _openTrips),
       null,
       null,
       null,
@@ -101,10 +103,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       2 => const CampaignsListScreen(),
       3 => const ChatInboxScreen(),
       4 => const TripMapScreen(),
-      _ => _HomeTab(onSelectPage: _selectPage),
+      _ => _HomeTab(onSelectPage: _selectPage, onOpenTrips: _openTrips),
     };
 
     setState(() => _selectedIndex = index);
+    _pageAnimation.forward(from: 0);
+  }
+
+  void _openTrips(int filter) {
+    _ensurePageSlots();
+    _pages[1] = TripsListScreen(initialFilter: filter);
+    setState(() => _selectedIndex = 1);
     _pageAnimation.forward(from: 0);
   }
 
@@ -192,9 +201,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 class _HomeTab extends StatefulWidget {
-  const _HomeTab({required this.onSelectPage});
+  const _HomeTab({required this.onSelectPage, required this.onOpenTrips});
 
   final ValueChanged<int> onSelectPage;
+  final ValueChanged<int> onOpenTrips;
 
   @override
   State<_HomeTab> createState() => _HomeTabState();
@@ -232,13 +242,160 @@ class _HomeTabState extends State<_HomeTab> {
     });
   }
 
+  Future<void> _refresh() async {
+    final results = await Future.wait([
+      ApiService.getProfile(forceRefresh: true),
+      context.read<CampaignsProvider>().loadCampaigns(),
+      context.read<TripsProvider>().loadTrips(),
+    ]);
+    if (!mounted) return;
+    setState(() => _profile = Map<String, dynamic>.from(results.first as Map));
+  }
+
+  Future<void> _createTrip() async {
+    final created = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const CreateTripWizard()),
+    );
+    if (created == null || !mounted) return;
+    await context.read<CampaignsProvider>().loadCampaigns();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Your new trip is ready.')),
+    );
+  }
+
+  void _openPrivateCampaignFinder() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const CampaignsListScreen(openPrivateFinder: true),
+      ),
+    );
+  }
+
+  _HomeActionData? _nextAction(List<Map<String, dynamic>> campaigns) {
+    Map<String, dynamic>? find(bool Function(Map<String, dynamic>) test) {
+      for (final campaign in campaigns) {
+        if (test(campaign)) return campaign;
+      }
+      return null;
+    }
+
+    final photoVerification =
+        find((item) => item['awaitingVerification'] == true);
+    if (photoVerification != null) {
+      return _HomeActionData(
+        eyebrow: 'TIME SENSITIVE',
+        title: 'Verify your completed trip',
+        description:
+            'Upload your trip photo or video before the verification window closes.',
+        buttonLabel: 'Open finished trips',
+        icon: Icons.add_a_photo_rounded,
+        color: const Color(0xFF8B5E00),
+        onTap: () => widget.onOpenTrips(2),
+      );
+    }
+
+    final decision = find(
+      (item) => item['minimumParticipantDecisionRequired'] == true,
+    );
+    if (decision != null) {
+      return _HomeActionData(
+        eyebrow: 'HOST DECISION REQUIRED',
+        title: (decision['title'] ?? 'Your campaign').toString(),
+        description:
+            'The minimum traveler count was not reached. Continue to planning or end the campaign.',
+        buttonLabel: 'Decide now',
+        icon: Icons.groups_2_rounded,
+        color: const Color(0xFFB45309),
+        onTap: () => widget.onOpenTrips(0),
+      );
+    }
+
+    final planning = find((item) {
+      final phase = (item['lifecyclePhase'] ?? '').toString().toLowerCase();
+      final plan = item['planning'];
+      return phase == 'planning' &&
+          (plan is! Map || plan['isComplete'] != true);
+    });
+    if (planning != null) {
+      return _HomeActionData(
+        eyebrow: 'PLANNING IN PROGRESS',
+        title: (planning['title'] ?? 'Complete your trip plan').toString(),
+        description:
+            'Finish the meeting point, transport, costs and traveler tasks.',
+        buttonLabel: 'Continue planning',
+        icon: Icons.fact_check_rounded,
+        color: AppColors.navy,
+        onTap: () => widget.onOpenTrips(0),
+      );
+    }
+
+    final ongoing = find(
+      (item) =>
+          (item['lifecyclePhase'] ?? '').toString().toLowerCase() == 'started',
+    );
+    if (ongoing != null) {
+      return _HomeActionData(
+        eyebrow: 'HAPPENING NOW',
+        title: (ongoing['title'] ?? 'Your trip is underway').toString(),
+        description: 'Keep the route, campaign details and group chat close.',
+        buttonLabel: 'View ongoing trip',
+        icon: Icons.directions_walk_rounded,
+        color: const Color(0xFF176B55),
+        onTap: () => widget.onOpenTrips(1),
+      );
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic>? _nextUpcoming(
+    List<Map<String, dynamic>> campaigns,
+  ) {
+    final now = DateTime.now();
+    final future = campaigns.where((item) {
+      final date = DateTime.tryParse((item['startDate'] ?? '').toString());
+      final phase = (item['lifecyclePhase'] ?? '').toString().toLowerCase();
+      return date != null &&
+          date.isAfter(now) &&
+          phase != 'cancelled' &&
+          phase != 'completed';
+    }).toList()
+      ..sort((a, b) => DateTime.parse(a['startDate'].toString())
+          .compareTo(DateTime.parse(b['startDate'].toString())));
+    return future.isEmpty ? null : future.first;
+  }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final campaignProvider = context.watch<CampaignsProvider>();
+    final campaigns = campaignProvider.createdCampaigns;
+    final discoveries = campaignProvider.campaigns
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .take(2)
+        .toList(growable: false);
     final photoUrl = (_profile?['profilePhoto'] ?? '').toString().trim();
+    final firstName = (_profile?['firstName'] ?? '').toString().trim();
     final rankCode =
         (_profile?['experienceLevel'] ?? 'F').toString().trim().toUpperCase();
     final rankProgress = _rankProgressValue(_profile);
     final rankColor = _rankGaugeColor(rankCode);
+    final progress = _profile?['nextRankProgress'];
+    final nextRank =
+        progress is Map ? (progress['nextRank'] ?? '').toString().trim() : '';
+    final xpToNext =
+        progress is Map ? (progress['xpToNextRank'] as num?)?.toInt() : null;
+    final totalXp = (_profile?['totalXp'] as num?)?.toInt() ?? 0;
+    final nextAction = _nextAction(campaigns);
+    final upcoming = _nextUpcoming(campaigns);
 
     return Scaffold(
       appBar: AppBar(
@@ -322,91 +479,135 @@ class _HomeTabState extends State<_HomeTab> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        children: [
-          _HeroCard(
-            title: 'Plan your next adventure',
-            subtitle: 'Trips, campaigns, and community—right here.',
-            onTap: () => widget.onSelectPage(1),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Quick actions',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.person,
-                  label: 'Profile',
-                  onTap: _openProfile,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.travel_explore,
-                  label: 'Trips',
-                  onTap: () => widget.onSelectPage(1),
-                ),
-              ),
+      body: RefreshIndicator(
+        color: AppColors.navy,
+        onRefresh: _refresh,
+        child: ListView(
+          key: const PageStorageKey('dashboard-home'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+          children: [
+            Text(
+              '${_greeting()}, ${firstName.isEmpty ? 'explorer' : firstName}',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.4,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Here is what matters for your journey today.',
+              style: TextStyle(color: AppColors.muted),
+            ),
+            if (nextAction != null) ...[
+              const SizedBox(height: 18),
+              _HomeActionCard(action: nextAction),
             ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.campaign,
-                  label: 'Campaigns',
-                  onTap: () => widget.onSelectPage(2),
+            const SizedBox(height: 14),
+            _RankProgressCard(
+              rankCode: rankCode,
+              badge: _profile?['currentRankBadge'],
+              progress: rankProgress,
+              progressColor: rankColor,
+              totalXp: totalXp,
+              nextRank: nextRank,
+              xpToNext: xpToNext,
+              onTap: _openProfile,
+            ),
+            const SizedBox(height: 14),
+            _JourneySnapshot(
+              hosted: campaigns.length,
+              active: campaignProvider.openCreatedCampaigns.length,
+              completed: campaignProvider.expiredCreatedCampaigns.length,
+            ),
+            const SizedBox(height: 22),
+            const _DashboardSectionTitle(
+              title: 'Quick actions',
+              subtitle: 'Start with one tap',
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.add_road_rounded,
+                    label: 'Plan trip',
+                    onTap: _createTrip,
+                  ),
                 ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.key_rounded,
+                    label: 'Join code',
+                    onTap: _openPrivateCampaignFinder,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.map_rounded,
+                    label: 'Open map',
+                    onTap: () => widget.onSelectPage(4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            _DashboardSectionTitle(
+              title: 'Upcoming',
+              subtitle: upcoming == null
+                  ? 'Nothing scheduled yet'
+                  : 'Your nearest scheduled journey',
+            ),
+            const SizedBox(height: 10),
+            if (upcoming == null)
+              _DashboardEmptyUpcoming(
+                onTap: () => widget.onSelectPage(2),
+              )
+            else
+              _UpcomingJourneyCard(
+                campaign: upcoming,
+                onTap: () => widget.onOpenTrips(0),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.reviews,
-                  label: 'Reviews',
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Reviews coming soon')),
+            const SizedBox(height: 22),
+            _DashboardSectionTitle(
+              title: 'Discover campaigns',
+              subtitle: discoveries.isEmpty
+                  ? 'New journeys will appear here'
+                  : 'From the TripSathi community',
+            ),
+            const SizedBox(height: 10),
+            if (discoveries.isEmpty)
+              _DashboardEmptyDiscovery(
+                onTap: () => widget.onSelectPage(2),
+              )
+            else ...[
+              ...discoveries.map(
+                (campaign) => Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: _DiscoveryCampaignCard(
+                    campaign: campaign,
+                    onTap: () => widget.onSelectPage(2),
                   ),
                 ),
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => widget.onSelectPage(2),
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                  label: const Text('View all campaigns'),
+                ),
+              ),
             ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Explore',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 10),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.auto_awesome),
-              title: const Text('Recommended for you'),
-              subtitle: const Text('We will personalize this soon'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Recommendations coming soon')),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.shield),
-              title: const Text('Safety & tips'),
-              subtitle: const Text('Learn what to pack and how to prepare'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Tips coming soon')),
-              ),
-            ),
-          ),
-        ],
+            if (campaignProvider.loading) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(minHeight: 2),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -576,79 +777,490 @@ class _NavigationDestination {
       );
 }
 
-class _HeroCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _HeroCard({
+class _HomeActionData {
+  const _HomeActionData({
+    required this.eyebrow,
     required this.title,
-    required this.subtitle,
+    required this.description,
+    required this.buttonLabel,
+    required this.icon,
+    required this.color,
     required this.onTap,
   });
 
+  final String eyebrow;
+  final String title;
+  final String description;
+  final String buttonLabel;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+}
+
+class _HomeActionCard extends StatelessWidget {
+  const _HomeActionCard({required this.action});
+
+  final _HomeActionData action;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: action.color,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: action.color.withValues(alpha: .2),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(action.icon, color: AppColors.gold),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    action.eyebrow,
+                    style: const TextStyle(
+                      color: Color(0xFFFFE3A5),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 15),
+            Text(
+              action.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 21,
+                height: 1.15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              action.description,
+              style: const TextStyle(color: Colors.white70, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: action.onTap,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                foregroundColor: AppColors.navy,
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: Text(action.buttonLabel),
+            ),
+          ],
+        ),
+      );
+}
+
+class _RankProgressCard extends StatelessWidget {
+  const _RankProgressCard({
+    required this.rankCode,
+    required this.badge,
+    required this.progress,
+    required this.progressColor,
+    required this.totalXp,
+    required this.nextRank,
+    required this.xpToNext,
+    required this.onTap,
+  });
+
+  final String rankCode;
+  final Object? badge;
+  final double progress;
+  final Color progressColor;
+  final int totalXp;
+  final String nextRank;
+  final int? xpToNext;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppColors.line),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                RankBadgeIcon(rankCode: rankCode, badge: badge, size: 52),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Rank $rankCode · $totalXp XP',
+                              style: const TextStyle(
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.muted),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 7,
+                          color: progressColor,
+                          backgroundColor: AppColors.line,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        nextRank.isEmpty
+                            ? 'Your highest journey rank'
+                            : '${xpToNext ?? 0} XP until Rank $nextRank',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+}
+
+class _JourneySnapshot extends StatelessWidget {
+  const _JourneySnapshot({
+    required this.hosted,
+    required this.active,
+    required this.completed,
+  });
+
+  final int hosted;
+  final int active;
+  final int completed;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F4F1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            _JourneyMetric(value: hosted, label: 'Hosted'),
+            const _JourneyMetricDivider(),
+            _JourneyMetric(value: active, label: 'Open'),
+            const _JourneyMetricDivider(),
+            _JourneyMetric(value: completed, label: 'History'),
+          ],
+        ),
+      );
+}
+
+class _JourneyMetric extends StatelessWidget {
+  const _JourneyMetric({required this.value, required this.label});
+
+  final int value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Column(
+          children: [
+            Text(
+              '$value',
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.muted, fontSize: 10),
+            ),
+          ],
+        ),
+      );
+}
+
+class _JourneyMetricDivider extends StatelessWidget {
+  const _JourneyMetricDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 1,
+        height: 28,
+        color: AppColors.line,
+      );
+}
+
+class _DashboardSectionTitle extends StatelessWidget {
+  const _DashboardSectionTitle({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Text(
+            subtitle,
+            style: const TextStyle(color: AppColors.muted, fontSize: 11),
+          ),
+        ],
+      );
+}
+
+class _UpcomingJourneyCard extends StatelessWidget {
+  const _UpcomingJourneyCard({required this.campaign, required this.onTap});
+
+  final Map<String, dynamic> campaign;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Ink(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: LinearGradient(
-            colors: [
-              cs.primary.withValues(alpha: 0.12),
-              cs.primary.withValues(alpha: 0.06),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    final start =
+        DateTime.tryParse((campaign['startDate'] ?? '').toString())?.toLocal();
+    final location = [campaign['placeName'], campaign['district']]
+        .map((value) => (value ?? '').toString().trim())
+        .where((value) => value.isNotEmpty)
+        .join(', ');
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppColors.gold.withValues(alpha: .18),
+            borderRadius: BorderRadius.circular(15),
           ),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+          child:
+              const Icon(Icons.event_available_rounded, color: AppColors.navy),
         ),
+        title: Text(
+          (campaign['title'] ?? 'Upcoming journey').toString(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+        subtitle: Text(
+          [
+            if (location.isNotEmpty) location,
+            if (start != null) '${start.day}/${start.month}/${start.year}',
+            campaignStatusLabel(campaign),
+          ].join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+      ),
+    );
+  }
+}
+
+class _DashboardEmptyUpcoming extends StatelessWidget {
+  const _DashboardEmptyUpcoming({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.explore_outlined, color: AppColors.navy),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Find a campaign and put your next journey on the calendar.',
+                style: TextStyle(color: AppColors.muted, height: 1.35),
+              ),
+            ),
+            TextButton(onPressed: onTap, child: const Text('Explore')),
+          ],
+        ),
+      );
+}
+
+class _DiscoveryCampaignCard extends StatelessWidget {
+  const _DiscoveryCampaignCard({
+    required this.campaign,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> campaign;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (campaign['title'] ?? 'Community campaign').toString();
+    final location = [campaign['placeName'], campaign['district']]
+        .map((value) => (value ?? '').toString().trim())
+        .where((value) => value.isNotEmpty)
+        .join(', ');
+    final category = (campaign['category'] ?? '').toString().trim();
+    final details = [
+      if (location.isNotEmpty) location,
+      if (category.isNotEmpty) category,
+    ].join(' · ');
+
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: AppColors.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               Container(
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(16),
+                  color: const Color(0xFFE9F3EE),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.terrain, color: Colors.white),
+                child: const Icon(
+                  Icons.landscape_rounded,
+                  color: AppColors.navy,
+                ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.navy,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    if (details.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        details,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 5),
                     Text(
-                      subtitle,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(fontSize: 13.5),
+                      campaignStatusLabel(campaign),
+                      style: const TextStyle(
+                        color: AppColors.navyLight,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class _DashboardEmptyDiscovery extends StatelessWidget {
+  const _DashboardEmptyDiscovery({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.travel_explore_rounded,
+              color: AppColors.navyLight,
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Browse community campaigns and find people to travel with.',
+                style: TextStyle(color: AppColors.muted, height: 1.3),
+              ),
+            ),
+            TextButton(onPressed: onTap, child: const Text('Browse')),
+          ],
+        ),
+      );
 }
 
 class _QuickAction extends StatelessWidget {
@@ -669,13 +1281,13 @@ class _QuickAction extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFE2E8F0)),
           color: Colors.white,
         ),
-        child: Row(
+        child: Column(
           children: [
             Container(
               width: 38,
@@ -686,17 +1298,16 @@ class _QuickAction extends StatelessWidget {
               ),
               child: Icon(icon, color: cs.primary),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontSize: 15),
-              ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: AppColors.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
             ),
-            const Icon(Icons.chevron_right, size: 18),
           ],
         ),
       ),
