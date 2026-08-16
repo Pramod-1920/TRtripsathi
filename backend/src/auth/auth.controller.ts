@@ -192,14 +192,14 @@ export class AuthController {
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Sign in with email or phone number and password' })
+  @ApiOperation({ summary: 'Sign in with phone number and password' })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 401,
-    description: 'Invalid email, phone number, or password',
+    description: 'Invalid phone number or password',
     example: {
       statusCode: 401,
-      message: 'Invalid email, phone number, or password',
+      message: 'Invalid phone number or password',
       error: 'Unauthorized',
     },
   })

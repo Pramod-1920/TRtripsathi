@@ -398,23 +398,16 @@ class ApiService {
     return {'url': secureUrl, 'publicId': publicId, 'mediaType': mediaType};
   }
 
-  /// POST /auth/login - Login with email/phone and password
+  /// POST /auth/login - Login with a phone number and password.
   static Future<Map<String, dynamic>> login(
-      String identifier, String password) async {
+      String phoneNumber, String password) async {
     final uri = Uri.parse('$baseUrl/auth/login');
-    final rawIdentifier = identifier.trim();
-    final isEmail = rawIdentifier.contains('@');
-    final normalizedIdentifier = isEmail
-        ? rawIdentifier.toLowerCase()
-        : normalizePhoneNumber(rawIdentifier);
+    final normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
     final res = await http
         .post(uri,
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              if (isEmail)
-                'email': normalizedIdentifier
-              else
-                'phoneNumber': normalizedIdentifier,
+              'phoneNumber': normalizedPhoneNumber,
               'password': password,
             }))
         .timeout(const Duration(seconds: 15));
@@ -423,12 +416,7 @@ class ApiService {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       await _storeTokens(body);
       await _cacheAccountIdentity(body);
-      await _cacheAccountIdentity({
-        if (isEmail)
-          'email': normalizedIdentifier
-        else
-          'phoneNumber': normalizedIdentifier,
-      });
+      await _cacheAccountIdentity({'phoneNumber': normalizedPhoneNumber});
       onAuthStateChanged?.call(true);
       return body;
     }
@@ -1394,6 +1382,23 @@ class ApiService {
       return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
     }
     throw Exception(_errorMessage(res, 'Unable to verify trip completion'));
+  }
+
+  /// Let the host continue below the minimum participant requirement or end it.
+  static Future<Map<String, dynamic>> decideMinimumParticipants(
+    String campaignId,
+    String decision,
+  ) async {
+    final res = await _postWithAuth(
+      Uri.parse('$baseUrl/campaigns/$campaignId/minimum-participants-decision'),
+      body: jsonEncode({'decision': decision}),
+    );
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(res.body) as Map);
+    }
+    throw Exception(
+      _errorMessage(res, 'Unable to save the campaign decision'),
+    );
   }
 
   /// POST /campaigns/{id}/join - Join a campaign

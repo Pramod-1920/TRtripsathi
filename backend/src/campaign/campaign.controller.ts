@@ -25,6 +25,7 @@ import {
 } from './dto/review-campaign.dto';
 import {
   AddTaskDto,
+  MinimumParticipantDecisionDto,
   TransitionCampaignPhaseDto,
   UpdateParticipantRoleDto,
   UpdatePlanningDto,
@@ -254,6 +255,20 @@ export class CampaignController {
       requesterId,
       isAdmin,
       dto.reason,
+    );
+  }
+
+  @Post(':id/minimum-participants-decision')
+  @UseGuards(JwtAuthGuard)
+  async decideMinimumParticipants(
+    @Param('id') id: string,
+    @Body() dto: MinimumParticipantDecisionDto,
+    @GetCurrentUser('userId') requesterId: string,
+  ) {
+    return this.service.decideMinimumParticipants(
+      id,
+      dto.decision,
+      requesterId,
     );
   }
 

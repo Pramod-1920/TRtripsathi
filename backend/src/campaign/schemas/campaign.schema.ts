@@ -204,6 +204,18 @@ export class Campaign {
   @Prop({ type: Boolean, default: false })
   participantsLocked!: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  minimumParticipantDecisionRequired!: boolean;
+
+  @Prop({ type: Date, default: null })
+  minimumParticipantDecisionRequestedAt?: Date | null;
+
+  @Prop({ type: String, enum: ['continue', 'end'], default: null })
+  minimumParticipantDecision?: 'continue' | 'end' | null;
+
+  @Prop({ type: Date, default: null })
+  minimumParticipantDecisionAt?: Date | null;
+
   @Prop({
     type: {
       createdAt: Date,

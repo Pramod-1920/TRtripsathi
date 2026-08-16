@@ -154,16 +154,15 @@ class _LoginScreenState extends State<LoginScreen>
                             const SizedBox(height: 32),
                             TextFormField(
                               controller: _identifier,
-                              keyboardType: TextInputType.emailAddress,
+                              keyboardType: TextInputType.phone,
                               textInputAction: TextInputAction.next,
                               autofillHints: const [
-                                AutofillHints.email,
                                 AutofillHints.telephoneNumber,
                               ],
                               decoration: const InputDecoration(
-                                labelText: 'Email or phone number',
-                                hintText: 'you@example.com or 98xxxxxxxx',
-                                prefixIcon: Icon(Icons.person_outline_rounded),
+                                labelText: 'Phone number',
+                                hintText: '98xxxxxxxx',
+                                prefixIcon: Icon(Icons.phone_outlined),
                               ),
                               validator: _validateIdentifier,
                             ),
@@ -256,12 +255,9 @@ class _LoginScreenState extends State<LoginScreen>
 
   String? _validateIdentifier(String? rawValue) {
     final value = rawValue?.trim() ?? '';
-    if (value.isEmpty) return 'Enter your email or phone number';
+    if (value.isEmpty) return 'Enter your phone number';
     final isPhone =
         RegExp(r'^\d{10}$').hasMatch(ApiService.normalizePhoneNumber(value));
-    final isEmail = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value);
-    return isPhone || isEmail
-        ? null
-        : 'Enter a valid email or 10-digit phone number';
+    return isPhone ? null : 'Enter a valid 10-digit phone number';
   }
 }

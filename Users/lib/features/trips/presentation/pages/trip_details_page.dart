@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
+import 'package:trtripsathi_mobile/features/campaigns/domain/campaign_lifecycle.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({
@@ -59,10 +60,14 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         .toSet()
         .join(', ');
     final photoUrl = _firstPhotoUrl();
-    final status = _text(
-      'lifecyclePhase',
-      fallback: _text('status', fallback: 'planned'),
-    );
+    final status = widget.isCampaign
+        ? campaignStatusLabel(_trip)
+        : _label(
+            _text(
+              'lifecyclePhase',
+              fallback: _text('status', fallback: 'planned'),
+            ),
+          );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7F5),
@@ -81,8 +86,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               backgroundColor: AppColors.navy,
               foregroundColor: Colors.white,
               surfaceTintColor: Colors.transparent,
-              title: const Text(
-                'Trip details',
+              title: Text(
+                widget.isCampaign ? 'Campaign details' : 'Trip details',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               flexibleSpace: FlexibleSpaceBar(
@@ -92,7 +97,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                   photoUrl: photoUrl,
                   title: title,
                   location: location,
-                  status: _label(status),
+                  status: status,
                 ),
               ),
             ),

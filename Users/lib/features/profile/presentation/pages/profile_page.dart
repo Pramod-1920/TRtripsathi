@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trtripsathi_mobile/core/navigation/route_names.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/notifications/push_notification_service.dart';
+import 'package:trtripsathi_mobile/core/widgets/rank_badge_icon.dart';
 import 'package:trtripsathi_mobile/features/auth/presentation/providers/auth_provider.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/my_journeys_page.dart';
 import 'package:trtripsathi_mobile/features/profile/presentation/pages/place_photo_verification_page.dart';
@@ -771,13 +772,27 @@ class _ProfileHeader extends StatelessWidget {
                                 border: Border.all(
                                     color: Colors.white.withValues(alpha: .15)),
                               ),
-                              child: Text(
-                                '${_rankName(rankCode)}  •  Rank $rankCode  •  Level $level',
-                                style: const TextStyle(
-                                  color: Color(0xFFFFE3A5),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  RankBadgeIcon(
+                                    rankCode: rankCode,
+                                    badge: profile['currentRankBadge'],
+                                    size: 28,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      '${_rankName(rankCode)}  •  Rank $rankCode  •  Level $level',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Color(0xFFFFE3A5),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],

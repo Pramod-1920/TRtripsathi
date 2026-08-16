@@ -1512,6 +1512,15 @@ export class CampaignService {
       throw new NotFoundException('Campaign not found');
 
     if (
+      item.hikeType === 'solo' &&
+      viewerId &&
+      !isAdmin &&
+      item.hostId.toString() !== viewerId
+    ) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (
       viewerId &&
       !isAdmin &&
       item.hostId.toString() !== viewerId &&
@@ -1582,6 +1591,10 @@ export class CampaignService {
       throw new NotFoundException('Campaign not found');
     }
 
+    if (campaign.hikeType === 'solo' && campaign.hostId.toString() !== userId) {
+      throw new NotFoundException('Campaign not found');
+    }
+
     if (
       campaign.visibility === 'private' &&
       this.normalizeCampaignCode(accessCode ?? '') !== campaign.campaignCode
@@ -1615,6 +1628,12 @@ export class CampaignService {
 
     if (campaign.lifecyclePhase !== 'open') {
       throw new BadRequestException('Users can join only during open phase');
+    }
+
+    if (campaign.minimumParticipantDecisionRequired) {
+      throw new BadRequestException(
+        'Campaign enrollment has ended and is awaiting the host decision',
+      );
     }
 
     if (campaign.participantsLocked) {
@@ -2020,9 +2039,33 @@ export class CampaignService {
         this.countAcceptedParticipants(campaign) <
         Math.max(1, Number(campaign.minParticipants ?? 1))
       ) {
-        nextPhase = 'cancelled';
-        campaign.cancellationReason =
-          'Not enough participants to meet minimum requirement';
+        if (campaign.minimumParticipantDecisionRequired) {
+          return;
+        }
+        campaign.minimumParticipantDecisionRequired = true;
+        campaign.minimumParticipantDecisionRequestedAt = now;
+        campaign.minimumParticipantDecision = null;
+        campaign.minimumParticipantDecisionAt = null;
+        campaign.participantsLocked = true;
+        campaign.timeline = campaign.timeline ?? {};
+        campaign.timeline.nextTransitionAt = null;
+        await campaign.save();
+        await this.notificationService.createBulkNotifications(
+          [campaign.hostId.toString()],
+          'admin_message',
+          'Campaign decision required',
+          `Campaign "${campaign.title}" did not reach its minimum participant requirement. Choose whether to continue to planning or end the campaign.`,
+          {
+            campaignId: campaign._id.toString(),
+            action: 'minimum_participants_decision',
+            acceptedParticipants: this.countAcceptedParticipants(campaign),
+            minimumParticipants: Math.max(
+              1,
+              Number(campaign.minParticipants ?? 1),
+            ),
+          },
+        );
+        return;
       } else {
         nextPhase = 'planning';
       }
@@ -2222,6 +2265,10 @@ export class CampaignService {
     campaign.timeline = campaign.timeline ?? {};
     const now = new Date();
 
+    if (fromPhase === 'open') {
+      campaign.minimumParticipantDecisionRequired = false;
+    }
+
     if (toPhase === 'planning') {
       campaign.participantsLocked = true;
       campaign.timeline.nextTransitionAt =
@@ -2277,6 +2324,46 @@ export class CampaignService {
     );
 
     return this.getCampaignById(id);
+  }
+
+  async decideMinimumParticipants(
+    id: string,
+    decision: 'continue' | 'end',
+    requesterId: string,
+  ) {
+    const campaign = await this.campaignModel.findById(id);
+    if (!campaign || campaign.deletedByAdmin) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.hostId.toString() !== requesterId) {
+      throw new ForbiddenException(
+        'Only the campaign host can make this decision',
+      );
+    }
+    if (
+      campaign.lifecyclePhase !== 'open' ||
+      !campaign.minimumParticipantDecisionRequired
+    ) {
+      throw new BadRequestException(
+        'This campaign is not awaiting a minimum participant decision',
+      );
+    }
+
+    campaign.minimumParticipantDecisionRequired = false;
+    campaign.minimumParticipantDecision = decision;
+    campaign.minimumParticipantDecisionAt = new Date();
+    await campaign.save();
+
+    return this.transitionCampaignPhase(
+      id,
+      decision === 'continue' ? 'planning' : 'cancelled',
+      requesterId,
+      false,
+      decision === 'continue'
+        ? 'Host chose to continue below the minimum participant requirement'
+        : 'Host ended the campaign after the minimum participant requirement was not met',
+    );
   }
 
   async approvePlanningVerification(

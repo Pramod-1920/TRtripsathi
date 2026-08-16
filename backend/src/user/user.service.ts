@@ -623,7 +623,19 @@ export class UserService {
       })
       .sort({ createdAt: 1 });
 
-    const byRank = new Map<string, RankBadgeDefinition>();
+    // Rank assignment is built in, so its reward must not depend on an admin
+    // uploading artwork first. Empty image URLs intentionally use the mobile
+    // rank-letter fallback; configured badge artwork replaces these entries.
+    const byRank = new Map<string, RankBadgeDefinition>(
+      this.rankOrder.map((rankCode) => [
+        rankCode,
+        {
+          rankCode,
+          imageUrl: '',
+          name: `Rank ${rankCode}`,
+        },
+      ]),
+    );
 
     for (const item of items) {
       const rankCode = this.normalizeRankCode(item.name?.trim());
@@ -677,6 +689,44 @@ export class UserService {
           this.normalizeRankCode(definition.rankCode) ===
           this.normalizeRankCode(currentRankCode),
       }));
+  }
+
+  private async ensureRankBadgesAwarded(
+    profileId: string,
+    currentRankCode: string,
+    definitions?: RankBadgeDefinition[],
+  ): Promise<void> {
+    if (!this.badgeService) {
+      return;
+    }
+
+    try {
+      const rankBadgeDefinitions =
+        definitions ?? (await this.getRankBadgeDefinitions());
+      const unlockedRankBadges = this.getUnlockedRankBadges(
+        currentRankCode,
+        rankBadgeDefinitions,
+      );
+
+      for (const badge of unlockedRankBadges) {
+        await this.badgeService.awardBadge(
+          profileId,
+          badge.rankCode,
+          'rank',
+          badge.name ?? `Rank ${badge.rankCode}`,
+          `Unlocked by reaching Rank ${badge.rankCode}`,
+          badge.imageUrl,
+        );
+      }
+    } catch (error: unknown) {
+      // XP progression must remain successful if badge persistence is
+      // temporarily unavailable. A later profile fetch will backfill it.
+      this.logger.warn(
+        `Unable to synchronize rank badges for profile ${profileId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private normalizeDifficulty(value?: string | null) {
@@ -2031,6 +2081,10 @@ export class UserService {
     const shouldUpdate = levelDiffers || rankDiffers || xpDiffers;
 
     if (!shouldUpdate) {
+      await this.ensureRankBadgesAwarded(
+        String(profile._id),
+        snapshot.experienceLevel,
+      );
       this.logger.debug(
         `No update needed for profile ${profile._id}: level=${currentLevel}, rank=${currentRank}, xp=${profile.xp}`,
       );
@@ -2068,6 +2122,10 @@ export class UserService {
 
     this.logger.log(
       `✅ Profile updated: level=${updated.level}, rank=${updated.experienceLevel}, xp=${updated.xp}`,
+    );
+    await this.ensureRankBadgesAwarded(
+      String(updated._id),
+      snapshot.experienceLevel,
     );
     return updated;
   }
@@ -4509,6 +4567,11 @@ export class UserService {
     );
     const currentRankBadge =
       unlockedRankBadges.find((badge) => badge.isCurrentRank) ?? null;
+    await this.ensureRankBadgesAwarded(
+      String(profile._id),
+      snapshot.experienceLevel ?? ExperienceLevel.F,
+      rankBadgeDefinitions,
+    );
     const nextRankProgress = await this.buildRankProgress(
       {
         experienceLevel: snapshot.experienceLevel,

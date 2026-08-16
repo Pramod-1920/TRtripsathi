@@ -21,6 +21,8 @@ import {
   approveCampaign,
   deleteCampaign,
   fetchCampaigns,
+  getCampaignDisplayStatus,
+  getCampaignStatusBadgeClass,
   rejectCampaign,
   submitCampaign,
 } from '@/lib/campaigns';
@@ -28,33 +30,8 @@ import { useAuthStore } from '@/lib/auth-store';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 
 type SearchScope = 'all' | 'id' | 'title' | 'location' | 'creator';
-type TimingStatus = 'active' | 'upcoming' | 'closed';
 type ApprovalFilter = 'all' | CampaignApprovalStatus;
 type ViewType = 'all' | 'open' | 'closed';
-
-function getCampaignTimingStatus(campaign: Campaign): TimingStatus {
-  if (campaign.completed) {
-    return 'closed';
-  }
-
-  if (!campaign.startDate) {
-    return 'active';
-  }
-
-  const now = new Date();
-  const startDate = new Date(campaign.startDate);
-  const joinOpenDate = campaign.joinOpenDate ? new Date(campaign.joinOpenDate) : null;
-
-  if (joinOpenDate && now < joinOpenDate) {
-    return 'upcoming';
-  }
-
-  if (now < startDate) {
-    return 'upcoming';
-  }
-
-  return 'active';
-}
 
 function getApprovalBadgeClass(status?: CampaignApprovalStatus) {
   switch (status) {
@@ -114,48 +91,52 @@ export default function CampaignDetailsPage() {
 
   const filteredCampaigns = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const userId = user?.id ?? '';
-
     return campaigns.filter((campaign) => {
-      const matchesSearch = !query || (() => {
-        switch (searchScope) {
-          case 'id':
-            return (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query);
-          case 'title':
-            return campaign.title.toLowerCase().includes(query);
-          case 'location':
-            return (campaign.location ?? '').toLowerCase().includes(query);
-          case 'creator':
-            return (
-              (campaign.creator?.name ?? '').toLowerCase().includes(query)
-              || (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
-            );
-          case 'all':
-          default:
-            return (
-              campaign.title.toLowerCase().includes(query)
-              || (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query)
-              || (campaign.location ?? '').toLowerCase().includes(query)
-              || (campaign.difficulty ?? '').toLowerCase().includes(query)
-              || (campaign.creator?.name ?? '').toLowerCase().includes(query)
-              || (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
-            );
-        }
-      })();
+      const matchesSearch =
+        !query ||
+        (() => {
+          switch (searchScope) {
+            case 'id':
+              return (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query);
+            case 'title':
+              return campaign.title.toLowerCase().includes(query);
+            case 'location':
+              return (campaign.location ?? '').toLowerCase().includes(query);
+            case 'creator':
+              return (
+                (campaign.creator?.name ?? '').toLowerCase().includes(query) ||
+                (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
+              );
+            case 'all':
+            default:
+              return (
+                campaign.title.toLowerCase().includes(query) ||
+                (campaign.campaignCode ?? campaign._id).toLowerCase().includes(query) ||
+                (campaign.location ?? '').toLowerCase().includes(query) ||
+                (campaign.difficulty ?? '').toLowerCase().includes(query) ||
+                (campaign.creator?.name ?? '').toLowerCase().includes(query) ||
+                (campaign.creator?.phoneNumber ?? '').toLowerCase().includes(query)
+              );
+          }
+        })();
 
       const approvalStatus = campaign.approvalStatus ?? 'draft';
       const matchesApproval = approvalFilter === 'all' || approvalStatus === approvalFilter;
 
       let matchesView = true;
+      const displayStatus = getCampaignDisplayStatus(campaign);
       if (viewType === 'open') {
-        matchesView = campaign.hikeType === 'group' && campaign.approvalStatus === 'approved';
+        matchesView =
+          campaign.hikeType === 'group' &&
+          campaign.approvalStatus === 'approved' &&
+          displayStatus.key !== 'campaign_expired';
       } else if (viewType === 'closed') {
-        matchesView = campaign.hostId === userId && Boolean(campaign.completed);
+        matchesView = displayStatus.key === 'campaign_expired';
       }
 
       return matchesSearch && matchesApproval && matchesView;
     });
-  }, [campaigns, search, searchScope, approvalFilter, viewType, user?.id]);
+  }, [campaigns, search, searchScope, approvalFilter, viewType]);
 
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
@@ -278,16 +259,10 @@ export default function CampaignDetailsPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-          {success}
-        </div>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">{success}</div>
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -422,119 +397,118 @@ export default function CampaignDetailsPage() {
               </tr>
             )}
 
-            {!loading && filteredCampaigns.map((campaign) => (
-              <tr key={campaign._id} className="hover:bg-slate-50">
-                <td className="px-6 py-4">
-                  <div>
-                    <p className="font-medium text-slate-900">{campaign.title}</p>
-                    <p className="text-xs text-slate-500">NPR {campaign.estimatedNPR ?? 0}</p>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                      <span className="truncate">{campaign.campaignCode || campaign._id}</span>
+            {!loading &&
+              filteredCampaigns.map((campaign) => (
+                <tr key={campaign._id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4">
+                    <div>
+                      <p className="font-medium text-slate-900">{campaign.title}</p>
+                      <p className="text-xs text-slate-500">NPR {campaign.estimatedNPR ?? 0}</p>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                        <span className="truncate">{campaign.campaignCode || campaign._id}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(campaign.campaignCode || campaign._id);
+                            setSuccess(`Copied ${campaign.campaignCode || campaign._id}`);
+                          }}
+                          className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                          title="Copy campaign ID"
+                        >
+                          <FiCopy size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    <span className="inline-flex items-center gap-1">
+                      <FiMapPin size={12} />
+                      {campaign.location || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{campaign.difficulty || 'N/A'}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${getApprovalBadgeClass(campaign.approvalStatus)}`}
+                    >
+                      {campaign.approvalStatus ?? 'draft'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${getCampaignStatusBadgeClass(getCampaignDisplayStatus(campaign).key)}`}
+                    >
+                      {getCampaignDisplayStatus(campaign).label}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">{campaign.joinMode || 'open'}</td>
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    {campaign.createdAt ? new Date(campaign.createdAt).toLocaleDateString() : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {(campaign.approvalStatus === 'draft' || campaign.approvalStatus === 'rejected') && (
+                        <button
+                          type="button"
+                          onClick={() => void handleSubmitForReview(campaign._id)}
+                          disabled={statusActionId === campaign._id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-white hover:bg-slate-900 disabled:opacity-60"
+                          title="Submit for review"
+                        >
+                          <FiSend size={12} />
+                          Submit
+                        </button>
+                      )}
+                      {isAdmin && campaign.approvalStatus === 'submitted' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void handleApprove(campaign._id)}
+                            disabled={statusActionId === campaign._id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:opacity-60"
+                            title="Approve campaign"
+                          >
+                            <FiCheck size={12} />
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleReject(campaign._id)}
+                            disabled={statusActionId === campaign._id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs text-white hover:bg-red-700 disabled:opacity-60"
+                            title="Reject campaign"
+                          >
+                            <FiX size={12} />
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      <Link
+                        href={`/campaigns/details/${campaign._id}`}
+                        className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"
+                        title="View campaign"
+                      >
+                        <FiEye size={16} />
+                      </Link>
+                      <Link
+                        href={`/campaigns/details/${campaign._id}?mode=edit`}
+                        className="p-2 rounded-lg text-amber-600 hover:bg-amber-50"
+                        title="Edit campaign"
+                      >
+                        <FiEdit2 size={16} />
+                      </Link>
                       <button
                         type="button"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(campaign.campaignCode || campaign._id);
-                          setSuccess(`Copied ${campaign.campaignCode || campaign._id}`);
-                        }}
-                        className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                        title="Copy campaign ID"
+                        onClick={() => openDeleteModal(campaign)}
+                        className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                        title="Delete campaign"
                       >
-                        <FiCopy size={12} />
+                        <FiTrash2 size={16} />
                       </button>
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-700">
-                  <span className="inline-flex items-center gap-1">
-                    <FiMapPin size={12} />
-                    {campaign.location || 'N/A'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-700">{campaign.difficulty || 'N/A'}</td>
-                <td className="px-6 py-4 text-sm text-slate-700">
-                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${getApprovalBadgeClass(campaign.approvalStatus)}`}>
-                    {campaign.approvalStatus ?? 'draft'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-700">
-                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    getCampaignTimingStatus(campaign) === 'closed'
-                      ? 'bg-slate-100 text-slate-700'
-                      : getCampaignTimingStatus(campaign) === 'upcoming'
-                        ? 'bg-amber-50 text-amber-700'
-                        : 'bg-emerald-50 text-emerald-700'
-                  }`}>
-                    {getCampaignTimingStatus(campaign)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-700">{campaign.joinMode || 'open'}</td>
-                <td className="px-6 py-4 text-sm text-slate-700">
-                  {campaign.createdAt ? new Date(campaign.createdAt).toLocaleDateString() : 'N/A'}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    {(campaign.approvalStatus === 'draft' || campaign.approvalStatus === 'rejected') && (
-                      <button
-                        type="button"
-                        onClick={() => void handleSubmitForReview(campaign._id)}
-                        disabled={statusActionId === campaign._id}
-                        className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs text-white hover:bg-slate-900 disabled:opacity-60"
-                        title="Submit for review"
-                      >
-                        <FiSend size={12} />
-                        Submit
-                      </button>
-                    )}
-                    {isAdmin && campaign.approvalStatus === 'submitted' && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void handleApprove(campaign._id)}
-                          disabled={statusActionId === campaign._id}
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:opacity-60"
-                          title="Approve campaign"
-                        >
-                          <FiCheck size={12} />
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleReject(campaign._id)}
-                          disabled={statusActionId === campaign._id}
-                          className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs text-white hover:bg-red-700 disabled:opacity-60"
-                          title="Reject campaign"
-                        >
-                          <FiX size={12} />
-                          Reject
-                        </button>
-                      </>
-                    )}
-                    <Link
-                      href={`/campaigns/details/${campaign._id}`}
-                      className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"
-                      title="View campaign"
-                    >
-                      <FiEye size={16} />
-                    </Link>
-                    <Link
-                      href={`/campaigns/details/${campaign._id}?mode=edit`}
-                      className="p-2 rounded-lg text-amber-600 hover:bg-amber-50"
-                      title="Edit campaign"
-                    >
-                      <FiEdit2 size={16} />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => openDeleteModal(campaign)}
-                      className="p-2 rounded-lg text-red-600 hover:bg-red-50"
-                      title="Delete campaign"
-                    >
-                      <FiTrash2 size={16} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -610,7 +584,11 @@ export default function CampaignDetailsPage() {
       <ConfirmModal
         open={deleteModalOpen}
         title="Delete Campaign"
-        description={selectedCampaign ? `You are deleting \"${selectedCampaign.title}\". This action cannot be undone.` : 'This action cannot be undone.'}
+        description={
+          selectedCampaign
+            ? `You are deleting \"${selectedCampaign.title}\". This action cannot be undone.`
+            : 'This action cannot be undone.'
+        }
         confirmLabel="Delete"
         isProcessing={deleting}
         requireReason

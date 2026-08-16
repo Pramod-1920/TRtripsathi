@@ -572,6 +572,7 @@ class CampaignCard extends StatelessWidget {
     final description = (campaign['description'] ?? '').toString().trim();
     final phase = (campaign['lifecyclePhase'] ?? 'draft').toString();
     final approval = (campaign['approvalStatus'] ?? 'draft').toString();
+    final displayStatus = campaignStatusLabel(campaign);
     final location = [
       campaign['placeName'],
       campaign['district'],
@@ -729,13 +730,7 @@ class CampaignCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        owned
-                            ? approval == 'submitted'
-                                ? 'Waiting for Admin approval'
-                                : 'Published in Campaigns'
-                            : canJoin
-                                ? 'Open for travelers'
-                                : _campaignLabel(phase),
+                        displayStatus,
                         style: const TextStyle(
                           color: Color(0xFF28685A),
                           fontSize: 11,

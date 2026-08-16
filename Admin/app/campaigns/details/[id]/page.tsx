@@ -14,6 +14,8 @@ import {
   JoinMode,
   deleteCampaign,
   fetchCampaignById,
+  getCampaignDisplayStatus,
+  getCampaignStatusBadgeClass,
   rejectCampaign,
   restoreCampaign,
   submitCampaign,
@@ -142,9 +144,14 @@ function buildTimeline(campaign: Campaign) {
     {
       label: campaign.approvalStatus === 'rejected' ? 'Rejected' : 'Approved',
       timestamp: campaign.approvalStatus === 'rejected' ? campaign.rejectedAt : campaign.approvedAt,
-      actor: campaign.approvalStatus === 'rejected'
-        ? (campaign.rejectedBy ? 'Admin' : 'System')
-        : (campaign.approvedBy ? 'Admin' : 'System'),
+      actor:
+        campaign.approvalStatus === 'rejected'
+          ? campaign.rejectedBy
+            ? 'Admin'
+            : 'System'
+          : campaign.approvedBy
+            ? 'Admin'
+            : 'System',
       tone: campaign.approvalStatus === 'rejected' ? 'bg-red-600' : 'bg-emerald-600',
     },
     {
@@ -202,6 +209,7 @@ export default function CampaignDetailsByIdPage() {
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [placeLoading, setPlaceLoading] = useState(true);
   const campaignCode = campaign?.campaignCode || campaign?._id || 'N/A';
+  const displayStatus = campaign ? getCampaignDisplayStatus(campaign) : null;
 
   useEffect(() => {
     let active = true;
@@ -248,7 +256,10 @@ export default function CampaignDetailsByIdPage() {
       setDifficultyLoading(true);
 
       try {
-        const response = await fetchExtras('difficulty', { page: 1, limit: 100 });
+        const response = await fetchExtras('difficulty', {
+          page: 1,
+          limit: 100,
+        });
 
         if (!active) {
           return;
@@ -312,7 +323,10 @@ export default function CampaignDetailsByIdPage() {
       setCategoryLoading(true);
 
       try {
-        const response = await fetchExtras('activities', { page: 1, limit: 100 });
+        const response = await fetchExtras('activities', {
+          page: 1,
+          limit: 100,
+        });
 
         if (!active) {
           return;
@@ -347,11 +361,7 @@ export default function CampaignDetailsByIdPage() {
     });
 
     const values = Array.from(
-      new Set(
-        sortedByCreatedAt
-          .map((item) => item.name?.trim())
-          .filter((name): name is string => Boolean(name))
-      )
+      new Set(sortedByCreatedAt.map((item) => item.name?.trim()).filter((name): name is string => Boolean(name))),
     );
 
     const currentDifficulty = form.difficulty.trim();
@@ -363,34 +373,30 @@ export default function CampaignDetailsByIdPage() {
   }, [difficultyOptions, form.difficulty]);
 
   const categoryOptionNames = useMemo(() => {
-    const sortedByCreatedAt = categoryOptions.filter((item) => !item.parentId).sort((first, second) => {
-      const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-      const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
-      return firstTime - secondTime;
-    });
+    const sortedByCreatedAt = categoryOptions
+      .filter((item) => !item.parentId)
+      .sort((first, second) => {
+        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : Number.MAX_SAFE_INTEGER;
+        return firstTime - secondTime;
+      });
 
     return Array.from(
-      new Set(
-        sortedByCreatedAt
-          .map((item) => item.name?.trim())
-          .filter((name): name is string => Boolean(name))
-      )
+      new Set(sortedByCreatedAt.map((item) => item.name?.trim()).filter((name): name is string => Boolean(name))),
     );
   }, [categoryOptions]);
 
   const selectedCategoryOption = useMemo(
-    () => categoryOptions.find(
-      (item) => !item.parentId && item.name.trim() === form.category.trim(),
-    ),
+    () => categoryOptions.find((item) => !item.parentId && item.name.trim() === form.category.trim()),
     [categoryOptions, form.category],
   );
 
   const subcategoryOptionNames = useMemo(() => {
     const names = selectedCategoryOption
       ? categoryOptions
-        .filter((item) => item.parentId === selectedCategoryOption._id)
-        .map((item) => item.name.trim())
-        .filter(Boolean)
+          .filter((item) => item.parentId === selectedCategoryOption._id)
+          .map((item) => item.name.trim())
+          .filter(Boolean)
       : [];
 
     if (form.subcategory.trim() && !names.includes(form.subcategory.trim())) {
@@ -401,8 +407,7 @@ export default function CampaignDetailsByIdPage() {
   }, [categoryOptions, form.subcategory, selectedCategoryOption]);
 
   const displayLocation = useMemo(() => {
-    const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()]
-      .filter((part) => part.length > 0);
+    const parts = [form.province.trim(), form.district.trim(), form.placeName.trim()].filter((part) => part.length > 0);
     return parts.join(', ');
   }, [form.province, form.district, form.placeName]);
 
@@ -439,8 +444,7 @@ export default function CampaignDetailsByIdPage() {
     }
 
     const foundProvince = placeCatalog.find((item) => item.province === form.province);
-    const districtNode = (foundProvince?.districtItems ?? [])
-      .find((item) => item.district === form.district);
+    const districtNode = (foundProvince?.districtItems ?? []).find((item) => item.district === form.district);
     const values = districtNode?.places ? [...districtNode.places] : [];
     const currentPlace = form.placeName.trim();
 
@@ -477,7 +481,9 @@ export default function CampaignDetailsByIdPage() {
     if (!file) return;
     (async () => {
       try {
-        const sig = await apiClient.post('/cloudinary/signature', { folder: 'campaigns' });
+        const sig = await apiClient.post('/cloudinary/signature', {
+          folder: 'campaigns',
+        });
         const { cloudName, apiKey, timestamp, signature, folder } = sig.data;
         const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`;
         const fd = new FormData();
@@ -582,9 +588,7 @@ export default function CampaignDetailsByIdPage() {
       return;
     }
 
-    const computedStartDate = form.scheduleType === 'instant'
-      ? now
-      : selectedStartDate;
+    const computedStartDate = form.scheduleType === 'instant' ? now : selectedStartDate;
 
     if (!computedStartDate) {
       setError('Unable to resolve campaign start date/time.');
@@ -775,21 +779,21 @@ export default function CampaignDetailsByIdPage() {
   }
 
   const minimumStartDateTime = formatDateTimeLocal(new Date());
-  const minimumEndDateTime = form.scheduleType === 'scheduled' && form.startDate
-    ? form.startDate
-    : minimumStartDateTime;
+  const minimumEndDateTime =
+    form.scheduleType === 'scheduled' && form.startDate ? form.startDate : minimumStartDateTime;
   const timelineEvents = campaign ? buildTimeline(campaign) : [];
 
   if (error && !campaign) {
     return (
       <div className="p-8 space-y-4">
-        <Link href="/campaigns/details" className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-800">
+        <Link
+          href="/campaigns/details"
+          className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-800"
+        >
           <FiArrowLeft size={14} />
           Back to Campaign Details
         </Link>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       </div>
     );
   }
@@ -798,7 +802,10 @@ export default function CampaignDetailsByIdPage() {
     <div className="p-8 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1 min-w-0">
-          <Link href="/campaigns/details" className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-800">
+          <Link
+            href="/campaigns/details"
+            className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-800"
+          >
             <FiArrowLeft size={14} />
             Back to Campaign Details
           </Link>
@@ -806,10 +813,22 @@ export default function CampaignDetailsByIdPage() {
           <p className="text-sm text-slate-600">View and edit a campaign connected to backend.</p>
           <p className="text-sm text-slate-500">
             Approval status:{' '}
-            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${getApprovalBadgeClass(campaign?.approvalStatus)}`}>
+            <span
+              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${getApprovalBadgeClass(campaign?.approvalStatus)}`}
+            >
               {campaign?.approvalStatus ?? 'draft'}
             </span>
           </p>
+          {displayStatus && (
+            <p className="text-sm text-slate-500">
+              Campaign status:{' '}
+              <span
+                className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${getCampaignStatusBadgeClass(displayStatus.key)}`}
+              >
+                {displayStatus.label}
+              </span>
+            </p>
+          )}
           <p className="text-sm text-slate-500">
             System ID: <span className="font-semibold text-slate-700">{campaignCode}</span>
           </p>
@@ -915,16 +934,10 @@ export default function CampaignDetailsByIdPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-          {success}
-        </div>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">{success}</div>
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-6">
@@ -935,7 +948,10 @@ export default function CampaignDetailsByIdPage() {
           ) : (
             <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
               {timelineEvents.map((event) => (
-                <div key={`${event.label}-${event.timestamp}`} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                <div
+                  key={`${event.label}-${event.timestamp}`}
+                  className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3"
+                >
                   <span className={`mt-1 h-3 w-3 shrink-0 rounded-full ${event.tone}`} />
                   <div>
                     <p className="text-sm font-medium text-slate-900">{event.label}</p>
@@ -955,8 +971,7 @@ export default function CampaignDetailsByIdPage() {
               Name: <span className="font-medium">{campaign?.creator?.name || 'N/A'}</span>
             </p>
             <p>
-              Role:{' '}
-              <span className="font-medium capitalize">{campaign?.creator?.role || 'N/A'}</span>
+              Role: <span className="font-medium capitalize">{campaign?.creator?.role || 'N/A'}</span>
             </p>
             <p>
               Phone: <span className="font-medium">{campaign?.creator?.phoneNumber || 'N/A'}</span>
@@ -1073,17 +1088,17 @@ export default function CampaignDetailsByIdPage() {
             <label className="mb-1 block text-sm font-medium text-slate-900">Activity</label>
             <select
               value={form.category}
-              onChange={(event) => setForm((current) => ({
-                ...current,
-                category: event.target.value,
-                subcategory: '',
-              }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  category: event.target.value,
+                  subcategory: '',
+                }))
+              }
               disabled={readonly || categoryLoading}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
             >
-              <option value="">
-                {categoryLoading ? 'Loading activities...' : 'Select activity'}
-              </option>
+              <option value="">{categoryLoading ? 'Loading activities...' : 'Select activity'}</option>
               {categoryOptionNames.map((categoryName) => (
                 <option key={categoryName} value={categoryName}>
                   {categoryName}
@@ -1108,7 +1123,9 @@ export default function CampaignDetailsByIdPage() {
               >
                 <option value="">General {form.category}</option>
                 {subcategoryOptionNames.map((subcategoryName) => (
-                  <option key={subcategoryName} value={subcategoryName}>{subcategoryName}</option>
+                  <option key={subcategoryName} value={subcategoryName}>
+                    {subcategoryName}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1217,9 +1234,7 @@ export default function CampaignDetailsByIdPage() {
               disabled={readonly || difficultyLoading}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
             >
-              <option value="">
-                {difficultyLoading ? 'Loading difficulty options...' : 'Select difficulty'}
-              </option>
+              <option value="">{difficultyLoading ? 'Loading difficulty options...' : 'Select difficulty'}</option>
               {difficultyOptionNames.map((difficultyName) => (
                 <option key={difficultyName} value={difficultyName}>
                   {difficultyName}
@@ -1227,9 +1242,7 @@ export default function CampaignDetailsByIdPage() {
               ))}
             </select>
             {!difficultyLoading && difficultyOptionNames.length === 0 && (
-              <p className="mt-1 text-xs text-amber-700">
-                No enabled difficulty options found in Extra category.
-              </p>
+              <p className="mt-1 text-xs text-amber-700">No enabled difficulty options found in Extra category.</p>
             )}
           </div>
 
@@ -1323,9 +1336,7 @@ export default function CampaignDetailsByIdPage() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
             />
             {form.scheduleType === 'instant' && (
-              <p className="mt-1 text-xs text-slate-600">
-                Instant campaigns auto-close 12 hours after start.
-              </p>
+              <p className="mt-1 text-xs text-slate-600">Instant campaigns auto-close 12 hours after start.</p>
             )}
           </div>
         </div>
@@ -1345,7 +1356,10 @@ export default function CampaignDetailsByIdPage() {
           </div>
 
           {form.photos.map((photo, index) => (
-            <div key={`photo-${index}`} className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-12">
+            <div
+              key={`photo-${index}`}
+              className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-12"
+            >
               <div className="md:col-span-6">
                 <label className="sr-only">Photo file</label>
                 <input
@@ -1356,7 +1370,11 @@ export default function CampaignDetailsByIdPage() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {photo.url && (
-                  <img src={photo.url} alt={`photo-${index}`} className="mt-2 max-h-32 w-auto rounded-md object-cover" />
+                  <img
+                    src={photo.url}
+                    alt={`photo-${index}`}
+                    className="mt-2 max-h-32 w-auto rounded-md object-cover"
+                  />
                 )}
               </div>
               <input
@@ -1391,7 +1409,11 @@ export default function CampaignDetailsByIdPage() {
       <ConfirmModal
         open={deleteModalOpen}
         title="Delete Campaign"
-        description={campaign ? `You are deleting \"${campaign.title}\". This action cannot be undone.` : 'This action cannot be undone.'}
+        description={
+          campaign
+            ? `You are deleting \"${campaign.title}\". This action cannot be undone.`
+            : 'This action cannot be undone.'
+        }
         confirmLabel="Delete"
         isProcessing={deleting}
         requireReason

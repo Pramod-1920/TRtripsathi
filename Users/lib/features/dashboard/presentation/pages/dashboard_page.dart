@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
+import 'package:trtripsathi_mobile/core/widgets/rank_badge_icon.dart';
 import 'package:trtripsathi_mobile/core/localization/app_localizations.dart';
 import 'package:trtripsathi_mobile/l10n/generated/app_localizations.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/pages/campaigns_page.dart';
@@ -52,6 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   late final AnimationController _pageAnimation;
   late List<Widget?> _pages;
   int _selectedIndex = 0;
+  bool _exitDialogOpen = false;
 
   @override
   void initState() {
@@ -105,6 +108,38 @@ class _DashboardScreenState extends State<DashboardScreen>
     _pageAnimation.forward(from: 0);
   }
 
+  Future<void> _handleBackNavigation() async {
+    if (_selectedIndex != 0) {
+      _selectPage(0);
+      return;
+    }
+    if (_exitDialogOpen) return;
+
+    _exitDialogOpen = true;
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Exit TripSathi?'),
+        content: const Text('Are you sure you want to exit the app?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Stay'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Exit'),
+          ),
+        ],
+      ),
+    );
+    _exitDialogOpen = false;
+
+    if (shouldExit == true && mounted) {
+      await SystemNavigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _ensurePageSlots();
@@ -125,26 +160,32 @@ class _DashboardScreenState extends State<DashboardScreen>
       curve: Curves.easeOutCubic,
     );
 
-    return Scaffold(
-      body: FadeTransition(
-        opacity: Tween<double>(begin: .88, end: 1).animate(pageCurve),
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, .012),
-            end: Offset.zero,
-          ).animate(pageCurve),
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: _pages
-                .map((page) => page ?? const SizedBox.shrink())
-                .toList(growable: false),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBackNavigation();
+      },
+      child: Scaffold(
+        body: FadeTransition(
+          opacity: Tween<double>(begin: .88, end: 1).animate(pageCurve),
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, .012),
+              end: Offset.zero,
+            ).animate(pageCurve),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _pages
+                  .map((page) => page ?? const SizedBox.shrink())
+                  .toList(growable: false),
+            ),
           ),
         ),
-      ),
-      bottomNavigationBar: _HomeBottomNavigationBar(
-        destinations: localizedDestinations,
-        selectedIndex: _selectedIndex,
-        onSelected: _selectPage,
+        bottomNavigationBar: _HomeBottomNavigationBar(
+          destinations: localizedDestinations,
+          selectedIndex: _selectedIndex,
+          onSelected: _selectPage,
+        ),
       ),
     );
   }
@@ -254,14 +295,25 @@ class _HomeTabState extends State<_HomeTab> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      'Rank $rankCode',
-                      style: const TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 9,
-                        height: 1,
-                        fontWeight: FontWeight.w900,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RankBadgeIcon(
+                          rankCode: rankCode,
+                          badge: _profile?['currentRankBadge'],
+                          size: 15,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Rank $rankCode',
+                          style: const TextStyle(
+                            color: AppColors.navy,
+                            fontSize: 9,
+                            height: 1,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

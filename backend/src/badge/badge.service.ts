@@ -41,7 +41,22 @@ export class BadgeService {
       unlockedAt: new Date(),
     });
 
-    return badge.save();
+    try {
+      return await badge.save();
+    } catch (error: unknown) {
+      // Concurrent requests can race to award the same badge. The unique
+      // database index is the final idempotency guard.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: number }).code === 11000
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -56,7 +71,10 @@ export class BadgeService {
   /**
    * Get badges by tier
    */
-  async getUserBadgesByTier(userId: string, tier: string): Promise<UserBadge[]> {
+  async getUserBadgesByTier(
+    userId: string,
+    tier: string,
+  ): Promise<UserBadge[]> {
     return this.badgeModel.find({
       userId: new Types.ObjectId(userId),
       tier,

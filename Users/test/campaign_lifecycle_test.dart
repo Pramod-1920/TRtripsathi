@@ -55,4 +55,85 @@ void main() {
       CampaignJourneyState.expired,
     );
   });
+
+  test('expired date overrides a stale active lifecycle status', () {
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'open',
+          'status': 'active',
+          'endDate': '2026-08-08T08:00:00Z',
+        },
+        at: now,
+      ),
+      'Campaign Expired',
+    );
+  });
+
+  test('active completion evidence window shows photo verification', () {
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'completed',
+          'completed': true,
+          'awaitingVerification': true,
+          'verificationDeadline': '2026-08-10T08:00:00Z',
+          'endDate': '2026-08-09T08:00:00Z',
+        },
+        at: now,
+      ),
+      'Photo Verification',
+    );
+  });
+
+  test('ready and future campaigns show happening soon', () {
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'ready',
+          'startDate': '2026-08-10T08:00:00Z',
+        },
+        at: now,
+      ),
+      'Happening Soon',
+    );
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'open',
+          'approvalStatus': 'approved',
+          'startDate': '2026-08-12T08:00:00Z',
+        },
+        at: now,
+      ),
+      'Happening Soon',
+    );
+  });
+
+  test('planning verification phase has an explicit status', () {
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'verification',
+          'approvalStatus': 'approved',
+        },
+        at: now,
+      ),
+      'Verification in Progress',
+    );
+  });
+
+  test('a paused low-enrollment campaign asks for the host decision', () {
+    expect(
+      campaignStatusLabel(
+        {
+          'lifecyclePhase': 'open',
+          'minimumParticipantDecisionRequired': true,
+          'endDate': '2026-08-08T08:00:00Z',
+        },
+        at: now,
+      ),
+      'Host Decision Required',
+    );
+  });
 }

@@ -1,35 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsNotEmpty,
-  IsString,
-  Matches,
-  MinLength,
-  ValidateIf,
-} from 'class-validator';
+import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
-    required: false,
     example: '9876543210',
-    description: 'Registered user phone number',
+    description: 'Registered Nepal phone number',
   })
-  @ValidateIf((dto: LoginDto) => !dto.email)
   @Transform(({ value }) => normalizeNepalPhone(value))
-  @IsNotEmpty({ message: 'Email or phone number is required' })
+  @IsNotEmpty({ message: 'Phone number is required' })
   @Matches(/^\d{10}$/, { message: 'Phone number must be exactly 10 digits' })
-  phoneNumber?: string;
-
-  @ApiProperty({
-    required: false,
-    example: 'traveller@example.com',
-    description: 'Registered email address',
-  })
-  @ValidateIf((dto: LoginDto) => !dto.phoneNumber)
-  @IsNotEmpty({ message: 'Email or phone number is required' })
-  @IsEmail({}, { message: 'Enter a valid email address' })
-  email?: string;
+  phoneNumber!: string;
 
   @ApiProperty({ example: 'Password@123', description: 'User password' })
   @IsString()

@@ -142,19 +142,11 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const identifier = (loginDto.email ?? loginDto.phoneNumber ?? '')
-      .trim()
-      .toLowerCase();
-    const user = await this.authModel.findOne(
-      identifier.includes('@')
-        ? { email: identifier }
-        : { phoneNumber: identifier },
-    );
+    const phoneNumber = loginDto.phoneNumber.trim();
+    const user = await this.authModel.findOne({ phoneNumber });
 
     if (!user) {
-      throw new UnauthorizedException(
-        'Invalid email, phone number, or password',
-      );
+      throw new UnauthorizedException('Invalid phone number or password');
     }
 
     if (user.isActive === false) {
@@ -170,9 +162,7 @@ export class AuthService {
     const passwordMatches = await this.verifyPassword(loginDto.password, user);
     if (!passwordMatches) {
       await this.handleFailedLogin(user);
-      throw new UnauthorizedException(
-        'Invalid email, phone number, or password',
-      );
+      throw new UnauthorizedException('Invalid phone number or password');
     }
 
     await this.resetLoginFailures(user._id.toString());

@@ -13,13 +13,35 @@ import {
 import { Type } from 'class-transformer';
 
 export class TransitionCampaignPhaseDto {
-  @IsIn(['draft', 'open', 'planning', 'verification', 'ready', 'started', 'completed', 'cancelled'])
-  toPhase!: 'draft' | 'open' | 'planning' | 'verification' | 'ready' | 'started' | 'completed' | 'cancelled';
+  @IsIn([
+    'draft',
+    'open',
+    'planning',
+    'verification',
+    'ready',
+    'started',
+    'completed',
+    'cancelled',
+  ])
+  toPhase!:
+    | 'draft'
+    | 'open'
+    | 'planning'
+    | 'verification'
+    | 'ready'
+    | 'started'
+    | 'completed'
+    | 'cancelled';
 
   @IsString()
   @IsOptional()
   @MaxLength(500)
   reason?: string;
+}
+
+export class MinimumParticipantDecisionDto {
+  @IsIn(['continue', 'end'])
+  decision!: 'continue' | 'end';
 }
 
 export class UpdateParticipantRoleDto {
@@ -98,4 +120,3 @@ export class VerifyPlanningRejectDto {
   @MaxLength(500)
   reason!: string;
 }
-

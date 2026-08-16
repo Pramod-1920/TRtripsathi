@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 
 class TravelBackground extends StatelessWidget {
@@ -26,16 +25,69 @@ class TravelBackground extends StatelessWidget {
               Positioned.fill(
                 child: IgnorePointer(
                   child: Opacity(
-                    opacity: .35,
-                    child: Lottie.asset(
-                      'assets/animations/travel_orbit.json',
-                      fit: BoxFit.contain,
-                    ),
+                    opacity: .08,
+                    child: const _RotatingTravelOrbit(),
                   ),
                 ),
               ),
             child,
           ],
+        ),
+      );
+}
+
+class _RotatingTravelOrbit extends StatefulWidget {
+  const _RotatingTravelOrbit();
+
+  @override
+  State<_RotatingTravelOrbit> createState() => _RotatingTravelOrbitState();
+}
+
+class _RotatingTravelOrbitState extends State<_RotatingTravelOrbit>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rotation;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotation = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 18),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      _rotation
+        ..stop()
+        ..value = 0;
+    } else if (!_rotation.isAnimating) {
+      _rotation.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _rotation.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: RotationTransition(
+          turns: _rotation,
+          child: const FittedBox(
+            fit: BoxFit.contain,
+            child: Icon(
+              Icons.travel_explore_rounded,
+              size: 360,
+              color: AppColors.navy,
+            ),
+          ),
         ),
       );
 }

@@ -251,6 +251,27 @@ class CampaignsProvider extends ChangeNotifier {
     return verified;
   }
 
+  Future<Map<String, dynamic>> decideMinimumParticipants(
+    String campaignId,
+    String decision,
+  ) async {
+    final response =
+        await ApiService.decideMinimumParticipants(campaignId, decision);
+    final updated = <String, dynamic>{
+      ...response,
+      '_createdByCurrentUser': true,
+    };
+    _replaceCampaign(_createdCampaigns, campaignId, updated);
+    final publicIndex = _campaigns.indexWhere(
+      (item) =>
+          item is Map && (item['_id'] ?? item['id']).toString() == campaignId,
+    );
+    if (publicIndex >= 0) _campaigns[publicIndex] = updated;
+    await _rememberCreatedCampaign(updated);
+    notifyListeners();
+    return updated;
+  }
+
   void _replaceCampaign(
     List<Map<String, dynamic>> campaigns,
     String campaignId,
