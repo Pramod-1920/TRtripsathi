@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { VisitedPlaceService } from './visited-place.service';
 import {
@@ -16,7 +16,7 @@ import { UserModule } from '../user/user.module';
     MongooseModule.forFeature([
       { name: VisitedPlace.name, schema: VisitedPlaceSchema },
     ]),
-    UserModule,
+    forwardRef(() => UserModule),
   ],
   controllers: [VisitedPlaceController, MyVisitedPlaceController],
   providers: [VisitedPlaceService],

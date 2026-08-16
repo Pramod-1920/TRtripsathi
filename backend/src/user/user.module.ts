@@ -24,7 +24,7 @@ import { XpLedgerModule } from '../xp-ledger/xp-ledger.module';
     // Import BadgeModule so UserService can include persisted user badges in profile responses
     forwardRef(() => BadgeModule),
     ExtraModule,
-    VisitedPlaceModule,
+    forwardRef(() => VisitedPlaceModule),
     XpLedgerModule,
   ],
   controllers: [UserController],
