@@ -17,17 +17,6 @@ class PlacePhotoVerificationPage extends StatefulWidget {
 
 class _PlacePhotoVerificationPageState
     extends State<PlacePhotoVerificationPage> {
-  static const _categories = <String, String>{
-    'temple_spiritual': 'Temple & spiritual',
-    'heritage_culture': 'Heritage & culture',
-    'nature': 'Nature',
-    'adventure': 'Adventure',
-    'food_local': 'Local food',
-    'community_event': 'Community & events',
-    'hidden_gem': 'Hidden gem',
-    'other': 'Other',
-  };
-
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _addressController = TextEditingController();
@@ -35,22 +24,66 @@ class _PlacePhotoVerificationPageState
   final _picker = ImagePicker();
 
   List<_PlaceOption> _places = const [];
+  List<String> _categories = const [];
   _PlaceOption? _selectedPlace;
+  String? _selectedProvince;
+  String? _selectedDistrict;
+  String? _selectedMunicipality;
   File? _placePhoto;
   File? _travelerPhoto;
   String? _category;
   Position? _position;
   bool _loadingPlaces = true;
+  bool _loadingCategories = true;
   bool _locating = false;
   bool _submitting = false;
+  final bool _showLegacyLocationFields = false;
   String? _catalogError;
+  String? _categoryError;
   List<Map<String, dynamic>> _requests = const [];
 
   @override
   void initState() {
     super.initState();
     _loadPlaces();
+    _loadCampaignCategories();
     _loadRequests();
+  }
+
+  Future<void> _loadCampaignCategories() async {
+    if (mounted) {
+      setState(() {
+        _loadingCategories = true;
+        _categoryError = null;
+      });
+    }
+    try {
+      final rawItems = await ApiService.getActivityHierarchy();
+      final categories = rawItems
+          .whereType<Map>()
+          .map((item) => (item['name'] ?? '').toString().trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      if (!mounted) return;
+      setState(() {
+        _categories = categories;
+        _loadingCategories = false;
+        _categoryError = categories.isEmpty
+            ? 'No campaign categories are available. Ask an admin to add them.'
+            : null;
+        if (_category != null && !categories.contains(_category)) {
+          _category = null;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingCategories = false;
+        _categoryError = ApiService.readableError(error);
+      });
+    }
   }
 
   Future<void> _loadRequests() async {
@@ -139,16 +172,10 @@ class _PlacePhotoVerificationPageState
             final place = (rawPlace['place'] ?? '').toString().trim();
             final municipality =
                 (rawPlace['municipality'] ?? '').toString().trim();
-            final latitude =
-                double.tryParse(rawPlace['latitude']?.toString() ?? '');
-            final longitude =
-                double.tryParse(rawPlace['longitude']?.toString() ?? '');
             if (province.isNotEmpty &&
                 district.isNotEmpty &&
                 municipality.isNotEmpty &&
-                place.isNotEmpty &&
-                latitude != null &&
-                longitude != null) {
+                place.isNotEmpty) {
               options.add(_PlaceOption(
                 province: province,
                 district: district,
@@ -258,7 +285,12 @@ class _PlacePhotoVerificationPageState
         district: _selectedPlace!.district,
         municipality: _selectedPlace!.municipality,
         place: _selectedPlace!.place,
-        address: _addressController.text,
+        address: [
+          _selectedPlace!.place,
+          _selectedPlace!.municipality,
+          _selectedPlace!.district,
+          _selectedPlace!.province,
+        ].join(', '),
         latitude: _position!.latitude,
         longitude: _position!.longitude,
         locationAccuracyMeters: _position!.accuracy,
@@ -297,6 +329,41 @@ class _PlacePhotoVerificationPageState
     );
   }
 
+  List<String> get _provinces => _uniqueSorted(
+        _places.map((item) => item.province),
+      );
+
+  List<String> get _districts => _uniqueSorted(
+        _places
+            .where((item) => item.province == _selectedProvince)
+            .map((item) => item.district),
+      );
+
+  List<String> get _municipalities => _uniqueSorted(
+        _places
+            .where(
+              (item) =>
+                  item.province == _selectedProvince &&
+                  item.district == _selectedDistrict,
+            )
+            .map((item) => item.municipality),
+      );
+
+  List<_PlaceOption> get _filteredPlaces => _places
+      .where(
+        (item) =>
+            item.province == _selectedProvince &&
+            item.district == _selectedDistrict &&
+            item.municipality == _selectedMunicipality,
+      )
+      .toList(growable: false);
+
+  List<String> _uniqueSorted(Iterable<String> values) {
+    final result = values.toSet().toList();
+    result.sort();
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: AppColors.canvas,
@@ -317,10 +384,23 @@ class _PlacePhotoVerificationPageState
                 ),
                 const SizedBox(height: 7),
                 const Text(
-                  'Choose a known place and add two photos: one clear place photo and one showing you with the scenery. Province and district are filled automatically.',
+                  'Add a title and two photos, then select the province, district, municipality and place from TripSathi.',
                   style: TextStyle(color: AppColors.muted, height: 1.45),
                 ),
                 const SizedBox(height: 20),
+                TextFormField(
+                  controller: _titleController,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    labelText: 'Visit title',
+                    hintText: 'Morning visit to Pashupatinath',
+                    prefixIcon: Icon(Icons.title_rounded),
+                  ),
+                  validator: (value) => (value ?? '').trim().length < 3
+                      ? 'Enter a short title'
+                      : null,
+                ),
+                const SizedBox(height: 0),
                 _PhotoPicker(
                   title: '1. Place photo',
                   instruction: 'Show the place and surrounding scenery clearly',
@@ -342,41 +422,11 @@ class _PlacePhotoVerificationPageState
                       _choosePhoto(ImageSource.gallery, traveler: true),
                 ),
                 const SizedBox(height: 20),
-                TextFormField(
-                  controller: _titleController,
-                  maxLength: 120,
-                  decoration: const InputDecoration(
-                    labelText: 'Visit title',
-                    hintText: 'Morning visit to Pashupatinath',
-                    prefixIcon: Icon(Icons.title_rounded),
-                  ),
-                  validator: (value) => (value ?? '').trim().length < 3
-                      ? 'Enter a short title'
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: _category,
-                  decoration: const InputDecoration(
-                    labelText: 'Category',
-                    prefixIcon: Icon(Icons.category_outlined),
-                  ),
-                  items: _categories.entries
-                      .map((entry) => DropdownMenuItem(
-                            value: entry.key,
-                            child: Text(entry.value),
-                          ))
-                      .toList(),
-                  onChanged: (value) => setState(() => _category = value),
-                  validator: (value) =>
-                      value == null ? 'Choose a category' : null,
-                ),
-                const SizedBox(height: 18),
                 if (_loadingPlaces)
                   const LinearProgressIndicator(minHeight: 2)
                 else if (_catalogError != null)
                   _InlineNotice(message: _catalogError!, onRetry: _loadPlaces)
-                else
+                else if (_showLegacyLocationFields)
                   Autocomplete<_PlaceOption>(
                     displayStringForOption: (option) => option.place,
                     optionsBuilder: (value) {
@@ -427,7 +477,7 @@ class _PlacePhotoVerificationPageState
                         borderRadius: BorderRadius.circular(14),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(
-                              maxHeight: 280, maxWidth: 520),
+                              maxHeight: 250, maxWidth: 520),
                           child: ListView.builder(
                             padding: const EdgeInsets.symmetric(vertical: 6),
                             shrinkWrap: true,
@@ -447,6 +497,105 @@ class _PlacePhotoVerificationPageState
                       ),
                     ),
                   ),
+                if (!_loadingPlaces && _catalogError == null) ...[
+                  _LocationDropdown(
+                    label: 'Province',
+                    value: _selectedProvince,
+                    values: _provinces,
+                    icon: Icons.map_outlined,
+                    onChanged: (value) => setState(() {
+                      _selectedProvince = value;
+                      _selectedDistrict = null;
+                      _selectedMunicipality = null;
+                      _selectedPlace = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  _LocationDropdown(
+                    label: 'District',
+                    value: _selectedDistrict,
+                    values: _districts,
+                    icon: Icons.signpost_outlined,
+                    onChanged: _selectedProvince == null
+                        ? null
+                        : (value) => setState(() {
+                              _selectedDistrict = value;
+                              _selectedMunicipality = null;
+                              _selectedPlace = null;
+                            }),
+                  ),
+                  const SizedBox(height: 12),
+                  _LocationDropdown(
+                    label: 'Municipality',
+                    value: _selectedMunicipality,
+                    values: _municipalities,
+                    icon: Icons.location_city_outlined,
+                    onChanged: _selectedDistrict == null
+                        ? null
+                        : (value) => setState(() {
+                              _selectedMunicipality = value;
+                              _selectedPlace = null;
+                            }),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<_PlaceOption>(
+                    value: _filteredPlaces.contains(_selectedPlace)
+                        ? _selectedPlace
+                        : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Visited place',
+                      prefixIcon: Icon(Icons.place_outlined),
+                    ),
+                    items: _filteredPlaces
+                        .map((item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item.place,
+                                  overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: _selectedMunicipality == null
+                        ? null
+                        : (value) => setState(() {
+                              _selectedPlace = value;
+                            }),
+                    validator: (value) =>
+                        value == null ? 'Choose the visited place' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _category,
+                    decoration: const InputDecoration(
+                      labelText: 'Campaign category',
+                      prefixIcon: Icon(Icons.category_outlined),
+                    ),
+                    items: _categories
+                        .map((category) => DropdownMenuItem(
+                              value: category,
+                              child: Text(category),
+                            ))
+                        .toList(),
+                    onChanged: _loadingCategories || _categoryError != null
+                        ? null
+                        : (value) => setState(() => _category = value),
+                    validator: (value) => value == null
+                        ? _loadingCategories
+                            ? 'Campaign categories are loading'
+                            : _categories.isEmpty
+                                ? 'Ask an admin to add campaign categories'
+                                : 'Choose a campaign category'
+                        : null,
+                  ),
+                  if (_loadingCategories)
+                    const LinearProgressIndicator(minHeight: 2)
+                  else if (_categoryError != null) ...[
+                    const SizedBox(height: 8),
+                    _InlineNotice(
+                      message: _categoryError!,
+                      onRetry: _loadCampaignCategories,
+                    ),
+                  ],
+                ],
                 if (_selectedPlace != null) ...[
                   const SizedBox(height: 12),
                   Container(
@@ -470,20 +619,21 @@ class _PlacePhotoVerificationPageState
                   ),
                 ],
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _addressController,
-                  maxLength: 240,
-                  minLines: 2,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Location address',
-                    hintText: 'Gate, road, ward or nearby landmark',
-                    prefixIcon: Icon(Icons.location_on_outlined),
+                if (_showLegacyLocationFields)
+                  TextFormField(
+                    controller: _addressController,
+                    maxLength: 240,
+                    minLines: 2,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Location address',
+                      hintText: 'Gate, road, ward or nearby landmark',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                    validator: (value) => (value ?? '').trim().length < 5
+                        ? 'Enter a useful address'
+                        : null,
                   ),
-                  validator: (value) => (value ?? '').trim().length < 5
-                      ? 'Enter a useful address'
-                      : null,
-                ),
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
                   onPressed: _locating ? null : _captureLocation,
@@ -496,7 +646,7 @@ class _PlacePhotoVerificationPageState
                           ? Icons.my_location_rounded
                           : Icons.check_circle_rounded),
                   label: Text(_position == null
-                      ? 'Add current GPS location (recommended)'
+                      ? 'Add current GPS location (required)'
                       : 'GPS location added'),
                 ),
                 const SizedBox(height: 22),
@@ -566,6 +716,42 @@ class _PlacePhotoVerificationPageState
       );
 }
 
+class _LocationDropdown extends StatelessWidget {
+  const _LocationDropdown({
+    required this.label,
+    required this.value,
+    required this.values,
+    required this.icon,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String? value;
+  final List<String> values;
+  final IconData icon;
+  final ValueChanged<String?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<String>(
+        value: values.contains(value) ? value : null,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+        ),
+        items: values
+            .map(
+              (item) => DropdownMenuItem(
+                value: item,
+                child: Text(item, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(),
+        onChanged: onChanged,
+        validator: (selected) => selected == null ? 'Choose $label' : null,
+      );
+}
+
 class _PhotoPicker extends StatelessWidget {
   const _PhotoPicker({
     required this.title,
@@ -611,7 +797,7 @@ class _PhotoPicker extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 0),
                   Wrap(
                     spacing: 8,
                     children: [
@@ -621,10 +807,9 @@ class _PhotoPicker extends StatelessWidget {
                         label: const Text('Camera'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: onGallery,
-                        icon: const Icon(Icons.photo_library_outlined),
-                        label: const Text('Gallery'),
-                      ),
+                          onPressed: onGallery,
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Gallery')),
                     ],
                   ),
                 ],
