@@ -306,7 +306,19 @@ class ApiService {
     if (secureUrl.isEmpty) {
       throw Exception('Campaign image upload did not return a secure URL');
     }
-    return {'url': secureUrl, 'publicId': publicId};
+    return {
+      'url': autoOrientCloudinaryImage(secureUrl),
+      'publicId': publicId,
+    };
+  }
+
+  /// Applies Cloudinary's EXIF-aware orientation transform. This also fixes
+  /// older campaign uploads whose pixels were stored in the camera's native
+  /// orientation.
+  static String autoOrientCloudinaryImage(String url) {
+    if (url.isEmpty || !url.contains('res.cloudinary.com')) return url;
+    if (url.contains('/upload/a_auto/')) return url;
+    return url.replaceFirst('/upload/', '/upload/a_auto/');
   }
 
   static Future<String> uploadPlaceVerificationImage(File image) async {
@@ -323,6 +335,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> submitPlacePhotoVerification({
     required String photoUrl,
+    required String travelerPhotoUrl,
     required String title,
     required String category,
     required String province,
@@ -339,6 +352,7 @@ class ApiService {
       Uri.parse('$baseUrl/user/photos/verification-requests'),
       body: jsonEncode({
         'url': photoUrl,
+        'travelerUrl': travelerPhotoUrl,
         'kind': 'solo',
         'title': title.trim(),
         'category': category,

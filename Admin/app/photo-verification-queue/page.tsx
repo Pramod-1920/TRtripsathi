@@ -20,6 +20,7 @@ type PhotoVerificationQueueItem = {
   requestCode: string;
   campaignId: string;
   url: string;
+  travelerUrl?: string | null;
   kind: 'group' | 'solo';
   status: 'pending' | 'approved' | 'rejected';
   submittedAt: string;
@@ -274,7 +275,7 @@ export default function PhotoVerificationQueuePage() {
               <tr>
                 <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">User</th>
                 <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">Request</th>
-                <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">Photo</th>
+                <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">Evidence photos</th>
                 <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">Submitted</th>
                 <th className="px-5 py-3 text-left text-sm font-semibold text-slate-900">Action</th>
               </tr>
@@ -342,22 +343,23 @@ export default function PhotoVerificationQueuePage() {
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    <a href={item.url} target="_blank" rel="noreferrer" className="block">
-                      <img
-                        src={item.url}
-                        alt={item.title || item.place || 'Verification evidence'}
-                        className="mb-2 h-24 w-32 rounded-lg border border-slate-200 object-cover"
-                      />
-                    </a>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline"
-                    >
-                      Open photo
-                      <FiExternalLink size={14} />
-                    </a>
+                    <div className="flex gap-3">
+                      {[
+                        { label: 'Place', url: item.url },
+                        { label: 'Traveler + scenery', url: item.travelerUrl },
+                      ].map((photo) => photo.url ? (
+                        <a key={photo.label} href={photo.url} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={photo.url}
+                            alt={`${photo.label} verification evidence`}
+                            className="h-24 w-28 rounded-lg border border-slate-200 object-cover"
+                          />
+                          <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline">
+                            {photo.label} <FiExternalLink size={11} />
+                          </span>
+                        </a>
+                      ) : null)}
+                    </div>
                     {item.latitude != null && item.longitude != null && (
                       <a
                         href={`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=17/${item.latitude}/${item.longitude}`}

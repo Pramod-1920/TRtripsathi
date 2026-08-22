@@ -10,6 +10,7 @@ import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/cam
 import 'package:trtripsathi_mobile/features/map/domain/nepal_boundary.dart';
 import 'package:trtripsathi_mobile/features/map/domain/nepal_administrative_registry.dart';
 import 'package:trtripsathi_mobile/features/map/domain/nepal_district_boundaries.dart';
+import 'package:trtripsathi_mobile/features/profile/presentation/pages/place_photo_verification_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/pages/trip_details_page.dart';
 import 'package:trtripsathi_mobile/features/trips/presentation/providers/trips_provider.dart';
 
@@ -204,6 +205,15 @@ class _TripMapScreenState extends State<TripMapScreen>
     );
   }
 
+  Future<void> _addVisitedPlace() async {
+    final submitted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => const PlacePhotoVerificationPage(),
+      ),
+    );
+    if (submitted == true && mounted) await _loadVisits();
+  }
+
   void _selectCoverage(LatLng point) {
     DistrictBoundaryData? match;
     for (final district in nepalDistrictBoundaries) {
@@ -244,15 +254,9 @@ class _TripMapScreenState extends State<TripMapScreen>
     final provinceVisitCounts = <int, int>{};
     for (final province in provinceNames.keys) {
       final districts = nepalDistrictsByProvince[province] ?? const <String>{};
-      final complete = districts.every(
-        (district) => (districtVisitCounts[district] ?? 0) > 0,
-      );
-      provinceVisitCounts[province] = complete
-          ? districts.fold(
-              0,
-              (total, district) => total + (districtVisitCounts[district] ?? 0),
-            )
-          : 0;
+      provinceVisitCounts[province] = districts
+          .where((district) => (districtVisitCounts[district] ?? 0) > 0)
+          .length;
     }
     final maxCoverageCount = (_coverageLevel == _CoverageLevel.districts
             ? districtVisitCounts.values
@@ -339,12 +343,17 @@ class _TripMapScreenState extends State<TripMapScreen>
                     for (final district in nepalDistrictBoundaries)
                       Polygon(
                         points: district.points,
-                        color: _coverageColor(
-                          _coverageLevel == _CoverageLevel.districts
-                              ? districtVisitCounts[district.name] ?? 0
-                              : provinceVisitCounts[district.province] ?? 0,
-                          maxCoverageCount,
-                        ),
+                        color: _coverageLevel == _CoverageLevel.districts
+                            ? _coverageColor(
+                                districtVisitCounts[district.name] ?? 0,
+                                maxCoverageCount,
+                              )
+                            : _provinceCoverageColor(
+                                provinceVisitCounts[district.province] ?? 0,
+                                (nepalDistrictsByProvince[district.province] ??
+                                        const <String>{})
+                                    .length,
+                              ),
                         borderColor: _coverageBorderColor(district),
                         borderStrokeWidth: _coverageBorderWidth(district),
                       ),
@@ -512,6 +521,21 @@ class _TripMapScreenState extends State<TripMapScreen>
                   : const Icon(Icons.my_location_rounded),
             ),
           ),
+          if (_mapView == _MapView.visits)
+            Positioned(
+              left: 14,
+              bottom: (_selectedDistrict != null || _selectedPlace != null)
+                  ? 204
+                  : 30,
+              child: FloatingActionButton.extended(
+                heroTag: 'add-visited-place',
+                onPressed: _addVisitedPlace,
+                backgroundColor: AppColors.navy,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.add_location_alt_outlined),
+                label: const Text('Add visited place'),
+              ),
+            ),
           if (selected != null)
             Positioned(
               left: 12,
@@ -605,6 +629,17 @@ class _TripMapScreenState extends State<TripMapScreen>
       ? Colors.white.withValues(alpha: .08)
       : const Color(0xFF159455)
           .withValues(alpha: .24 + (.48 * count / maximum));
+
+  Color _provinceCoverageColor(int visitedDistricts, int totalDistricts) {
+    if (visitedDistricts == 0 || totalDistricts == 0) {
+      return Colors.white.withValues(alpha: .08);
+    }
+    if (visitedDistricts >= totalDistricts) {
+      return const Color(0xFF08783F).withValues(alpha: .82);
+    }
+    final progress = visitedDistricts / totalDistricts;
+    return const Color(0xFF55B982).withValues(alpha: .22 + (.28 * progress));
+  }
 
   Color _coverageBorderColor(DistrictBoundaryData district) {
     final selected = _selectedDistrict;

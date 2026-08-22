@@ -1273,7 +1273,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
                   _FixedPhoneField(
                     phone: _formatPhone(widget.profile['phoneNumber']),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

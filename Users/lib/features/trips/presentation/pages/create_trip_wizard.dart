@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:image/image.dart' as image_tools;
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -23,7 +25,7 @@ class CreateTripWizard extends StatefulWidget {
 class _CreateTripWizardState extends State<CreateTripWizard> {
   static const _steps = [
     ('The idea', 'Name and trip style', Icons.lightbulb_outline_rounded),
-    ('The place', 'Choose the destination', Icons.map_outlined),
+    ('The place', 'Choose the location', Icons.map_outlined),
     ('The plan', 'Schedule and group size', Icons.event_note_rounded),
     ('Review', 'Check before publishing', Icons.fact_check_outlined),
   ];
@@ -48,7 +50,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
   String _scheduleType = 'scheduled';
   String _difficulty = 'moderate';
   String _joinMode = 'open';
-  String _genderVisibility = 'all';
+  String? _genderVisibility;
   String _campaignVisibility = 'public';
   String? _subcategory;
   String? _province;
@@ -99,7 +101,12 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     }
     _difficulty = (campaign['difficulty'] ?? 'moderate').toString();
     _joinMode = (campaign['joinMode'] ?? 'open').toString();
-    _genderVisibility = (campaign['genderVisibility'] ?? 'all').toString();
+    final savedGenderVisibility =
+        (campaign['genderVisibility'] ?? '').toString();
+    _genderVisibility =
+        const {'all', 'male', 'female'}.contains(savedGenderVisibility)
+            ? savedGenderVisibility
+            : null;
     _campaignVisibility = (campaign['visibility'] ?? 'public').toString();
     _duration.text = (campaign['durationDays'] ?? 1).toString();
     _estimatedCost.text = (campaign['estimatedNPR'] ?? 0).toString();
@@ -111,7 +118,9 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     final photos = campaign['photos'];
     if (photos is List && photos.isNotEmpty && photos.first is Map) {
       final firstPhoto = Map<String, dynamic>.from(photos.first as Map);
-      _existingCoverUrl = (firstPhoto['url'] ?? '').toString().trim();
+      _existingCoverUrl = ApiService.autoOrientCloudinaryImage(
+        (firstPhoto['url'] ?? '').toString().trim(),
+      );
       if (_existingCoverUrl!.isEmpty) _existingCoverUrl = null;
     }
   }
@@ -192,14 +201,6 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     return const [];
   }
 
-  List<String> get _destinationOptions {
-    for (final province in _places) {
-      if (province.name != _province) continue;
-      return province.destinations[_district] ?? const [];
-    }
-    return const [];
-  }
-
   List<String> get _subcategories {
     for (final category in _categories) {
       if (category.name == _category.text.trim()) return category.subcategories;
@@ -269,15 +270,35 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     );
     if (source == null || !mounted) return;
     try {
-      final image = await _imagePicker.pickImage(
-        source: source,
-        imageQuality: 82,
-        maxWidth: 1800,
-      );
-      if (image != null && mounted) setState(() => _coverPhoto = image);
+      // Keep the camera's original bytes here. Asking image_picker to resize
+      // can rotate the pixels while retaining the old EXIF direction on some
+      // Android devices, which makes a later correction turn the image upside
+      // down. Resizing and compression happen once, below, after orientation
+      // has been baked into the pixels.
+      final image = await _imagePicker.pickImage(source: source);
+      if (image != null) {
+        final corrected = await _normalizeImageOrientation(image);
+        if (mounted) setState(() => _coverPhoto = corrected);
+      }
     } catch (error) {
       if (mounted) setState(() => _error = ApiService.readableError(error));
     }
+  }
+
+  Future<XFile> _normalizeImageOrientation(XFile picked) async {
+    final bytes = await picked.readAsBytes();
+    final decoded = image_tools.decodeImage(bytes);
+    if (decoded == null) return picked;
+    final oriented = image_tools.bakeOrientation(decoded);
+    final corrected = oriented.width > 1800
+        ? image_tools.copyResize(oriented, width: 1800)
+        : oriented;
+    final output = File('${picked.path}_oriented.jpg');
+    await output.writeAsBytes(
+      image_tools.encodeJpg(corrected, quality: 86),
+      flush: true,
+    );
+    return XFile(output.path);
   }
 
   void _next() {
@@ -334,9 +355,8 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
     if (step == 1) {
       if (_province == null) return 'Choose a province.';
       if (_district == null) return 'Choose a district.';
-      if (_placeName.text.trim().isEmpty) return 'Add the destination name.';
-      if (_destinationPoint == null) {
-        return 'Drop a pin on the map for the exact destination.';
+      if (_municipality.text.trim().isEmpty) {
+        return 'Enter a municipality.';
       }
     }
     if (step == 2) {
@@ -348,6 +368,9 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
       final cost = num.tryParse(_estimatedCost.text.trim());
       if (cost == null || cost < 0) return 'Enter a valid estimated cost.';
       if (_hikeType == 'group') {
+        if (_genderVisibility == null) {
+          return 'Choose who can discover and join the campaign.';
+        }
         final minimum = int.tryParse(_minParticipants.text.trim());
         final maximum = int.tryParse(_maxParticipants.text.trim());
         if (minimum == null || minimum < 1) {
@@ -398,14 +421,16 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
         'district': _district,
         if (_municipality.text.trim().isNotEmpty)
           'municipality': _municipality.text.trim(),
-        'placeName': _placeName.text.trim(),
-        'locationGps': {
-          'type': 'Point',
-          'coordinates': [
-            _destinationPoint!.longitude,
-            _destinationPoint!.latitude,
-          ],
-        },
+        if (_placeName.text.trim().isNotEmpty)
+          'placeName': _placeName.text.trim(),
+        if (_destinationPoint != null)
+          'locationGps': {
+            'type': 'Point',
+            'coordinates': [
+              _destinationPoint!.longitude,
+              _destinationPoint!.latitude,
+            ],
+          },
         'difficulty': _difficulty,
         'durationDays': duration,
         'estimatedNPR': num.parse(_estimatedCost.text.trim()),
@@ -415,7 +440,7 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
           'endDate': end.toUtc().toIso8601String(),
         if (_hikeType == 'group') ...{
           'joinMode': _joinMode,
-          'genderVisibility': _genderVisibility,
+          'genderVisibility': _genderVisibility!,
           'visibility': _campaignVisibility,
           'minParticipants': int.parse(_minParticipants.text.trim()),
           'maxParticipants': int.parse(_maxParticipants.text.trim()),
@@ -564,23 +589,17 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                     province: _province,
                     district: _district,
                     districts: _districts,
-                    destinations: _destinationOptions,
                     municipality: _municipality,
-                    placeName: _placeName,
                     destinationPoint: _destinationPoint,
                     onProvinceChanged: (value) => setState(() {
                       _province = value;
                       _district = null;
-                      _placeName.clear();
+                      _municipality.clear();
                       _destinationPoint = null;
                     }),
                     onDistrictChanged: (value) => setState(() {
                       _district = value;
-                      _placeName.clear();
-                      _destinationPoint = null;
-                    }),
-                    onDestinationChanged: (value) => setState(() {
-                      _placeName.text = value ?? '';
+                      _municipality.clear();
                       _destinationPoint = null;
                     }),
                     onDestinationPointChanged: (value) => setState(() {
@@ -622,11 +641,11 @@ class _CreateTripWizardState extends State<CreateTripWizard> {
                     category: _category.text.trim(),
                     hikeType: _hikeType,
                     scheduleType: _scheduleType,
-                    genderVisibility: _genderVisibility,
+                    genderVisibility: _genderVisibility ?? 'all',
                     campaignVisibility: _campaignVisibility,
                     province: _province ?? '',
                     district: _district ?? '',
-                    placeName: _placeName.text.trim(),
+                    municipality: _municipality.text.trim(),
                     difficulty: _difficulty,
                     startDate: _startDate,
                     duration: _duration.text,
@@ -768,13 +787,10 @@ class _PlaceStep extends StatelessWidget {
     required this.province,
     required this.district,
     required this.districts,
-    required this.destinations,
     required this.municipality,
-    required this.placeName,
     required this.destinationPoint,
     required this.onProvinceChanged,
     required this.onDistrictChanged,
-    required this.onDestinationChanged,
     required this.onDestinationPointChanged,
   });
   final bool loading;
@@ -782,13 +798,10 @@ class _PlaceStep extends StatelessWidget {
   final String? province;
   final String? district;
   final List<String> districts;
-  final List<String> destinations;
   final TextEditingController municipality;
-  final TextEditingController placeName;
   final LatLng? destinationPoint;
   final ValueChanged<String?> onProvinceChanged;
   final ValueChanged<String?> onDistrictChanged;
-  final ValueChanged<String?> onDestinationChanged;
   final ValueChanged<LatLng> onDestinationPointChanged;
 
   @override
@@ -796,9 +809,9 @@ class _PlaceStep extends StatelessWidget {
         children: [
           _WizardNote(
             icon: Icons.cloud_done_outlined,
-            title: 'Connected to the destination catalog',
-            message:
-                'Province, district and known places come from Admin data.',
+            title: 'Choose the campaign location',
+            message: 'Province, district and municipality are required. '
+                'The exact map pin is optional.',
           ),
           const SizedBox(height: 14),
           _WizardCard(
@@ -850,44 +863,15 @@ class _PlaceStep extends StatelessWidget {
                   controller: municipality,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
-                    labelText: 'Municipality (optional)',
+                    labelText: 'Municipality',
                     prefixIcon: Icon(Icons.location_city_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
-                if (destinations.isNotEmpty)
-                  DropdownButtonFormField<String>(
-                    key: ValueKey('$province-$district'),
-                    value: destinations.contains(placeName.text)
-                        ? placeName.text
-                        : null,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Destination',
-                      prefixIcon: Icon(Icons.landscape_outlined),
-                    ),
-                    items: destinations
-                        .map((item) => DropdownMenuItem(
-                              value: item,
-                              child: Text(_label(item)),
-                            ))
-                        .toList(),
-                    onChanged: onDestinationChanged,
-                  )
-                else
-                  TextField(
-                    controller: placeName,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Destination or trail name',
-                      prefixIcon: Icon(Icons.landscape_outlined),
-                    ),
-                  ),
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Pin the exact destination',
+                    'Pin the location (optional)',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: AppColors.ink,
                           fontWeight: FontWeight.w800,
@@ -898,7 +882,7 @@ class _PlaceStep extends StatelessWidget {
                 const Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Move the map and tap where the trip will take place.',
+                    'Tap the map if you want to share a more precise location.',
                     style: TextStyle(color: AppColors.muted, height: 1.35),
                   ),
                 ),
@@ -927,7 +911,7 @@ class _PlaceStep extends StatelessWidget {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Choose a destination inside Nepal.',
+                                'Choose a location inside Nepal.',
                               ),
                             ),
                           );
@@ -1004,8 +988,8 @@ class _PlaceStep extends StatelessWidget {
                     const SizedBox(width: 7),
                     Text(
                       destinationPoint == null
-                          ? 'Tap the map to add the destination pin'
-                          : 'Destination pin added',
+                          ? 'No map pin added'
+                          : 'Optional map pin added',
                       style: TextStyle(
                         color: destinationPoint == null
                             ? AppColors.muted
@@ -1047,7 +1031,7 @@ class _PlanStep extends StatelessWidget {
   final String scheduleType;
   final String difficulty;
   final String joinMode;
-  final String genderVisibility;
+  final String? genderVisibility;
   final String campaignVisibility;
   final DateTime? startDate;
   final int leadDays;
@@ -1178,9 +1162,10 @@ class _PlanStep extends StatelessWidget {
                 ],
               ),
               if (hikeType == 'group') ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: campaignVisibility,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Campaign visibility',
                     prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -1188,18 +1173,24 @@ class _PlanStep extends StatelessWidget {
                   items: const [
                     DropdownMenuItem(
                       value: 'public',
-                      child: Text('Public — shown in discovery'),
+                      child: Text(
+                        'Public — shown in discovery',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     DropdownMenuItem(
                       value: 'private',
-                      child: Text('Private — join with code'),
+                      child: Text(
+                        'Private — join with code',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                   onChanged: (value) {
                     if (value != null) onCampaignVisibilityChanged(value);
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: joinMode,
                   decoration: const InputDecoration(
@@ -1217,12 +1208,13 @@ class _PlanStep extends StatelessWidget {
                     if (value != null) onJoinModeChanged(value);
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   value: genderVisibility,
                   decoration: const InputDecoration(
-                    labelText: 'Who can discover and join',
-                    prefixIcon: Icon(Icons.visibility_outlined),
+                    labelText: 'Allowed gender',
+                    hintText: 'Select who can join',
+                    prefixIcon: Icon(Icons.wc_rounded),
                   ),
                   items: const [
                     DropdownMenuItem(
@@ -1282,7 +1274,7 @@ class _ReviewStep extends StatelessWidget {
     required this.campaignVisibility,
     required this.province,
     required this.district,
-    required this.placeName,
+    required this.municipality,
     required this.difficulty,
     required this.startDate,
     required this.duration,
@@ -1299,7 +1291,7 @@ class _ReviewStep extends StatelessWidget {
   final String campaignVisibility;
   final String province;
   final String district;
-  final String placeName;
+  final String municipality;
   final String difficulty;
   final DateTime? startDate;
   final String duration;
@@ -1322,26 +1314,20 @@ class _ReviewStep extends StatelessWidget {
                 Container(
                   height: 108,
                   decoration: BoxDecoration(
-                    gradient: coverPhoto == null
-                        ? const LinearGradient(
-                            colors: [Color(0xFF1D5C50), Color(0xFF17324D)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    image: coverPhoto == null
-                        ? null
-                        : DecorationImage(
-                            image: FileImage(File(coverPhoto!.path)),
-                            fit: BoxFit.cover,
-                            colorFilter: ColorFilter.mode(
-                              Colors.black.withValues(alpha: .18),
-                              BlendMode.darken,
-                            ),
-                          ),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1D5C50), Color(0xFF17324D)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                   ),
                   child: Stack(
                     children: [
+                      if (coverPhoto != null)
+                        Positioned.fill(
+                          child: _FullCampaignPhoto(
+                            image: FileImage(File(coverPhoto!.path)),
+                          ),
+                        ),
                       Positioned(
                         right: 18,
                         bottom: -8,
@@ -1407,8 +1393,8 @@ class _ReviewStep extends StatelessWidget {
             children: [
               _ReviewRow(
                 icon: Icons.location_on_outlined,
-                label: 'Destination',
-                value: [placeName, district, province]
+                label: 'Location',
+                value: [municipality, district, province]
                     .where((value) => value.isNotEmpty)
                     .map(_label)
                     .join(', '),
@@ -1592,6 +1578,28 @@ class _TripTypeSelector extends StatelessWidget {
       );
 }
 
+class _FullCampaignPhoto extends StatelessWidget {
+  const _FullCampaignPhoto({required this.image});
+
+  final ImageProvider image;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        fit: StackFit.expand,
+        children: [
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Image(image: image, fit: BoxFit.cover),
+          ),
+          ColoredBox(color: Colors.black.withValues(alpha: .14)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Image(image: image, fit: BoxFit.contain),
+          ),
+        ],
+      );
+}
+
 class _CoverPhotoPicker extends StatelessWidget {
   const _CoverPhotoPicker({
     required this.photo,
@@ -1620,19 +1628,11 @@ class _CoverPhotoPicker extends StatelessWidget {
           color: const Color(0xFFE9EEE9),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.line),
-          image: image == null
-              ? null
-              : DecorationImage(
-                  image: image,
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: .12),
-                    BlendMode.darken,
-                  ),
-                ),
         ),
         child: Stack(
           children: [
+            if (image != null)
+              Positioned.fill(child: _FullCampaignPhoto(image: image)),
             if (!hasPhoto)
               const Positioned(
                 right: 18,

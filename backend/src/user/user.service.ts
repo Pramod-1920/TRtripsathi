@@ -3246,6 +3246,7 @@ export class UserService {
       longitude?: number;
       locationAccuracyMeters?: number;
       locationCapturedAt?: string;
+      travelerUrl?: string;
     },
   ) {
     const profile = await this.userModel.findOne({
@@ -3299,6 +3300,11 @@ export class UserService {
         }
       | undefined;
     if (isPlaceEvidence) {
+      if (!payload.travelerUrl?.trim()) {
+        throw new BadRequestException(
+          'Add a second photo showing you together with the visited place',
+        );
+      }
       if (
         !payload.title?.trim() ||
         !payload.category?.trim() ||
@@ -3452,6 +3458,14 @@ export class UserService {
     const evidenceHash = isPlaceEvidence
       ? await this.hashTrustedEvidenceImage(payload.url)
       : undefined;
+    const travelerEvidenceHash = isPlaceEvidence
+      ? await this.hashTrustedEvidenceImage(payload.travelerUrl!)
+      : undefined;
+    if (evidenceHash && evidenceHash === travelerEvidenceHash) {
+      throw new BadRequestException(
+        'The place photo and traveler photo must be different images',
+      );
+    }
     if (
       evidenceHash &&
       (await this.userModel.exists({
@@ -3474,6 +3488,9 @@ export class UserService {
       requestCode,
       campaignId,
       url: String(payload.url).trim(),
+      ...(payload.travelerUrl?.trim()
+        ? { travelerUrl: payload.travelerUrl.trim() }
+        : {}),
       kind: payload.kind,
       status: 'pending' as const,
       submittedAt: new Date(),
@@ -4330,6 +4347,7 @@ export class UserService {
                 requestCode: '$photoVerificationRequests.requestCode',
                 campaignId: '$photoVerificationRequests.campaignId',
                 url: '$photoVerificationRequests.url',
+                travelerUrl: '$photoVerificationRequests.travelerUrl',
                 kind: '$photoVerificationRequests.kind',
                 status: '$photoVerificationRequests.status',
                 submittedAt: '$photoVerificationRequests.submittedAt',

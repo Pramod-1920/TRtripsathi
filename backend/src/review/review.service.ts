@@ -1,15 +1,118 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Review } from './schemas/review.schema';
-import { CreateReviewDto, UpdateReviewDto, ReviewStatsDto } from './dto/review.dto';
+import {
+  CreateReviewDto,
+  UpdateReviewDto,
+  ReviewStatsDto,
+} from './dto/review.dto';
+import { User } from '../user/schemas/user.schema';
+import { Trip } from '../trip/schemas/trip.schema';
+import { TripParticipant } from '../trip/schemas/trip-participant.schema';
+import { Campaign } from '../campaign/schemas/campaign.schema';
 
 @Injectable()
 export class ReviewService {
   constructor(
     @InjectModel(Review.name)
     private reviewModel: Model<Review>,
+    @InjectModel(User.name)
+    private userModel: Model<User>,
+    @InjectModel(Trip.name)
+    private tripModel: Model<Trip>,
+    @InjectModel(TripParticipant.name)
+    private tripParticipantModel: Model<TripParticipant>,
+    @InjectModel(Campaign.name)
+    private campaignModel: Model<Campaign>,
   ) {}
+
+  private toObjectId(id: string, field: string): Types.ObjectId {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid ${field}`);
+    }
+    return new Types.ObjectId(id);
+  }
+
+  private async resolveUserProfileIdFromAuthId(
+    authId: string,
+  ): Promise<Types.ObjectId> {
+    const authObjectId = this.toObjectId(authId, 'reviewer id');
+    const reviewer = await this.userModel
+      .findOne({ authId: authObjectId })
+      .select('_id')
+      .lean();
+
+    if (!reviewer?._id) {
+      throw new NotFoundException('Reviewer profile not found');
+    }
+
+    return reviewer._id as Types.ObjectId;
+  }
+
+  async getUserProfileIdFromAuthId(authId: string): Promise<string> {
+    const userProfileId = await this.resolveUserProfileIdFromAuthId(authId);
+    return userProfileId.toString();
+  }
+
+  private async ensureTripReviewEligibility(
+    tripObjectId: Types.ObjectId,
+    reviewerProfileId: Types.ObjectId,
+    revieweeProfileId: Types.ObjectId,
+  ): Promise<boolean> {
+    const trip = await this.tripModel.findById(tripObjectId).lean();
+    if (!trip || trip.isDeleted || trip.status !== 'completed') {
+      return false;
+    }
+
+    const participants = await this.tripParticipantModel
+      .find({
+        tripId: tripObjectId,
+        userId: { $in: [reviewerProfileId, revieweeProfileId] },
+        status: 'approved',
+        completionConfirmed: true,
+      })
+      .select('userId')
+      .lean();
+
+    return participants.length === 2;
+  }
+
+  private async ensureCampaignReviewEligibility(
+    campaignObjectId: Types.ObjectId,
+    reviewerProfileId: Types.ObjectId,
+    revieweeProfileId: Types.ObjectId,
+  ): Promise<boolean> {
+    const campaign = await this.campaignModel.findById(campaignObjectId).lean();
+    if (
+      !campaign ||
+      campaign.deletedByAdmin ||
+      campaign.lifecyclePhase !== 'completed'
+    ) {
+      return false;
+    }
+
+    const participants = campaign.participants ?? [];
+    const reviewerParticipant = participants.find(
+      (participant: any) =>
+        participant.userId?.toString() === reviewerProfileId.toString(),
+    );
+    const revieweeParticipant = participants.find(
+      (participant: any) =>
+        participant.userId?.toString() === revieweeProfileId.toString(),
+    );
+
+    const isEligible = (participant: any) =>
+      participant &&
+      participant.status === 'accepted' &&
+      participant.leftAt == null;
+
+    return isEligible(reviewerParticipant) && isEligible(revieweeParticipant);
+  }
 
   /**
    * Create a new review
@@ -17,20 +120,44 @@ export class ReviewService {
    */
   async createReview(
     tripId: string,
-    reviewerId: string,
+    reviewerAuthId: string,
     revieweeId: string,
     createDto: CreateReviewDto,
   ): Promise<Review> {
-    // Validate reviewer is not reviewing themselves
-    if (reviewerId === revieweeId) {
+    const tripObjectId = this.toObjectId(tripId, 'trip id');
+    const revieweeProfileId = this.toObjectId(revieweeId, 'reviewee id');
+    const reviewerProfileId =
+      await this.resolveUserProfileIdFromAuthId(reviewerAuthId);
+
+    // Validate reviewer is not reviewing themselves (profile identity)
+    if (reviewerProfileId.toString() === revieweeProfileId.toString()) {
       throw new BadRequestException('Cannot review yourself');
+    }
+
+    const [tripEligible, campaignEligible] = await Promise.all([
+      this.ensureTripReviewEligibility(
+        tripObjectId,
+        reviewerProfileId,
+        revieweeProfileId,
+      ),
+      this.ensureCampaignReviewEligibility(
+        tripObjectId,
+        reviewerProfileId,
+        revieweeProfileId,
+      ),
+    ]);
+
+    if (!tripEligible && !campaignEligible) {
+      throw new BadRequestException(
+        'Reviews are allowed only for completed trips/campaigns where both participants were accepted and remained active until completion',
+      );
     }
 
     // Check if review already exists
     const existingReview = await this.reviewModel.findOne({
-      reviewerId: new Types.ObjectId(reviewerId),
-      revieweeId: new Types.ObjectId(revieweeId),
-      tripId: new Types.ObjectId(tripId),
+      reviewerId: reviewerProfileId,
+      revieweeId: revieweeProfileId,
+      tripId: tripObjectId,
     });
 
     if (existingReview) {
@@ -38,9 +165,9 @@ export class ReviewService {
     }
 
     const review = new this.reviewModel({
-      reviewerId: new Types.ObjectId(reviewerId),
-      revieweeId: new Types.ObjectId(revieweeId),
-      tripId: new Types.ObjectId(tripId),
+      reviewerId: reviewerProfileId,
+      revieweeId: revieweeProfileId,
+      tripId: tripObjectId,
       rating: createDto.rating,
       comment: createDto.comment,
     });
@@ -131,7 +258,7 @@ export class ReviewService {
    */
   async updateReview(
     reviewId: string,
-    reviewerId: string,
+    reviewerAuthId: string,
     updateDto: UpdateReviewDto,
     isAdmin = false,
   ): Promise<Review> {
@@ -142,7 +269,14 @@ export class ReviewService {
     }
 
     // allow admin to update any review
-    if (!isAdmin && review.reviewerId.toString() !== reviewerId) {
+    const reviewerProfileId = isAdmin
+      ? null
+      : await this.resolveUserProfileIdFromAuthId(reviewerAuthId);
+
+    if (
+      !isAdmin &&
+      review.reviewerId.toString() !== reviewerProfileId?.toString()
+    ) {
       throw new BadRequestException('Can only update your own review');
     }
 
@@ -161,7 +295,11 @@ export class ReviewService {
    * Delete a review
    * Only reviewer or admin can delete
    */
-  async deleteReview(reviewId: string, userId: string, isAdmin = false): Promise<void> {
+  async deleteReview(
+    reviewId: string,
+    reviewerAuthId: string,
+    isAdmin = false,
+  ): Promise<void> {
     const review = await this.reviewModel.findById(reviewId);
 
     if (!review) {
@@ -169,7 +307,14 @@ export class ReviewService {
     }
 
     // allow admin to delete any review
-    if (!isAdmin && review.reviewerId.toString() !== userId) {
+    const reviewerProfileId = isAdmin
+      ? null
+      : await this.resolveUserProfileIdFromAuthId(reviewerAuthId);
+
+    if (
+      !isAdmin &&
+      review.reviewerId.toString() !== reviewerProfileId?.toString()
+    ) {
       throw new BadRequestException('Can only delete your own review');
     }
 

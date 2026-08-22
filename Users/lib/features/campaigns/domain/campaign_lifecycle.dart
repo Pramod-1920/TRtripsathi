@@ -73,9 +73,16 @@ CampaignJourneyState campaignJourneyState(
   final failed = campaign['failed'] == true;
   final start = _campaignDate(campaign['startDate']);
   final explicitEnd = _campaignDate(campaign['endDate']);
+  final verificationDeadline = _campaignDate(campaign['verificationDeadline']);
+  final awaitingPhotoVerification = campaign['awaitingVerification'] == true &&
+      (verificationDeadline == null || verificationDeadline.isAfter(now));
   final durationDays = (campaign['durationDays'] as num?)?.toInt() ?? 1;
   final calculatedEnd = start?.add(Duration(days: durationDays.clamp(1, 365)));
   final end = explicitEnd ?? calculatedEnd;
+
+  // Keep the campaign in the active workspace while the host can still
+  // upload completion evidence. Archive it after verification or timeout.
+  if (awaitingPhotoVerification) return CampaignJourneyState.ongoing;
 
   if (completed ||
       failed ||

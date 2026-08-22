@@ -1422,9 +1422,6 @@ export class CampaignService {
           $or: [{ endDate: null }, { endDate: { $gt: now } }],
         },
         {
-          $or: [{ startDate: null }, { startDate: { $lte: now } }],
-        },
-        {
           $or: [{ joinOpenDate: null }, { joinOpenDate: { $lte: now } }],
         },
       );
@@ -2658,6 +2655,23 @@ export class CampaignService {
             nextPlaceName,
           ));
 
+    const reviewSensitiveChanged =
+      (dto.title !== undefined && dto.title.trim() !== campaign.title) ||
+      (dto.description !== undefined &&
+        dto.description.trim() !== (campaign.description ?? '')) ||
+      (dto.difficulty !== undefined &&
+        dto.difficulty !== campaign.difficulty) ||
+      nextActivity.category !== campaign.category ||
+      nextActivity.subcategory !== campaign.subcategory ||
+      nextHikeType !== campaign.hikeType ||
+      nextProvince !== campaign.province ||
+      nextDistrict !== campaign.district ||
+      nextMunicipality !== (campaign as any).municipality ||
+      nextPlaceName !== campaign.placeName ||
+      scheduleWasChanged ||
+      (dto.photos !== undefined &&
+        JSON.stringify(dto.photos) !== JSON.stringify(campaign.photos ?? []));
+
     Object.assign(campaign, rest);
     campaign.location = nextLocation;
     campaign.province = nextProvince;
@@ -2713,7 +2727,11 @@ export class CampaignService {
       }
     }
 
-    if (!isAdmin && campaign.lifecyclePhase !== 'started') {
+    if (
+      !isAdmin &&
+      campaign.lifecyclePhase !== 'started' &&
+      (campaign.approvalStatus !== 'approved' || reviewSensitiveChanged)
+    ) {
       const requiresAdminApproval = await this.getDifficultyApprovalRequirement(
         campaign.difficulty,
       );

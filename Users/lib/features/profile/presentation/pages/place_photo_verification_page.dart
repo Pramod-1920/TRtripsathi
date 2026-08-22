@@ -36,7 +36,8 @@ class _PlacePhotoVerificationPageState
 
   List<_PlaceOption> _places = const [];
   _PlaceOption? _selectedPlace;
-  File? _photo;
+  File? _placePhoto;
+  File? _travelerPhoto;
   String? _category;
   Position? _position;
   bool _loadingPlaces = true;
@@ -176,14 +177,21 @@ class _PlacePhotoVerificationPageState
     }
   }
 
-  Future<void> _choosePhoto(ImageSource source) async {
+  Future<void> _choosePhoto(ImageSource source,
+      {required bool traveler}) async {
     final picked = await _picker.pickImage(
       source: source,
       imageQuality: 86,
       maxWidth: 2048,
     );
     if (picked != null && mounted) {
-      setState(() => _photo = File(picked.path));
+      setState(() {
+        if (traveler) {
+          _travelerPhoto = File(picked.path);
+        } else {
+          _placePhoto = File(picked.path);
+        }
+      });
     }
   }
 
@@ -219,8 +227,12 @@ class _PlacePhotoVerificationPageState
 
   Future<void> _submit() async {
     if (_submitting || !_formKey.currentState!.validate()) return;
-    if (_photo == null) {
+    if (_placePhoto == null) {
       _showMessage('Add a clear photo of the place.');
+      return;
+    }
+    if (_travelerPhoto == null) {
+      _showMessage('Add a photo showing you with the place scenery.');
       return;
     }
     if (_selectedPlace == null) {
@@ -233,9 +245,13 @@ class _PlacePhotoVerificationPageState
     }
     setState(() => _submitting = true);
     try {
-      final photoUrl = await ApiService.uploadPlaceVerificationImage(_photo!);
+      final urls = await Future.wait([
+        ApiService.uploadPlaceVerificationImage(_placePhoto!),
+        ApiService.uploadPlaceVerificationImage(_travelerPhoto!),
+      ]);
       await ApiService.submitPlacePhotoVerification(
-        photoUrl: photoUrl,
+        photoUrl: urls[0],
+        travelerPhotoUrl: urls[1],
         title: _titleController.text,
         category: _category!,
         province: _selectedPlace!.province,
@@ -301,14 +317,29 @@ class _PlacePhotoVerificationPageState
                 ),
                 const SizedBox(height: 7),
                 const Text(
-                  'Choose a known place, add your own photo and details, then send it to an admin. Province and district are filled automatically.',
+                  'Choose a known place and add two photos: one clear place photo and one showing you with the scenery. Province and district are filled automatically.',
                   style: TextStyle(color: AppColors.muted, height: 1.45),
                 ),
                 const SizedBox(height: 20),
                 _PhotoPicker(
-                  photo: _photo,
-                  onCamera: () => _choosePhoto(ImageSource.camera),
-                  onGallery: () => _choosePhoto(ImageSource.gallery),
+                  title: '1. Place photo',
+                  instruction: 'Show the place and surrounding scenery clearly',
+                  photo: _placePhoto,
+                  onCamera: () =>
+                      _choosePhoto(ImageSource.camera, traveler: false),
+                  onGallery: () =>
+                      _choosePhoto(ImageSource.gallery, traveler: false),
+                ),
+                const SizedBox(height: 14),
+                _PhotoPicker(
+                  title: '2. You at the place',
+                  instruction:
+                      'Your face and the place scenery must both be visible',
+                  photo: _travelerPhoto,
+                  onCamera: () =>
+                      _choosePhoto(ImageSource.camera, traveler: true),
+                  onGallery: () =>
+                      _choosePhoto(ImageSource.gallery, traveler: true),
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
@@ -537,11 +568,15 @@ class _PlacePhotoVerificationPageState
 
 class _PhotoPicker extends StatelessWidget {
   const _PhotoPicker({
+    required this.title,
+    required this.instruction,
     required this.photo,
     required this.onCamera,
     required this.onGallery,
   });
 
+  final String title;
+  final String instruction;
   final File? photo;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
@@ -562,8 +597,20 @@ class _PhotoPicker extends StatelessWidget {
                   const Icon(Icons.add_a_photo_outlined,
                       size: 38, color: AppColors.navy),
                   const SizedBox(height: 10),
-                  const Text('Add a clear photo of the place',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Text(
+                      instruction,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 14),
                   Wrap(
                     spacing: 8,

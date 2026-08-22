@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:trtripsathi_mobile/core/networking/api_service.dart';
 import 'package:trtripsathi_mobile/core/theme/app_theme.dart';
 import 'package:trtripsathi_mobile/features/campaigns/presentation/providers/campaigns_provider.dart';
 
@@ -13,6 +14,7 @@ class MyJourneysPage extends StatefulWidget {
 
 class _MyJourneysPageState extends State<MyJourneysPage> {
   late CampaignsProvider _provider;
+  int _selectedFilter = 0;
 
   @override
   void initState() {
@@ -38,6 +40,11 @@ class _MyJourneysPageState extends State<MyJourneysPage> {
         body: Consumer<CampaignsProvider>(
           builder: (context, provider, _) {
             final journeys = provider.expiredCreatedCampaigns;
+            final filteredJourneys = journeys.where((journey) {
+              if (_selectedFilter == 0) return true;
+              final completed = _isCompletedJourney(journey);
+              return _selectedFilter == 1 ? completed : !completed;
+            }).toList(growable: false);
             if (provider.loading && journeys.isEmpty) {
               return const _JourneySkeleton();
             }
@@ -56,6 +63,17 @@ class _MyJourneysPageState extends State<MyJourneysPage> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                 children: [
                   _JourneySummary(journeys: journeys),
+                  const SizedBox(height: 16),
+                  _JourneyFilters(
+                    selectedIndex: _selectedFilter,
+                    allCount: journeys.length,
+                    completedCount: journeys.where(_isCompletedJourney).length,
+                    expiredCount: journeys
+                        .where((item) => !_isCompletedJourney(item))
+                        .length,
+                    onSelected: (index) =>
+                        setState(() => _selectedFilter = index),
+                  ),
                   const SizedBox(height: 22),
                   const Text(
                     'JOURNEY ARCHIVE',
@@ -67,11 +85,138 @@ class _MyJourneysPageState extends State<MyJourneysPage> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  ...journeys.map((journey) => _JourneyCard(journey: journey)),
+                  if (filteredJourneys.isEmpty)
+                    _NoFilteredJourneys(completed: _selectedFilter == 1)
+                  else
+                    ...filteredJourneys.map(
+                      (journey) => _JourneyCard(journey: journey),
+                    ),
                 ],
               ),
             );
           },
+        ),
+      );
+}
+
+class _JourneyFilters extends StatelessWidget {
+  const _JourneyFilters({
+    required this.selectedIndex,
+    required this.allCount,
+    required this.completedCount,
+    required this.expiredCount,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final int allCount;
+  final int completedCount;
+  final int expiredCount;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8EBE6),
+          borderRadius: BorderRadius.circular(17),
+        ),
+        child: Row(
+          children: [
+            _JourneyFilter(
+              label: 'All',
+              count: allCount,
+              selected: selectedIndex == 0,
+              onTap: () => onSelected(0),
+            ),
+            _JourneyFilter(
+              label: 'Completed',
+              count: completedCount,
+              selected: selectedIndex == 1,
+              onTap: () => onSelected(1),
+            ),
+            _JourneyFilter(
+              label: 'Expired',
+              count: expiredCount,
+              selected: selectedIndex == 2,
+              onTap: () => onSelected(2),
+            ),
+          ],
+        ),
+      );
+}
+
+class _JourneyFilter extends StatelessWidget {
+  const _JourneyFilter({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Material(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(13),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(13),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: selected ? AppColors.navy : AppColors.muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: selected ? AppColors.navy : AppColors.muted,
+                      fontSize: 10,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+class _NoFilteredJourneys extends StatelessWidget {
+  const _NoFilteredJourneys({required this.completed});
+
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 30),
+        child: Column(
+          children: [
+            const Icon(Icons.route_outlined, color: AppColors.muted, size: 38),
+            const SizedBox(height: 10),
+            Text(
+              completed ? 'No completed journeys yet' : 'No expired journeys',
+              style: const TextStyle(
+                color: AppColors.navy,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       );
 }
@@ -175,7 +320,9 @@ class _JourneyCard extends StatelessWidget {
         .join(', ');
     final photos = journey['photos'];
     final image = photos is List && photos.isNotEmpty && photos.first is Map
-        ? ((photos.first as Map)['url'] ?? '').toString()
+        ? ApiService.autoOrientCloudinaryImage(
+            ((photos.first as Map)['url'] ?? '').toString(),
+          )
         : '';
     return Container(
       margin: const EdgeInsets.only(bottom: 11),
@@ -191,17 +338,15 @@ class _JourneyCard extends StatelessWidget {
             width: 92,
             height: 112,
             decoration: BoxDecoration(
-              gradient: image.isEmpty
-                  ? const LinearGradient(
-                      colors: [Color(0xFF76968B), Color(0xFF385D53)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    )
-                  : null,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF76968B), Color(0xFF385D53)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               image: image.isEmpty
                   ? null
                   : DecorationImage(
-                      image: NetworkImage(image), fit: BoxFit.cover),
+                      image: NetworkImage(image), fit: BoxFit.contain),
             ),
             child: image.isEmpty
                 ? const Icon(Icons.landscape_outlined,
@@ -362,4 +507,12 @@ class _JourneySkeleton extends StatelessWidget {
           ),
         ),
       );
+}
+
+bool _isCompletedJourney(Map<String, dynamic> journey) {
+  final phase = (journey['lifecyclePhase'] ?? '').toString().toLowerCase();
+  final status = (journey['status'] ?? '').toString().toLowerCase();
+  return journey['completed'] == true ||
+      phase == 'completed' ||
+      status == 'completed';
 }

@@ -16,6 +16,8 @@ describe('UserService place-evidence integrity', () => {
   };
   const validPayload = {
     url: 'https://res.cloudinary.com/trip-test/image/upload/photo.jpg',
+    travelerUrl:
+      'https://res.cloudinary.com/trip-test/image/upload/traveler.jpg',
     kind: 'solo' as const,
     title: 'Pashupatinath visit',
     category: 'temple_spiritual',
@@ -95,12 +97,16 @@ describe('UserService place-evidence integrity', () => {
 
   beforeEach(() => {
     process.env.CLOUDINARY_CLOUD_NAME = 'trip-test';
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(Uint8Array.from([1, 2, 3, 4]), {
-        status: 200,
-        headers: { 'content-type': 'image/jpeg', 'content-length': '4' },
-      }),
-    );
+    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const traveler = input.toString().includes('traveler.jpg');
+      return new Response(
+        Uint8Array.from(traveler ? [5, 6, 7, 8] : [1, 2, 3, 4]),
+        {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg', 'content-length': '4' },
+        },
+      );
+    });
   });
 
   afterEach(() => {

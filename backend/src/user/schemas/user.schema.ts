@@ -107,6 +107,7 @@ export class User extends Document {
         requestCode: String,
         campaignId: String,
         url: String,
+        travelerUrl: String,
         kind: String,
         status: String,
         submittedAt: Date,
@@ -138,6 +139,7 @@ export class User extends Document {
     requestCode: string;
     campaignId: string;
     url: string;
+    travelerUrl?: string;
     kind: 'group' | 'solo';
     status: 'pending' | 'approved' | 'rejected';
     submittedAt: Date;

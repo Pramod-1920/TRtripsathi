@@ -200,13 +200,19 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   String _firstPhotoUrl() {
     for (final key in ['coverImage', 'coverImageUrl', 'imageUrl', 'photoUrl']) {
       final value = _text(key);
-      if (value.isNotEmpty) return value;
+      if (value.isNotEmpty) {
+        return ApiService.autoOrientCloudinaryImage(value);
+      }
     }
     final photos = _trip['photos'];
     if (photos is List && photos.isNotEmpty) {
       final first = photos.first;
-      if (first is Map) return (first['url'] ?? '').toString();
-      return first.toString();
+      if (first is Map) {
+        return ApiService.autoOrientCloudinaryImage(
+          (first['url'] ?? '').toString(),
+        );
+      }
+      return ApiService.autoOrientCloudinaryImage(first.toString());
     }
     return '';
   }
@@ -229,12 +235,13 @@ class _TripHero extends StatelessWidget {
   Widget build(BuildContext context) => Stack(
         fit: StackFit.expand,
         children: [
+          const ColoredBox(color: Color(0xFF17324D)),
           if (photoUrl.isEmpty)
             const _HeroFallback()
           else
             Image.network(
               photoUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => const _HeroFallback(),
             ),
           const DecoratedBox(

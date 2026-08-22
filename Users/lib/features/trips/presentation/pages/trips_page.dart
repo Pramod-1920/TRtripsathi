@@ -391,17 +391,6 @@ class _TripsListScreenState extends State<TripsListScreen> {
             );
           },
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _openCreateTrip,
-          backgroundColor: AppColors.navy,
-          foregroundColor: Colors.white,
-          elevation: 5,
-          icon: const Icon(Icons.add_road_rounded),
-          label: const Text(
-            'Plan a trip',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
       );
 
   Future<void> _refresh() async {

@@ -27,6 +27,16 @@ export class CreatePhotoVerificationRequestDto {
   @IsUrl()
   url!: string;
 
+  @ApiProperty({
+    example: 'https://res.cloudinary.com/demo/image/upload/v1/traveler.jpg',
+    required: false,
+    description: 'Traveler visible together with the visited scenery',
+  })
+  @IsOptional()
+  @IsString()
+  @IsUrl()
+  travelerUrl?: string;
+
   @ApiProperty({ enum: ['group', 'solo'], example: 'group' })
   @IsEnum(['group', 'solo'])
   kind!: 'group' | 'solo';

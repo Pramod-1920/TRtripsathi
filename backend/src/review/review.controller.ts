@@ -8,6 +8,7 @@
   Param,
   Query,
   UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ReviewService } from './review.service';
@@ -87,8 +88,12 @@ export class ReviewController {
     @Query('limit') limit = '10',
   ) {
     // Users can only see their own given reviews, admin can see all
-    if (user.role !== 'admin' && currentUserId !== userId) {
-      return { error: 'Unauthorized' };
+    if (user.role !== 'admin') {
+      const currentUserProfileId =
+        await this.reviewService.getUserProfileIdFromAuthId(currentUserId);
+      if (currentUserProfileId !== userId) {
+        throw new UnauthorizedException('Unauthorized');
+      }
     }
 
     return this.reviewService.getReviewsGivenByUser(
@@ -146,7 +151,12 @@ export class ReviewController {
     @CurrentUser() user: any,
   ) {
     const isAdmin = user?.role === Role.Admin || false;
-    return this.reviewService.updateReview(reviewId, userId, updateDto, isAdmin);
+    return this.reviewService.updateReview(
+      reviewId,
+      userId,
+      updateDto,
+      isAdmin,
+    );
   }
 
   /**
@@ -166,4 +176,3 @@ export class ReviewController {
     return { message: 'Review deleted successfully' };
   }
 }
-
