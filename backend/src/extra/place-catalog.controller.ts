@@ -9,7 +9,8 @@ export class PlaceCatalogController {
 
   @Get('catalog')
   @ApiOperation({
-    summary: 'Get active place catalog (province + districts + places)',
+    summary:
+      'Get active place catalog (province + districts + municipalities + places)',
   })
   @ApiOkResponse({
     description: 'Place catalog fetched successfully',
@@ -22,6 +23,13 @@ export class PlaceCatalogController {
           districtItems: [
             {
               district: 'KATHMANDU',
+              municipalities: ['KATHMANDU METROPOLITAN CITY'],
+              municipalityItems: [
+                {
+                  municipality: 'KATHMANDU METROPOLITAN CITY',
+                  places: [{ place: 'PASHUPATINATH TEMPLE' }],
+                },
+              ],
               places: ['PASHUPATINATH TEMPLE', 'BOUDHANATH STUPA'],
               placeItems: [
                 {

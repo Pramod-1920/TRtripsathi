@@ -24,6 +24,9 @@ class _PlacePhotoVerificationPageState
   final _picker = ImagePicker();
 
   List<_PlaceOption> _places = const [];
+  List<String> _provinceOptions = const [];
+  Map<String, List<String>> _districtOptions = const {};
+  Map<String, List<String>> _municipalityOptions = const {};
   List<String> _categories = const [];
   _PlaceOption? _selectedPlace;
   String? _selectedProvince;
@@ -160,39 +163,92 @@ class _PlacePhotoVerificationPageState
     try {
       final rawItems = await ApiService.getPlaceHierarchy();
       final options = <_PlaceOption>[];
+      final provinces = <String>[];
+      final districtsByProvince = <String, List<String>>{};
+      final municipalitiesByDistrict = <String, List<String>>{};
       for (final rawProvince in rawItems.whereType<Map>()) {
         final province = (rawProvince['province'] ?? '').toString().trim();
-        for (final rawDistrict
-            in (rawProvince['districtItems'] as List? ?? const [])
-                .whereType<Map>()) {
+        if (province.isEmpty) continue;
+        provinces.add(province);
+        final provinceDistricts = <String>[];
+        final rawDistrictItems =
+            (rawProvince['districtItems'] as List? ?? const [])
+                .whereType<Map>()
+                .toList();
+        for (final rawDistrict in rawDistrictItems) {
           final district = (rawDistrict['district'] ?? '').toString().trim();
-          for (final rawPlace
-              in (rawDistrict['placeItems'] as List? ?? const [])
-                  .whereType<Map>()) {
-            final place = (rawPlace['place'] ?? '').toString().trim();
-            final municipality =
-                (rawPlace['municipality'] ?? '').toString().trim();
-            if (province.isNotEmpty &&
-                district.isNotEmpty &&
-                municipality.isNotEmpty &&
-                place.isNotEmpty) {
-              options.add(_PlaceOption(
-                province: province,
-                district: district,
-                municipality: municipality,
-                place: place,
-              ));
+          if (district.isEmpty) continue;
+          provinceDistricts.add(district);
+          final municipalityNames = <String>[];
+          final municipalityItems =
+              (rawDistrict['municipalityItems'] as List? ?? const [])
+                  .whereType<Map>()
+                  .toList();
+          if (municipalityItems.isNotEmpty) {
+            for (final rawMunicipality in municipalityItems) {
+              final municipality =
+                  (rawMunicipality['municipality'] ?? '').toString().trim();
+              if (municipality.isEmpty) continue;
+              municipalityNames.add(municipality);
+              for (final rawPlace
+                  in (rawMunicipality['places'] as List? ?? const [])
+                      .whereType<Map>()) {
+                final place = (rawPlace['place'] ?? '').toString().trim();
+                if (place.isNotEmpty) {
+                  options.add(_PlaceOption(
+                    province: province,
+                    district: district,
+                    municipality: municipality,
+                    place: place,
+                  ));
+                }
+              }
             }
+          } else {
+            // Backward compatibility with servers that only return flat places.
+            for (final rawPlace
+                in (rawDistrict['placeItems'] as List? ?? const [])
+                    .whereType<Map>()) {
+              final place = (rawPlace['place'] ?? '').toString().trim();
+              final municipality =
+                  (rawPlace['municipality'] ?? '').toString().trim();
+              if (municipality.isNotEmpty) municipalityNames.add(municipality);
+              if (municipality.isNotEmpty && place.isNotEmpty) {
+                options.add(_PlaceOption(
+                  province: province,
+                  district: district,
+                  municipality: municipality,
+                  place: place,
+                ));
+              }
+            }
+            municipalityNames.addAll(
+              (rawDistrict['municipalities'] as List? ?? const [])
+                  .map((item) => item.toString().trim())
+                  .where((item) => item.isNotEmpty),
+            );
           }
+          municipalitiesByDistrict['$province\u0000$district'] =
+              _uniqueSorted(municipalityNames);
         }
+        // Older catalogs may expose district names without districtItems.
+        provinceDistricts.addAll(
+          (rawProvince['districts'] as List? ?? const [])
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty),
+        );
+        districtsByProvince[province] = _uniqueSorted(provinceDistricts);
       }
       options.sort((a, b) => a.place.compareTo(b.place));
       if (!mounted) return;
       setState(() {
         _places = options;
+        _provinceOptions = _uniqueSorted(provinces);
+        _districtOptions = districtsByProvince;
+        _municipalityOptions = municipalitiesByDistrict;
         _loadingPlaces = false;
-        _catalogError = options.isEmpty
-            ? 'No places are available yet. Ask an admin to add the place catalog.'
+        _catalogError = provinces.isEmpty
+            ? 'No locations are available yet. Ask an admin to add the place catalog.'
             : null;
       });
     } catch (error) {
@@ -329,25 +385,15 @@ class _PlacePhotoVerificationPageState
     );
   }
 
-  List<String> get _provinces => _uniqueSorted(
-        _places.map((item) => item.province),
-      );
+  List<String> get _provinces => _provinceOptions;
 
-  List<String> get _districts => _uniqueSorted(
-        _places
-            .where((item) => item.province == _selectedProvince)
-            .map((item) => item.district),
-      );
+  List<String> get _districts =>
+      _districtOptions[_selectedProvince] ?? const [];
 
-  List<String> get _municipalities => _uniqueSorted(
-        _places
-            .where(
-              (item) =>
-                  item.province == _selectedProvince &&
-                  item.district == _selectedDistrict,
-            )
-            .map((item) => item.municipality),
-      );
+  List<String> get _municipalities =>
+      _municipalityOptions[
+          '${_selectedProvince ?? ''}\u0000${_selectedDistrict ?? ''}'] ??
+      const [];
 
   List<_PlaceOption> get _filteredPlaces => _places
       .where(
@@ -499,6 +545,7 @@ class _PlacePhotoVerificationPageState
                   ),
                 if (!_loadingPlaces && _catalogError == null) ...[
                   _LocationDropdown(
+                    key: ValueKey('province-${_provinceOptions.join('|')}'),
                     label: 'Province',
                     value: _selectedProvince,
                     values: _provinces,
@@ -512,6 +559,7 @@ class _PlacePhotoVerificationPageState
                   ),
                   const SizedBox(height: 12),
                   _LocationDropdown(
+                    key: ValueKey('district-${_selectedProvince ?? ''}'),
                     label: 'District',
                     value: _selectedDistrict,
                     values: _districts,
@@ -526,6 +574,9 @@ class _PlacePhotoVerificationPageState
                   ),
                   const SizedBox(height: 12),
                   _LocationDropdown(
+                    key: ValueKey(
+                      'municipality-${_selectedProvince ?? ''}-${_selectedDistrict ?? ''}',
+                    ),
                     label: 'Municipality',
                     value: _selectedMunicipality,
                     values: _municipalities,
@@ -539,6 +590,9 @@ class _PlacePhotoVerificationPageState
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<_PlaceOption>(
+                    key: ValueKey(
+                      'place-${_selectedProvince ?? ''}-${_selectedDistrict ?? ''}-${_selectedMunicipality ?? ''}',
+                    ),
                     value: _filteredPlaces.contains(_selectedPlace)
                         ? _selectedPlace
                         : null,
@@ -718,6 +772,7 @@ class _PlacePhotoVerificationPageState
 
 class _LocationDropdown extends StatelessWidget {
   const _LocationDropdown({
+    super.key,
     required this.label,
     required this.value,
     required this.values,

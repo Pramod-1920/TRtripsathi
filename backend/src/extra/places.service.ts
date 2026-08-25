@@ -53,6 +53,18 @@ export type PlacesHierarchy = {
 type CatalogDistrictItem = {
   district: string;
   places: string[];
+  municipalities: string[];
+  municipalityItems: Array<{
+    municipality: string;
+    places: Array<{
+      place: string;
+      category?: string;
+      subcategory?: string | null;
+      latitude?: number;
+      longitude?: number;
+      verificationRadiusMeters?: number;
+    }>;
+  }>;
   placeItems: Array<{
     place: string;
     municipality: string;
@@ -1003,6 +1015,19 @@ export class PlacesService {
     const hierarchy = await this.getHierarchy({ includeDeleted: false });
     const items = hierarchy.provinces.map((province) => {
       const districtItems = province.districts.map((district) => {
+        const municipalityItems = district.municipalities.map(
+          (municipality) => ({
+            municipality: municipality.name,
+            places: municipality.places.map((place) => ({
+              place: place.name,
+              category: place.category,
+              subcategory: place.subcategory,
+              latitude: place.latitude,
+              longitude: place.longitude,
+              verificationRadiusMeters: place.verificationRadiusMeters,
+            })),
+          }),
+        );
         const placeItems = district.municipalities.flatMap((municipality) =>
           municipality.places.map((place) => ({
             place: place.name,
@@ -1017,6 +1042,8 @@ export class PlacesService {
         return {
           district: district.name,
           places: placeItems.map((item) => item.place),
+          municipalities: municipalityItems.map((item) => item.municipality),
+          municipalityItems,
           placeItems,
         };
       });
