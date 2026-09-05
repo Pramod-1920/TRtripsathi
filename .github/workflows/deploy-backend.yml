@@ -15,37 +15,63 @@ jobs:
 
     steps:
       - name: Deploy to Oracle VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          port: ${{ secrets.DEPLOY_PORT }}
-          command_timeout: 20m
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
 
-          script: |
-            set -e
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
 
-            echo "================================="
-            echo "Starting TripSathi deployment"
-            echo "================================="
+          for attempt in 1 2 3; do
+            echo "Deployment attempt $attempt/3..."
+            if timeout 30m ssh \
+              -i "$HOME/.ssh/deploy_key" \
+              -p "$DEPLOY_PORT" \
+              -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=30 \
+              -o ServerAliveInterval=15 \
+              -o ServerAliveCountMax=4 \
+              "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'EOF'; then
+          set -e
 
-            cd /home/ubuntu/TRtripsathi/backend
+          echo "================================="
+          echo "Starting TripSathi deployment"
+          echo "================================="
 
-            echo "Pulling latest code..."
-            git fetch origin main
-            git reset --hard origin/main
+          cd /home/ubuntu/TRtripsathi/backend
 
-            echo "Installing dependencies..."
-            npm ci
+          echo "Pulling latest code..."
+          git fetch origin main
+          git reset --hard origin/main
 
-            echo "Building backend..."
-            npm run build
+          echo "Installing dependencies..."
+          npm ci
 
-            echo "Restarting PM2..."
-            pm2 restart tripsathi-backend --update-env
+          echo "Building backend..."
+          npm run build
 
-            echo "Checking PM2 status..."
-            pm2 status
+          echo "Restarting PM2..."
+          pm2 restart tripsathi-backend --update-env
 
-            echo "Deployment completed successfully!"
+          echo "Checking PM2 status..."
+          pm2 status
+
+          echo "Deployment completed successfully!"
+          EOF
+              echo "Deployment succeeded on attempt $attempt."
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "Attempt $attempt failed. Retrying in 20 seconds..."
+              sleep 20
+            fi
+          done
+
+          echo "Deployment failed after 3 attempts."
+          exit 1
