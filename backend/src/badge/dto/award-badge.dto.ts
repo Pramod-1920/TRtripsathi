@@ -10,9 +10,15 @@ export class AwardBadgeDto {
   @ApiProperty({ description: 'Public URL to the badge icon' })
   iconUrl!: string;
 
-  @ApiProperty({ description: 'Optional tier (grouping) for the badge', required: false })
+  @ApiProperty({
+    description: 'Optional tier (grouping) for the badge',
+    required: false,
+  })
   tier?: string;
 
-  @ApiProperty({ description: 'Optional description for the badge', required: false })
+  @ApiProperty({
+    description: 'Optional description for the badge',
+    required: false,
+  })
   description?: string;
 }

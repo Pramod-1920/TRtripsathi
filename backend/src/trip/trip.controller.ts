@@ -66,9 +66,21 @@ export class TripController {
   @ApiQuery({ name: 'difficulty', required: false, example: 'moderate' })
   @ApiQuery({ name: 'province', required: false })
   @ApiQuery({ name: 'district', required: false })
-  @ApiQuery({ name: 'lng', required: false, description: 'User longitude for geospatial search' })
-  @ApiQuery({ name: 'lat', required: false, description: 'User latitude for geospatial search' })
-  @ApiQuery({ name: 'maxDistance', required: false, description: 'Max distance in meters (default 50000)' })
+  @ApiQuery({
+    name: 'lng',
+    required: false,
+    description: 'User longitude for geospatial search',
+  })
+  @ApiQuery({
+    name: 'lat',
+    required: false,
+    description: 'User latitude for geospatial search',
+  })
+  @ApiQuery({
+    name: 'maxDistance',
+    required: false,
+    description: 'Max distance in meters (default 50000)',
+  })
   @ApiOkResponse({ description: 'Trips list retrieved successfully' })
   async listTrips(
     @Query('page') page?: string,
@@ -136,7 +148,9 @@ export class TripController {
   @ApiOperation({ summary: 'Join a trip' })
   @ApiParam({ name: 'id', description: 'Trip ID' })
   @ApiBody({ type: JoinTripDto })
-  @ApiOkResponse({ description: 'Successfully joined trip or added to waitlist' })
+  @ApiOkResponse({
+    description: 'Successfully joined trip or added to waitlist',
+  })
   async joinTrip(
     @Param('id') tripId: string,
     @GetCurrentUser('userId') userId: string,
@@ -176,7 +190,9 @@ export class TripController {
   @Patch(':id/participants/:userId/approve')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Approve/reject/remove a trip participant (admin only)' })
+  @ApiOperation({
+    summary: 'Approve/reject/remove a trip participant (admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Trip ID' })
   @ApiParam({ name: 'userId', description: 'User ID' })
   @ApiBody({ type: ApproveParticipantDto })
@@ -187,13 +203,20 @@ export class TripController {
     @Body() approveDto: ApproveParticipantDto,
     @GetCurrentUser('userId') adminId: string,
   ) {
-    return this.tripService.approveParticipant(tripId, userId, approveDto, adminId);
+    return this.tripService.approveParticipant(
+      tripId,
+      userId,
+      approveDto,
+      adminId,
+    );
   }
 
   @Post(':id/confirm-completion')
   @UseGuards(RolesGuard)
   @Roles(Role.Admin)
-  @ApiOperation({ summary: 'Confirm trip completion for participants (admin only)' })
+  @ApiOperation({
+    summary: 'Confirm trip completion for participants (admin only)',
+  })
   @ApiParam({ name: 'id', description: 'Trip ID' })
   @ApiBody({ type: ConfirmCompletionDto })
   @ApiOkResponse({ description: 'Trip completion confirmed' })

@@ -54,7 +54,8 @@ export class AchievementController {
     @Query('page') page = '1',
     @Query('limit') limit = '20',
   ) {
-    const isActiveBool = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+    const isActiveBool =
+      isActive === 'true' ? true : isActive === 'false' ? false : undefined;
     return this.achievementService.listAchievements(
       category,
       isActiveBool,
@@ -133,10 +134,7 @@ export class AchievementController {
     @Param('userId') userId: string,
     @Param('achievementId') achievementId: string,
   ) {
-    return this.achievementService.resetUserAchievement(
-      userId,
-      achievementId,
-    );
+    return this.achievementService.resetUserAchievement(userId, achievementId);
   }
 
   @Get('admin/categories')
@@ -146,14 +144,7 @@ export class AchievementController {
   @ApiOperation({ summary: 'Get all achievement categories (admin only)' })
   async getCategories() {
     return {
-      categories: [
-        'exploration',
-        'hosting',
-        'skill',
-        'social',
-        'special',
-      ],
+      categories: ['exploration', 'hosting', 'skill', 'social', 'special'],
     };
   }
 }
-

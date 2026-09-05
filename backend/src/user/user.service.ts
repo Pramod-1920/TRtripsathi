@@ -838,7 +838,7 @@ export class UserService {
         'once_per_referred_user',
       ];
 
-      if (!allowedRepeats.includes(repeat as XpRuleRepeatMode)) {
+      if (!allowedRepeats.includes(repeat)) {
         return null;
       }
 
@@ -969,7 +969,7 @@ export class UserService {
           ? { difficultyMultipliers }
           : {}),
         explorationBonuses,
-        repeat: repeat as XpRuleRepeatMode,
+        repeat: repeat,
         ...(conditions ? { conditions } : {}),
       };
     } catch {
@@ -1674,10 +1674,10 @@ export class UserService {
       (newDistrict
         ? Math.max(0, Math.floor(rule?.explorationBonuses.newDistrict ?? 250))
         : 0) +
-      (Boolean(context.hiddenGem)
+      (context.hiddenGem
         ? Math.max(0, Math.floor(rule?.explorationBonuses.hiddenGem ?? 300))
         : 0) +
-      (Boolean(context.rareRoute)
+      (context.rareRoute
         ? Math.max(0, Math.floor(rule?.explorationBonuses.rareRoute ?? 400))
         : 0);
 
@@ -2753,7 +2753,7 @@ export class UserService {
     adminId: string,
     reason: string,
   ) {
-    let profile = await this.userModel.findById(profileId);
+    const profile = await this.userModel.findById(profileId);
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -2810,7 +2810,7 @@ export class UserService {
         `  Updating totalXp: ${previousTotalXp} → ${nextTotalXp}`,
       );
 
-      let updatedProfile = await this.userModel.findByIdAndUpdate(
+      const updatedProfile = await this.userModel.findByIdAndUpdate(
         profile._id,
         {
           totalXp: nextTotalXp,
@@ -3660,7 +3660,7 @@ export class UserService {
         await Promise.all([
           this.visitedPlaceService.recordVisit(
             String(profile._id),
-            reviewedRequest.district!,
+            reviewedRequest.district,
             'district',
             new Date(),
             sourceId,
@@ -3669,7 +3669,7 @@ export class UserService {
             ? [
                 this.visitedPlaceService.recordVisit(
                   String(profile._id),
-                  reviewedRequest.province!,
+                  reviewedRequest.province,
                   'province',
                   new Date(),
                   sourceId,
@@ -4610,9 +4610,9 @@ export class UserService {
         // badgeService may be a circular dependency; call if available
         // BadgeService.getUserBadges expects a userId (profile._id)
         // Use toString() to pass as string id
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
         userBadges = await this.badgeService.getUserBadges(String(profile._id));
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
         badgeCount = await this.badgeService.getBadgeCount(String(profile._id));
       }
     } catch (err) {

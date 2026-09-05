@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { TreasureHunt } from './schemas/treasure-hunt.schema';
@@ -250,11 +254,14 @@ export class TreasureHuntService {
   /**
    * Get user's progress on a hunt
    */
-  async getUserProgress(huntId: string, userId: string): Promise<TreasureProgress> {
+  async getUserProgress(
+    huntId: string,
+    userId: string,
+  ): Promise<TreasureProgress> {
     let progress = await this.treasureProgressModel.findOne({
       userId: new Types.ObjectId(userId),
       treasureHuntId: new Types.ObjectId(huntId),
-    }) as TreasureProgress | null;
+    });
 
     if (!progress) {
       progress = new this.treasureProgressModel({

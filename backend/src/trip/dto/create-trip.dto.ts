@@ -1,4 +1,16 @@
-import { IsString, IsNotEmpty, IsEnum, IsNumber, IsOptional, IsDate, IsArray, Min, Max, ValidateNested, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsDate,
+  IsArray,
+  Min,
+  Max,
+  ValidateNested,
+  IsObject,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTripDto {
@@ -10,7 +22,14 @@ export class CreateTripDto {
   @IsOptional()
   description?: string;
 
-  @IsEnum(['hike', 'trek', 'heritage', 'natural_resource', 'adventure', 'hidden_gems'])
+  @IsEnum([
+    'hike',
+    'trek',
+    'heritage',
+    'natural_resource',
+    'adventure',
+    'hidden_gems',
+  ])
   @IsNotEmpty()
   activityType: string;
 

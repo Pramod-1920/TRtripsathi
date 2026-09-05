@@ -292,7 +292,7 @@ export class CampaignService {
       'misc',
     ];
     for (const field of costFields) {
-      const value = Number((costBreakdown as any)[field]);
+      const value = Number(costBreakdown[field]);
       if (!Number.isFinite(value) || value < 0) {
         missing.push(`costBreakdown.${field}`);
       }
@@ -408,7 +408,7 @@ export class CampaignService {
       throw new BadRequestException('hikeType must be either solo or group');
     }
 
-    return normalized as 'solo' | 'group';
+    return normalized;
   }
 
   private async resolveCampaignActivity(
@@ -573,17 +573,16 @@ export class CampaignService {
 
       if (now.getTime() >= endTime) {
         toClose.push({
-          _id: campaign._id as Types.ObjectId,
+          _id: campaign._id,
           endTime,
-          endDate: (campaign.endDate as Date | null | undefined) ?? null,
+          endDate: campaign.endDate ?? null,
           title: (campaign.title as string | null | undefined) ?? null,
-          description:
-            (campaign.description as string | null | undefined) ?? null,
-          placeName: (campaign.placeName as string | null | undefined) ?? null,
+          description: campaign.description ?? null,
+          placeName: campaign.placeName ?? null,
           difficulty: campaign.difficulty,
           location: campaign.location,
-          district: (campaign.district as string | null | undefined) ?? null,
-          hostId: campaign.hostId as Types.ObjectId,
+          district: campaign.district ?? null,
+          hostId: campaign.hostId,
           participants: (campaign.participants ?? []) as Array<{
             userId: Types.ObjectId;
             status?: string;
@@ -701,7 +700,7 @@ export class CampaignService {
       await this.audit.logEvent({
         type: 'campaign.auto_reject_closed',
         campaignId: campaign._id.toString(),
-        hostId: (campaign.hostId as Types.ObjectId).toString(),
+        hostId: campaign.hostId.toString(),
       });
     }
   }
@@ -731,9 +730,9 @@ export class CampaignService {
         campaign.difficulty,
       );
       if (requiresApproval) {
-        toSubmitted.push(campaign._id as Types.ObjectId);
+        toSubmitted.push(campaign._id);
       } else {
-        toApproved.push(campaign._id as Types.ObjectId);
+        toApproved.push(campaign._id);
       }
     }
 
@@ -805,7 +804,7 @@ export class CampaignService {
       await this.audit.logEvent({
         type: 'campaign.verification_failed',
         campaignId: campaign._id.toString(),
-        hostId: (campaign.hostId as Types.ObjectId).toString(),
+        hostId: campaign.hostId.toString(),
       });
     }
   }
@@ -2231,7 +2230,7 @@ export class CampaignService {
 
     this.ensureCampaignManagePermission(campaign, requesterId, isAdmin);
 
-    const fromPhase = campaign.lifecyclePhase as CampaignLifecyclePhase;
+    const fromPhase = campaign.lifecyclePhase;
     if (fromPhase === toPhase) {
       return this.getCampaignById(id);
     }

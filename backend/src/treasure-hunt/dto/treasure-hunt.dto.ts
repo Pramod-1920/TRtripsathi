@@ -1,4 +1,14 @@
-import { IsString, IsEnum, IsArray, IsNumber, IsDate, IsOptional, MinLength, MaxLength, Min } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsArray,
+  IsNumber,
+  IsDate,
+  IsOptional,
+  MinLength,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 // TreasureHunt DTOs
 

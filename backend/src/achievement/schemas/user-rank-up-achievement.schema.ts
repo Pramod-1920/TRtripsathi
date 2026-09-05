@@ -37,10 +37,15 @@ export class UserRankUpAchievement extends Document {
   updatedAt: Date;
 }
 
-export const UserRankUpAchievementSchema = SchemaFactory.createForClass(UserRankUpAchievement);
+export const UserRankUpAchievementSchema = SchemaFactory.createForClass(
+  UserRankUpAchievement,
+);
 
 // Indexes for efficient querying
-UserRankUpAchievementSchema.index({ userId: 1, rankUpAchievementId: 1 }, { unique: true });
+UserRankUpAchievementSchema.index(
+  { userId: 1, rankUpAchievementId: 1 },
+  { unique: true },
+);
 UserRankUpAchievementSchema.index({ userId: 1, isCompleted: 1 });
 UserRankUpAchievementSchema.index({ userId: 1, rankedUpTo: 1 });
 UserRankUpAchievementSchema.index({ userId: 1 });

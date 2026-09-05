@@ -275,7 +275,7 @@ export class ExtraService {
       );
     }
 
-    return parent._id as Types.ObjectId;
+    return parent._id;
   }
 
   async createExtra(dto: CreateExtraDto) {

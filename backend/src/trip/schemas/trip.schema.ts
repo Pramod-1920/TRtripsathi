@@ -15,16 +15,34 @@ export class Trip extends Document {
   @Prop({ nullable: true })
   description: string;
 
-  @Prop({ required: true, enum: ['hike', 'trek', 'heritage', 'natural_resource', 'adventure', 'hidden_gems'] })
+  @Prop({
+    required: true,
+    enum: [
+      'hike',
+      'trek',
+      'heritage',
+      'natural_resource',
+      'adventure',
+      'hidden_gems',
+    ],
+  })
   activityType: string;
 
   @Prop({ required: true, enum: ['easy', 'moderate', 'difficult', 'expert'] })
   difficulty: string;
 
-  @Prop({ required: true, enum: ['draft', 'upcoming', 'ongoing', 'completed', 'cancelled'], default: 'draft' })
+  @Prop({
+    required: true,
+    enum: ['draft', 'upcoming', 'ongoing', 'completed', 'cancelled'],
+    default: 'draft',
+  })
   status: string;
 
-  @Prop({ required: true, enum: ['open', 'approval_required'], default: 'open' })
+  @Prop({
+    required: true,
+    enum: ['open', 'approval_required'],
+    default: 'open',
+  })
   joinMode: string;
 
   @Prop({ required: true, min: 2, max: 30 })
@@ -96,6 +114,12 @@ export const TripSchema = SchemaFactory.createForClass(Trip);
 TripSchema.index({ locationGps: '2dsphere' });
 TripSchema.index({ status: 1, startDate: 1 }, { name: 'status_start' });
 TripSchema.index({ hostId: 1 });
-TripSchema.index({ activityType: 1, difficulty: 1, status: 1 }, { name: 'discovery' });
+TripSchema.index(
+  { activityType: 1, difficulty: 1, status: 1 },
+  { name: 'discovery' },
+);
 TripSchema.index({ district: 1, status: 1 }, { name: 'district_search' });
-TripSchema.index({ isDeleted: 1, status: 1, startDate: 1 }, { name: 'soft_delete_aware' });
+TripSchema.index(
+  { isDeleted: 1, status: 1, startDate: 1 },
+  { name: 'soft_delete_aware' },
+);

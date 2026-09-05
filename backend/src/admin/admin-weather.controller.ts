@@ -14,7 +14,7 @@ export class AdminWeatherController {
   @Get('geocode')
   async geocode(@Query('q') q: string): Promise<unknown[]> {
     if (!q) return [];
-    return this.svc.geocode(q) as Promise<unknown[]>;
+    return this.svc.geocode(q);
   }
 
   @Get('weather')

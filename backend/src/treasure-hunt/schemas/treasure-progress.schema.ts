@@ -43,10 +43,14 @@ export class TreasureProgress extends Document {
   updatedAt: Date;
 }
 
-export const TreasureProgressSchema = SchemaFactory.createForClass(TreasureProgress);
+export const TreasureProgressSchema =
+  SchemaFactory.createForClass(TreasureProgress);
 
 // Indexes
-TreasureProgressSchema.index({ userId: 1, treasureHuntId: 1 }, { unique: true });
+TreasureProgressSchema.index(
+  { userId: 1, treasureHuntId: 1 },
+  { unique: true },
+);
 TreasureProgressSchema.index({ treasureHuntId: 1, isWinner: 1 });
 TreasureProgressSchema.index({ completedAt: 1 });
 TreasureProgressSchema.index({ userId: 1, createdAt: -1 });

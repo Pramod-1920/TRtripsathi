@@ -15,7 +15,12 @@ export class ExtraItem {
   @Prop({ type: String, required: true })
   name!: string;
 
-  @Prop({ type: Types.ObjectId, ref: ExtraItem.name, default: null, index: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: ExtraItem.name,
+    default: null,
+    index: true,
+  })
   parentId?: Types.ObjectId | null;
 
   @Prop({ type: String, default: null })

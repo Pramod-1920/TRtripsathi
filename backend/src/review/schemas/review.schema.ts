@@ -30,7 +30,7 @@ export const ReviewSchema = SchemaFactory.createForClass(Review);
 // Unique constraint: one review per reviewer per reviewee per trip
 ReviewSchema.index(
   { reviewerId: 1, revieweeId: 1, tripId: 1 },
-  { unique: true }
+  { unique: true },
 );
 
 // For fetching all reviews for a user

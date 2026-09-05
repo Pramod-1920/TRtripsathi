@@ -47,11 +47,11 @@ import { AuditModule } from './audit/audit.module';
     VisitedPlaceModule,
     XpLedgerModule,
     BadgeModule,
-  MediaModule,
-  ChatModule,
-  // Admin utilities
-  AdminModule,
-  ExtraModule,
+    MediaModule,
+    ChatModule,
+    // Admin utilities
+    AdminModule,
+    ExtraModule,
     SecurityModule,
   ],
   controllers: [AppController],

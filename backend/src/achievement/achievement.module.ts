@@ -6,9 +6,18 @@ import {
   AchievementDefinition,
   AchievementDefinitionSchema,
 } from './schemas/achievement-definition.schema';
-import { UserAchievement, UserAchievementSchema } from './schemas/user-achievement.schema';
-import { RankUpAchievement, RankUpAchievementSchema } from './schemas/rank-up-achievement.schema';
-import { UserRankUpAchievement, UserRankUpAchievementSchema } from './schemas/user-rank-up-achievement.schema';
+import {
+  UserAchievement,
+  UserAchievementSchema,
+} from './schemas/user-achievement.schema';
+import {
+  RankUpAchievement,
+  RankUpAchievementSchema,
+} from './schemas/rank-up-achievement.schema';
+import {
+  UserRankUpAchievement,
+  UserRankUpAchievementSchema,
+} from './schemas/user-rank-up-achievement.schema';
 import { RankUpAchievementService } from './rank-up-achievement.service';
 import { RankUpAchievementController } from './rank-up-achievement.controller';
 

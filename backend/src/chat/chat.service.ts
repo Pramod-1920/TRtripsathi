@@ -34,7 +34,7 @@ export class ChatService {
       .select('_id')
       .lean();
     if (!profile) throw new NotFoundException('User profile not found');
-    return profile._id as Types.ObjectId;
+    return profile._id;
   }
 
   private async requireMember(chatGroupId: string, authId: string) {
@@ -76,7 +76,7 @@ export class ChatService {
     if (!recipient) throw new NotFoundException('Recipient not found');
 
     // Check if chat already exists
-    let chat = await this.chatGroupModel.findOne({
+    const chat = await this.chatGroupModel.findOne({
       type: 'person_to_person',
       members: { $all: [userIdObj, recipientIdObj] },
     });

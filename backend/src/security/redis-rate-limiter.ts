@@ -43,9 +43,9 @@ export async function createAuthLimiters(): Promise<{
     try {
       // Require optional dependencies at runtime so project doesn't fail if
       // they're not installed in development.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+
       const IORedis = require('ioredis');
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+
       const RedisStore = require('rate-limit-redis');
 
       const client = new IORedis(redisUrl);

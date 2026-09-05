@@ -4,7 +4,8 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 export class TriggerAchievementEventDto {
   @ApiProperty({
     example: 'treks',
-    description: 'Achievement subcategory to increment (hikes, treks, temples, routes, quest chains)',
+    description:
+      'Achievement subcategory to increment (hikes, treks, temples, routes, quest chains)',
   })
   @IsString()
   @IsNotEmpty()
@@ -12,7 +13,8 @@ export class TriggerAchievementEventDto {
 
   @ApiPropertyOptional({
     example: 'temple_guardian',
-    description: 'Optional achievement key to target a specific achievement definition',
+    description:
+      'Optional achievement key to target a specific achievement definition',
   })
   @IsOptional()
   @IsString()

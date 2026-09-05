@@ -1,4 +1,12 @@
-import { IsString, IsNumber, IsEnum, IsOptional, IsBoolean, ValidateIf, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsEnum,
+  IsOptional,
+  IsBoolean,
+  ValidateIf,
+  Min,
+} from 'class-validator';
 
 // ──────────────────────────────
 // CREATE & UPDATE ACHIEVEMENT DTOs

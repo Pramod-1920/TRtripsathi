@@ -15,7 +15,7 @@ export class CampaignScheduler {
       await this.campaignService.runVerificationHousekeeping();
       this.logger.debug('Ran campaign lifecycle housekeeping');
     } catch (err) {
-      this.logger.error('Error running campaign lifecycle housekeeping', err as any);
+      this.logger.error('Error running campaign lifecycle housekeeping', err);
     }
   }
 }

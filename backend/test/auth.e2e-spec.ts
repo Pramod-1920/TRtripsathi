@@ -15,7 +15,9 @@ describe('AuthController (e2e)', () => {
 
     // Apply the same global validation pipe as main bootstrap so tests exercise
     // whitelist & forbidNonWhitelisted behaviour
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+    );
 
     await app.init();
   });
@@ -36,7 +38,9 @@ describe('AuthController (e2e)', () => {
     expect(res.body).toHaveProperty('message');
     // ValidationPipe may reject the unexpected 'role' field before controller runs,
     // or controller may throw. Accept either message by stringifying.
-    expect(JSON.stringify(res.body.message)).toMatch(/role|Role cannot be set|should not exist/i);
+    expect(JSON.stringify(res.body.message)).toMatch(
+      /role|Role cannot be set|should not exist/i,
+    );
   });
 
   it('POST /auth/signup rejects extra (non-whitelisted) fields via ValidationPipe', async () => {
@@ -49,6 +53,8 @@ describe('AuthController (e2e)', () => {
 
     expect(res.body).toHaveProperty('message');
     // message may be string or array depending on Nest version; stringify and assert
-    expect(JSON.stringify(res.body.message)).toMatch(/unexpected|non-whitelisted|should not exist/i);
+    expect(JSON.stringify(res.body.message)).toMatch(
+      /unexpected|non-whitelisted|should not exist/i,
+    );
   });
 });
