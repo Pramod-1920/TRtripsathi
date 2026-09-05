@@ -1,0 +1,50 @@
+name: Deploy TripSathi Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    name: Deploy Backend to Oracle VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Oracle VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+
+          script: |
+            set -e
+
+            echo "================================="
+            echo "Starting TripSathi deployment"
+            echo "================================="
+
+            cd /home/ubuntu/TRtripsathi/backend
+
+            echo "Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Installing dependencies..."
+            npm ci
+
+            echo "Building backend..."
+            npm run build
+
+            echo "Restarting PM2..."
+            pm2 restart tripsathi-backend --update-env
+
+            echo "Checking PM2 status..."
+            pm2 status
+
+            echo "Deployment completed successfully!"
