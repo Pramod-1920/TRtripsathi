@@ -78,8 +78,9 @@ export class AchievementDefinition extends Document {
   updatedAt: Date;
 }
 
-export const AchievementDefinitionSchema =
-  SchemaFactory.createForClass(AchievementDefinition);
+export const AchievementDefinitionSchema = SchemaFactory.createForClass(
+  AchievementDefinition,
+);
 
 // Indexes
 AchievementDefinitionSchema.index({ isActive: 1 });

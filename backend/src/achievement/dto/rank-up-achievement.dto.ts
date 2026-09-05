@@ -1,4 +1,11 @@
-import { IsString, IsArray, IsNumber, IsEnum, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsArray,
+  IsNumber,
+  IsEnum,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
 
 export enum RankCode {
   E = 'E',

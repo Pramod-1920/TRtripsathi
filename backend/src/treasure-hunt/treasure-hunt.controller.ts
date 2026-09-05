@@ -97,11 +97,7 @@ export class TreasureHuntController {
     @Body() dto: UpdateTreasureHuntDto,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.treasureHuntService.updateTreasureHunt(
-      huntId,
-      dto,
-      userId,
-    );
+    return this.treasureHuntService.updateTreasureHunt(huntId, dto, userId);
   }
 
   /**
@@ -136,10 +132,7 @@ export class TreasureHuntController {
     @Param('huntId') huntId: string,
     @CurrentUser('userId') userId: string,
   ) {
-    return this.treasureHuntService.getUserProgress(
-      huntId,
-      userId,
-    );
+    return this.treasureHuntService.getUserProgress(huntId, userId);
   }
 
   /**
@@ -176,4 +169,3 @@ export class TreasureHuntController {
     );
   }
 }
-

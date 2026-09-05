@@ -1,9 +1,25 @@
-import { IsString, IsEnum, MinLength, MaxLength, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  MinLength,
+  MaxLength,
+  IsOptional,
+} from 'class-validator';
 
 export const reportCategories = ['feedback', 'report'] as const;
-export const reportStatuses = ['open', 'investigating', 'resolved', 'dismissed'] as const;
+export const reportStatuses = [
+  'open',
+  'investigating',
+  'resolved',
+  'dismissed',
+] as const;
 export const reportTargetTypes = ['user', 'trip'] as const;
-export const feedbackReasons = ['bug', 'feature_request', 'general_feedback', 'other'] as const;
+export const feedbackReasons = [
+  'bug',
+  'feature_request',
+  'general_feedback',
+  'other',
+] as const;
 export const playerReportReasons = [
   'harassment',
   'spam',

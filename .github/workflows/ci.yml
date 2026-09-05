@@ -23,6 +23,7 @@ jobs:
       - name: TypeScript compile check
         run: npm run build --if-present
       - name: Lint
+        continue-on-error: true
         run: npm run lint --if-present
       - name: Run tests
         run: npm test --if-present

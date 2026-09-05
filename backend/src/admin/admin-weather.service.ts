@@ -19,8 +19,8 @@ export class AdminWeatherService {
 
   async geocode(q: string): Promise<unknown[]> {
     const key = q.trim().toLowerCase();
-  const cached = this.geocodeCache.get(key);
-  if (this.isFresh(cached)) return cached!.data as unknown[];
+    const cached = this.geocodeCache.get(key);
+    if (this.isFresh(cached)) return cached!.data as unknown[];
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`;
     this.logger.debug(`Geocoding ${q}`);
     const res = await fetch(url, {
@@ -39,12 +39,15 @@ export class AdminWeatherService {
   ): Promise<unknown> {
     const key = `${lat}:${lon}`;
     const cached = this.weatherCache.get(key);
-    if (this.isFresh(cached)) return cached!.data as unknown;
+    if (this.isFresh(cached)) return cached!.data;
     const url = new URL('https://api.open-meteo.com/v1/forecast');
     url.searchParams.set('latitude', String(lat));
     url.searchParams.set('longitude', String(lon));
     url.searchParams.set('hourly', 'temperature_2m,precipitation,weathercode');
-    url.searchParams.set('daily', 'temperature_2m_max,temperature_2m_min,precipitation_sum');
+    url.searchParams.set(
+      'daily',
+      'temperature_2m_max,temperature_2m_min,precipitation_sum',
+    );
     url.searchParams.set('timezone', 'UTC');
 
     this.logger.debug(`Fetching weather ${lat},${lon}`);

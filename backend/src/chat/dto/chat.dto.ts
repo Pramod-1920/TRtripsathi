@@ -1,4 +1,11 @@
-import { IsString, IsEnum, IsOptional, IsArray, MinLength, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsArray,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 // ChatGroup DTOs
 

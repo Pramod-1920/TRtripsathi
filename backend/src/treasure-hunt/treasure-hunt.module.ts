@@ -2,8 +2,14 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TreasureHuntController } from './treasure-hunt.controller';
 import { TreasureHuntService } from './treasure-hunt.service';
-import { TreasureHunt, TreasureHuntSchema } from './schemas/treasure-hunt.schema';
-import { TreasureProgress, TreasureProgressSchema } from './schemas/treasure-progress.schema';
+import {
+  TreasureHunt,
+  TreasureHuntSchema,
+} from './schemas/treasure-hunt.schema';
+import {
+  TreasureProgress,
+  TreasureProgressSchema,
+} from './schemas/treasure-progress.schema';
 
 @Module({
   imports: [

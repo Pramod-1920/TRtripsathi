@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { RankUpAchievement } from './schemas/rank-up-achievement.schema';
@@ -20,8 +25,10 @@ export class RankUpAchievementService {
   private logger = new Logger(RankUpAchievementService.name);
 
   constructor(
-    @InjectModel(RankUpAchievement.name) private rankUpAchievementModel: Model<RankUpAchievement>,
-    @InjectModel(UserRankUpAchievement.name) private userRankUpAchievementModel: Model<UserRankUpAchievement>,
+    @InjectModel(RankUpAchievement.name)
+    private rankUpAchievementModel: Model<RankUpAchievement>,
+    @InjectModel(UserRankUpAchievement.name)
+    private userRankUpAchievementModel: Model<UserRankUpAchievement>,
   ) {}
 
   /**
@@ -31,9 +38,13 @@ export class RankUpAchievementService {
     createDto: CreateRankUpAchievementDto,
     adminId: Types.ObjectId,
   ): Promise<RankUpAchievementResponseDto> {
-    const existingAchievement = await this.rankUpAchievementModel.findOne({ code: createDto.code });
+    const existingAchievement = await this.rankUpAchievementModel.findOne({
+      code: createDto.code,
+    });
     if (existingAchievement) {
-      throw new BadRequestException(`Achievement with code '${createDto.code}' already exists`);
+      throw new BadRequestException(
+        `Achievement with code '${createDto.code}' already exists`,
+      );
     }
 
     const achievement = new this.rankUpAchievementModel({
@@ -42,7 +53,9 @@ export class RankUpAchievementService {
     });
 
     const saved = await achievement.save();
-    this.logger.log(`Created rank-up achievement: ${saved.code} for rank ${saved.targetRank}`);
+    this.logger.log(
+      `Created rank-up achievement: ${saved.code} for rank ${saved.targetRank}`,
+    );
     return this.mapToResponseDto(saved);
   }
 
@@ -66,30 +79,36 @@ export class RankUpAchievementService {
       query.isActive = filters.isActive;
     }
 
-    const achievements = await this.rankUpAchievementModel.find(query).sort({ targetRank: 1 });
-    return achievements.map(a => this.mapToResponseDto(a));
+    const achievements = await this.rankUpAchievementModel
+      .find(query)
+      .sort({ targetRank: 1 });
+    return achievements.map((a) => this.mapToResponseDto(a));
   }
 
   /**
    * Get rank-up achievements for a specific rank
    */
-  async findByRank(targetRank: RankCode): Promise<RankUpAchievementResponseDto[]> {
+  async findByRank(
+    targetRank: RankCode,
+  ): Promise<RankUpAchievementResponseDto[]> {
     const achievements = await this.rankUpAchievementModel
       .find({ targetRank, isActive: true })
       .sort({ createdAt: 1 });
 
-    return achievements.map(a => this.mapToResponseDto(a));
+    return achievements.map((a) => this.mapToResponseDto(a));
   }
 
   /**
    * Get rank-up achievements by activity type
    */
-  async findByActivityType(activityType: string): Promise<RankUpAchievementResponseDto[]> {
+  async findByActivityType(
+    activityType: string,
+  ): Promise<RankUpAchievementResponseDto[]> {
     const achievements = await this.rankUpAchievementModel
       .find({ activityTypes: activityType, isActive: true })
       .sort({ targetRank: 1 });
 
-    return achievements.map(a => this.mapToResponseDto(a));
+    return achievements.map((a) => this.mapToResponseDto(a));
   }
 
   /**
@@ -98,7 +117,9 @@ export class RankUpAchievementService {
   async findById(id: string): Promise<RankUpAchievementResponseDto> {
     const achievement = await this.rankUpAchievementModel.findById(id);
     if (!achievement) {
-      throw new NotFoundException(`Rank-up achievement with ID '${id}' not found`);
+      throw new NotFoundException(
+        `Rank-up achievement with ID '${id}' not found`,
+      );
     }
     return this.mapToResponseDto(achievement);
   }
@@ -109,7 +130,9 @@ export class RankUpAchievementService {
   async findByCode(code: string): Promise<RankUpAchievementResponseDto> {
     const achievement = await this.rankUpAchievementModel.findOne({ code });
     if (!achievement) {
-      throw new NotFoundException(`Rank-up achievement with code '${code}' not found`);
+      throw new NotFoundException(
+        `Rank-up achievement with code '${code}' not found`,
+      );
     }
     return this.mapToResponseDto(achievement);
   }
@@ -117,14 +140,23 @@ export class RankUpAchievementService {
   /**
    * Update a rank-up achievement
    */
-  async update(id: string, updateDto: UpdateRankUpAchievementDto): Promise<RankUpAchievementResponseDto> {
-    const achievement = await this.rankUpAchievementModel.findByIdAndUpdate(id, updateDto, {
-      new: true,
-      runValidators: true,
-    });
+  async update(
+    id: string,
+    updateDto: UpdateRankUpAchievementDto,
+  ): Promise<RankUpAchievementResponseDto> {
+    const achievement = await this.rankUpAchievementModel.findByIdAndUpdate(
+      id,
+      updateDto,
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
 
     if (!achievement) {
-      throw new NotFoundException(`Rank-up achievement with ID '${id}' not found`);
+      throw new NotFoundException(
+        `Rank-up achievement with ID '${id}' not found`,
+      );
     }
 
     this.logger.log(`Updated rank-up achievement: ${achievement.code}`);
@@ -137,7 +169,9 @@ export class RankUpAchievementService {
   async delete(id: string): Promise<void> {
     const achievement = await this.rankUpAchievementModel.findByIdAndDelete(id);
     if (!achievement) {
-      throw new NotFoundException(`Rank-up achievement with ID '${id}' not found`);
+      throw new NotFoundException(
+        `Rank-up achievement with ID '${id}' not found`,
+      );
     }
     this.logger.log(`Deleted rank-up achievement: ${achievement.code}`);
   }
@@ -175,25 +209,35 @@ export class RankUpAchievementService {
     rankUpAchievementId: Types.ObjectId,
     newProgress: number,
   ): Promise<UserRankUpAchievement> {
-    const achievement = await this.rankUpAchievementModel.findById(rankUpAchievementId);
+    const achievement =
+      await this.rankUpAchievementModel.findById(rankUpAchievementId);
     if (!achievement) {
       throw new NotFoundException('Rank-up achievement not found');
     }
 
-    const userAchievement = await this.getUserAchievementProgress(userId, rankUpAchievementId);
+    const userAchievement = await this.getUserAchievementProgress(
+      userId,
+      rankUpAchievementId,
+    );
     const wasCompleted = userAchievement.isCompleted;
 
     userAchievement.progress = newProgress;
 
     // Check if achievement is now completed
-    const isNowCompleted = this.checkCondition(newProgress, achievement.conditionValue, achievement.conditionOperator);
+    const isNowCompleted = this.checkCondition(
+      newProgress,
+      achievement.conditionValue,
+      achievement.conditionOperator,
+    );
 
     if (isNowCompleted && !wasCompleted) {
       userAchievement.isCompleted = true;
       userAchievement.completedAt = new Date();
       userAchievement.timesCompleted += 1;
       userAchievement.lastCompletedAt = new Date();
-      this.logger.log(`User ${userId} completed achievement ${achievement.code}`);
+      this.logger.log(
+        `User ${userId} completed achievement ${achievement.code}`,
+      );
     }
 
     return userAchievement.save();
@@ -202,7 +246,10 @@ export class RankUpAchievementService {
   /**
    * Check if user meets rank-up requirements
    */
-  async validateRankUp(userId: Types.ObjectId, targetRank: RankCode): Promise<RankUpValidationResponseDto> {
+  async validateRankUp(
+    userId: Types.ObjectId,
+    targetRank: RankCode,
+  ): Promise<RankUpValidationResponseDto> {
     const achievements = await this.rankUpAchievementModel.find({
       targetRank,
       isActive: true,
@@ -222,12 +269,14 @@ export class RankUpAchievementService {
     const userAchievements = await this.userRankUpAchievementModel
       .find({
         userId,
-        rankUpAchievementId: { $in: achievements.map(a => a._id) },
+        rankUpAchievementId: { $in: achievements.map((a) => a._id) },
       })
       .populate('rankUpAchievementId');
 
-    const achievementStatus = achievements.map(achievement => {
-      const userAch = userAchievements.find(ua => ua.rankUpAchievementId._id.equals(achievement._id));
+    const achievementStatus = achievements.map((achievement) => {
+      const userAch = userAchievements.find((ua) =>
+        ua.rankUpAchievementId._id.equals(achievement._id),
+      );
 
       return {
         code: achievement.code,
@@ -238,7 +287,9 @@ export class RankUpAchievementService {
       };
     });
 
-    const completedCount = achievementStatus.filter(a => a.isCompleted).length;
+    const completedCount = achievementStatus.filter(
+      (a) => a.isCompleted,
+    ).length;
     const isEligible = completedCount === achievements.length;
 
     return {
@@ -247,17 +298,21 @@ export class RankUpAchievementService {
       completedAchievements: completedCount,
       totalRequiredAchievements: achievements.length,
       achievementStatus,
-      reason: isEligible ? 'All achievements completed' : 'Some achievements still pending',
+      reason: isEligible
+        ? 'All achievements completed'
+        : 'Some achievements still pending',
     };
   }
 
   /**
    * Get all rank-up progress for a user
    */
-  async getUserRankUpProgress(userId: Types.ObjectId): Promise<RankUpValidationResponseDto[]> {
+  async getUserRankUpProgress(
+    userId: Types.ObjectId,
+  ): Promise<RankUpValidationResponseDto[]> {
     const ranks = ['E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS'];
     const progressByRank = await Promise.all(
-      ranks.map(rank => this.validateRankUp(userId, rank as RankCode)),
+      ranks.map((rank) => this.validateRankUp(userId, rank as RankCode)),
     );
 
     return progressByRank;
@@ -266,7 +321,11 @@ export class RankUpAchievementService {
   /**
    * Helper: Check if progress meets condition
    */
-  private checkCondition(progress: number, conditionValue: number, operator: string): boolean {
+  private checkCondition(
+    progress: number,
+    conditionValue: number,
+    operator: string,
+  ): boolean {
     switch (operator) {
       case 'gte':
         return progress >= conditionValue;
@@ -286,7 +345,9 @@ export class RankUpAchievementService {
   /**
    * Map document to response DTO
    */
-  private mapToResponseDto(achievement: RankUpAchievement): RankUpAchievementResponseDto {
+  private mapToResponseDto(
+    achievement: RankUpAchievement,
+  ): RankUpAchievementResponseDto {
     return {
       id: achievement._id.toString(),
       code: achievement.code,

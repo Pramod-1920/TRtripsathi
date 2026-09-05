@@ -1,4 +1,11 @@
-import { IsBoolean, IsEnum, IsMongoId, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsMongoId,
+  IsOptional,
+  IsString,
+  IsNotEmpty,
+} from 'class-validator';
 import { ExtraCategory } from '../constants/extra-category.enum';
 
 export class CreateExtraDto {

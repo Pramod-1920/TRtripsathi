@@ -10,14 +10,22 @@ import { Model, Types } from 'mongoose';
 import crypto from 'crypto';
 import { Trip } from './schemas/trip.schema';
 import { TripParticipant } from './schemas/trip-participant.schema';
-import { CreateTripDto, UpdateTripDto, JoinTripDto, CheckinTripDto, ApproveParticipantDto, ConfirmCompletionDto } from './dto/create-trip.dto';
+import {
+  CreateTripDto,
+  UpdateTripDto,
+  JoinTripDto,
+  CheckinTripDto,
+  ApproveParticipantDto,
+  ConfirmCompletionDto,
+} from './dto/create-trip.dto';
 import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class TripService {
   constructor(
     @InjectModel(Trip.name) private readonly tripModel: Model<Trip>,
-    @InjectModel(TripParticipant.name) private readonly participantModel: Model<TripParticipant>,
+    @InjectModel(TripParticipant.name)
+    private readonly participantModel: Model<TripParticipant>,
     private readonly audit: AuditService,
   ) {}
 
@@ -49,7 +57,9 @@ export class TripService {
 
     if (createTripDto.joinOpenUntil && createTripDto.startDate) {
       if (createTripDto.joinOpenUntil > createTripDto.startDate) {
-        throw new BadRequestException('joinOpenUntil must be before or equal to startDate');
+        throw new BadRequestException(
+          'joinOpenUntil must be before or equal to startDate',
+        );
       }
     }
 
@@ -148,7 +158,12 @@ export class TripService {
     };
   }
 
-  async updateTrip(tripId: string, updateDto: UpdateTripDto, userId: string, isAdmin = false): Promise<any> {
+  async updateTrip(
+    tripId: string,
+    updateDto: UpdateTripDto,
+    userId: string,
+    isAdmin = false,
+  ): Promise<any> {
     const trip = await this.tripModel.findById(tripId);
 
     if (!trip || trip.isDeleted) {
@@ -170,7 +185,9 @@ export class TripService {
     }
 
     if (joinOpenUntil && startDate && joinOpenUntil > startDate) {
-      throw new BadRequestException('joinOpenUntil must be before or equal to startDate');
+      throw new BadRequestException(
+        'joinOpenUntil must be before or equal to startDate',
+      );
     }
 
     Object.assign(trip, updateDto);
@@ -185,7 +202,11 @@ export class TripService {
     return trip;
   }
 
-  async deleteTrip(tripId: string, userId: string, isAdmin = false): Promise<any> {
+  async deleteTrip(
+    tripId: string,
+    userId: string,
+    isAdmin = false,
+  ): Promise<any> {
     const trip = await this.tripModel.findById(tripId);
 
     if (!trip) {
@@ -293,7 +314,9 @@ export class TripService {
     });
 
     if (!participant) {
-      throw new NotFoundException('User is not an approved participant of this trip');
+      throw new NotFoundException(
+        'User is not an approved participant of this trip',
+      );
     }
 
     participant.lastCheckinAt = new Date();
@@ -305,7 +328,10 @@ export class TripService {
       userId,
     });
 
-    return { message: 'Check-in recorded', lastCheckinAt: participant.lastCheckinAt };
+    return {
+      message: 'Check-in recorded',
+      lastCheckinAt: participant.lastCheckinAt,
+    };
   }
 
   async approveParticipant(
@@ -335,9 +361,15 @@ export class TripService {
     if (approveDto.status === 'approved') {
       participant.joinedAt = new Date();
       await this.tripModel.findByIdAndUpdate(tripId, {
-        $inc: { currentParticipantCount: 1, waitlistCount: oldStatus === 'pending' ? -1 : 0 },
+        $inc: {
+          currentParticipantCount: 1,
+          waitlistCount: oldStatus === 'pending' ? -1 : 0,
+        },
       });
-    } else if (approveDto.status === 'rejected' || approveDto.status === 'removed') {
+    } else if (
+      approveDto.status === 'rejected' ||
+      approveDto.status === 'removed'
+    ) {
       if (oldStatus === 'approved') {
         await this.tripModel.findByIdAndUpdate(tripId, {
           $inc: { currentParticipantCount: -1 },
@@ -377,7 +409,9 @@ export class TripService {
         .skip(skip)
         .limit(limit)
         .lean(),
-      this.participantModel.countDocuments({ tripId: new Types.ObjectId(tripId) }),
+      this.participantModel.countDocuments({
+        tripId: new Types.ObjectId(tripId),
+      }),
     ]);
 
     return {
@@ -386,7 +420,11 @@ export class TripService {
     };
   }
 
-  async confirmCompletion(tripId: string, confirmDto: ConfirmCompletionDto, adminId: string): Promise<any> {
+  async confirmCompletion(
+    tripId: string,
+    confirmDto: ConfirmCompletionDto,
+    adminId: string,
+  ): Promise<any> {
     const trip = await this.tripModel.findById(tripId);
 
     if (!trip) {
@@ -418,6 +456,9 @@ export class TripService {
       confirmedCount: result.modifiedCount,
     });
 
-    return { message: 'Completion confirmed', confirmedCount: result.modifiedCount };
+    return {
+      message: 'Completion confirmed',
+      confirmedCount: result.modifiedCount,
+    };
   }
 }

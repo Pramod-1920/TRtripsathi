@@ -44,7 +44,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new rank-up achievement definition (admin only)' })
+  @ApiOperation({
+    summary: 'Create a new rank-up achievement definition (admin only)',
+  })
   async create(
     @Body() createDto: CreateRankUpAchievementDto,
     @CurrentUser('userId') userId: string,
@@ -61,7 +63,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a rank-up achievement definition (admin only)' })
+  @ApiOperation({
+    summary: 'Update a rank-up achievement definition (admin only)',
+  })
   async update(
     @Param('id') id: string,
     @Body() updateDto: UpdateRankUpAchievementDto,
@@ -78,7 +82,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.Admin)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a rank-up achievement definition (admin only)' })
+  @ApiOperation({
+    summary: 'Delete a rank-up achievement definition (admin only)',
+  })
   async delete(@Param('id') id: string): Promise<void> {
     return this.rankUpAchievementService.delete(id);
   }
@@ -94,7 +100,9 @@ export class RankUpAchievementController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get all rank-up achievements with optional filters' })
+  @ApiOperation({
+    summary: 'Get all rank-up achievements with optional filters',
+  })
   async findAll(
     @Query('targetRank') targetRank?: RankCode,
     @Query('activityType') activityType?: string,
@@ -115,7 +123,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rank-up requirements for a specific rank' })
-  async findByRank(@Param('targetRank') targetRank: RankCode): Promise<RankUpAchievementResponseDto[]> {
+  async findByRank(
+    @Param('targetRank') targetRank: RankCode,
+  ): Promise<RankUpAchievementResponseDto[]> {
     return this.rankUpAchievementService.findByRank(targetRank);
   }
 
@@ -127,7 +137,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rank-up achievements for a specific activity' })
-  async findByActivityType(@Param('activityType') activityType: string): Promise<RankUpAchievementResponseDto[]> {
+  async findByActivityType(
+    @Param('activityType') activityType: string,
+  ): Promise<RankUpAchievementResponseDto[]> {
     return this.rankUpAchievementService.findByActivityType(activityType);
   }
 
@@ -139,7 +151,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a specific rank-up achievement by code' })
-  async findByCode(@Param('code') code: string): Promise<RankUpAchievementResponseDto> {
+  async findByCode(
+    @Param('code') code: string,
+  ): Promise<RankUpAchievementResponseDto> {
     return this.rankUpAchievementService.findByCode(code);
   }
 
@@ -151,7 +165,9 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a specific rank-up achievement by ID' })
-  async findById(@Param('id') id: string): Promise<RankUpAchievementResponseDto> {
+  async findById(
+    @Param('id') id: string,
+  ): Promise<RankUpAchievementResponseDto> {
     return this.rankUpAchievementService.findById(id);
   }
 
@@ -183,10 +199,10 @@ export class RankUpAchievementController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get rank-up progress for all ranks' })
-  async getUserProgress(@CurrentUser('userId') userId: string): Promise<RankUpValidationResponseDto[]> {
+  async getUserProgress(
+    @CurrentUser('userId') userId: string,
+  ): Promise<RankUpValidationResponseDto[]> {
     const userIdObj = new Types.ObjectId(userId);
     return this.rankUpAchievementService.getUserRankUpProgress(userIdObj);
   }
 }
-
-

@@ -24,7 +24,14 @@ export class RankUpAchievement extends Document {
   @Prop({
     type: [String],
     required: true,
-    enum: ['hike', 'trek', 'heritage', 'natural_resource', 'adventure', 'hidden_gems'],
+    enum: [
+      'hike',
+      'trek',
+      'heritage',
+      'natural_resource',
+      'adventure',
+      'hidden_gems',
+    ],
   })
   activityTypes: string[]; // Activities this achievement is related to
 
@@ -91,7 +98,8 @@ export class RankUpAchievement extends Document {
   updatedAt: Date;
 }
 
-export const RankUpAchievementSchema = SchemaFactory.createForClass(RankUpAchievement);
+export const RankUpAchievementSchema =
+  SchemaFactory.createForClass(RankUpAchievement);
 
 // Indexes for efficient querying
 RankUpAchievementSchema.index({ isActive: 1 });

@@ -132,7 +132,7 @@ export class AccountSecurityService {
     channel: AuthChallengeChannel,
     requestIp?: string,
   ) {
-    const authId = user._id as Types.ObjectId;
+    const authId = user._id;
     await this.enforceRequestLimits(authId, purpose);
     const destination = this.destination(user, channel);
     const code = String(randomInt(100000, 1000000));

@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import type {
@@ -114,9 +111,7 @@ export class AuthCodeDeliveryService {
     code: string,
     purpose: AuthChallengePurpose,
   ) {
-    const accountSid = this.config
-      .get<string>('TWILIO_ACCOUNT_SID')
-      ?.trim();
+    const accountSid = this.config.get<string>('TWILIO_ACCOUNT_SID')?.trim();
     const authToken = this.config.get<string>('TWILIO_AUTH_TOKEN')?.trim();
     const from = this.config.get<string>('TWILIO_FROM_PHONE')?.trim();
     if (!accountSid || !authToken || !from) {

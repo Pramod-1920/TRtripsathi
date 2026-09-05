@@ -51,7 +51,7 @@ export class ReviewService {
       throw new NotFoundException('Reviewer profile not found');
     }
 
-    return reviewer._id as Types.ObjectId;
+    return reviewer._id;
   }
 
   async getUserProfileIdFromAuthId(authId: string): Promise<string> {

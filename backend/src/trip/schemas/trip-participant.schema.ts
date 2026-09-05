@@ -9,7 +9,11 @@ export class TripParticipant extends Document {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
   userId: Types.ObjectId;
 
-  @Prop({ required: true, enum: ['pending', 'approved', 'rejected', 'removed'], default: 'pending' })
+  @Prop({
+    required: true,
+    enum: ['pending', 'approved', 'rejected', 'removed'],
+    default: 'pending',
+  })
   status: string;
 
   @Prop({ default: false })
@@ -31,10 +35,14 @@ export class TripParticipant extends Document {
   updatedAt: Date;
 }
 
-export const TripParticipantSchema = SchemaFactory.createForClass(TripParticipant);
+export const TripParticipantSchema =
+  SchemaFactory.createForClass(TripParticipant);
 
 // Unique index to prevent duplicate membership
-TripParticipantSchema.index({ tripId: 1, userId: 1 }, { unique: true, name: 'unique_membership' });
+TripParticipantSchema.index(
+  { tripId: 1, userId: 1 },
+  { unique: true, name: 'unique_membership' },
+);
 TripParticipantSchema.index({ userId: 1, status: 1 }, { name: 'user_status' });
 TripParticipantSchema.index({ tripId: 1, status: 1 }, { name: 'trip_status' });
 TripParticipantSchema.index({ lastCheckinAt: 1 }, { name: 'checkin_cron' });

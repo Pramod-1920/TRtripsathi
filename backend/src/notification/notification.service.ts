@@ -99,7 +99,7 @@ export class NotificationService {
       .findOne({ authId: new Types.ObjectId(authId) })
       .select('_id');
     if (!profile) throw new NotFoundException('User profile not found');
-    return profile._id as Types.ObjectId;
+    return profile._id;
   }
 
   async registerPushToken(

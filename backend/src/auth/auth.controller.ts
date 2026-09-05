@@ -175,7 +175,7 @@ export class AuthController {
     // Defensive: prevent clients from setting role on signup even if validation
     // rules change elsewhere or DTOs are bypassed. Enforce public signups are always
     // regular users.
-    if ((req.body as any)?.role) {
+    if (req.body?.role) {
       // Explicitly reject attempts to set role during public signup
       throw new BadRequestException('Role cannot be set during signup');
     }

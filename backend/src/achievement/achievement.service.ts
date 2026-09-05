@@ -157,9 +157,7 @@ export class AchievementService {
       },
     );
 
-    const completedCount = achievementList.filter(
-      (a) => a.isCompleted,
-    ).length;
+    const completedCount = achievementList.filter((a) => a.isCompleted).length;
     const completionPercentage =
       achievements.length > 0
         ? Math.floor((completedCount / achievements.length) * 100)
@@ -231,9 +229,7 @@ export class AchievementService {
 
     // Get achievement definitions
     const achievementDefs = new Map();
-    (
-      await this.achievementDefModel.find({ isActive: true })
-    ).forEach((a) => {
+    (await this.achievementDefModel.find({ isActive: true })).forEach((a) => {
       achievementDefs.set(a._id.toString(), a);
     });
 

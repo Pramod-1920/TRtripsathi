@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsMongoId, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsMongoId,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class SimulateXpDto {
   @ApiProperty({
@@ -12,7 +18,8 @@ export class SimulateXpDto {
 
   @ApiPropertyOptional({
     example: '6810f7b7a2f6a859f6ee8f11',
-    description: 'Optional profile ID to include real user repeat history and progression state',
+    description:
+      'Optional profile ID to include real user repeat history and progression state',
   })
   @IsOptional()
   @IsMongoId()
@@ -28,7 +35,8 @@ export class SimulateXpDto {
       rareRoute: false,
       hostOnly: false,
     },
-    description: 'Optional simulation context for rule matching and formula components',
+    description:
+      'Optional simulation context for rule matching and formula components',
   })
   @IsOptional()
   @IsObject()
